@@ -11,7 +11,7 @@ const isDev = !app.isPackaged;
 registerNativeHandlers(() => mainWindow);
 
 async function createWindow(): Promise<void> {
-  sidecar = await startSidecar();
+  sidecar = await startSidecar({ isPackaged: app.isPackaged, resourcesPath: process.resourcesPath });
 
   mainWindow = new BrowserWindow({
     width: 1280,

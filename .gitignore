@@ -6,6 +6,9 @@ dist-electron/
 release/
 .vite/
 
+# Self-contained backend publish output staged for electron-builder
+apps/desktop/resources/
+
 # .NET
 bin/
 obj/

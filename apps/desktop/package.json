@@ -2,14 +2,91 @@
   "name": "maktaba-desktop",
   "private": true,
   "version": "0.0.0",
+  "description": "Maktaba (مکتبہ) — a local-first ebook library manager",
+  "author": "Maktaba contributors",
   "main": "dist/main.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "start": "electron ."
+    "start": "electron .",
+    "package:win": "electron-builder --win",
+    "package:mac": "electron-builder --mac",
+    "package:linux": "electron-builder --linux",
+    "package": "electron-builder"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
-    "electron": "^41.0.0",
+    "electron": "41.7.1",
+    "electron-builder": "^25.1.8",
     "typescript": "~5.6.0"
+  },
+  "build": {
+    "appId": "com.inshapardaz.maktaba",
+    "productName": "Maktaba",
+    "asar": true,
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json",
+      "!**/*.map"
+    ],
+    "extraResources": [
+      {
+        "from": "../frontend/dist",
+        "to": "frontend/dist"
+      }
+    ],
+    "afterPack": "electron-builder/afterPack.cjs",
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "build/icon.png",
+      "extraResources": [
+        {
+          "from": "resources/backend/win-x64",
+          "to": "backend"
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png",
+      "category": "public.app-category.productivity",
+      "extraResources": [
+        {
+          "from": "resources/backend/osx-${arch}",
+          "to": "backend"
+        }
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "icon": "build/icon.png",
+      "category": "Office",
+      "extraResources": [
+        {
+          "from": "resources/backend/linux-x64",
+          "to": "backend"
+        }
+      ]
+    }
   }
 }

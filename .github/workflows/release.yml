@@ -1,0 +1,117 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to build/publish (e.g. "v0.1.0"). If the tag does not exist yet, it will be created pointing at the selected branch/commit.'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  determine-version:
+    name: Determine version
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Resolve tag and version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Tag '$TAG' must look like vMAJOR.MINOR.PATCH (e.g. v0.1.0)" >&2
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Package (${{ matrix.platform }})
+    needs: determine-version
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows
+            os: windows-latest
+            package_script: package:win
+            artifact_name: maktaba-windows
+            artifact_glob: apps/desktop/release/*.exe
+          - platform: macos
+            os: macos-latest
+            package_script: package:mac
+            artifact_name: maktaba-macos
+            artifact_glob: apps/desktop/release/*.dmg
+          - platform: linux
+            os: ubuntu-latest
+            package_script: package:linux
+            artifact_name: maktaba-linux
+            artifact_glob: apps/desktop/release/*.AppImage
+    steps:
+      - uses: actions/checkout@v4
+        # No explicit `ref`: for a tag push this checks out the tag itself;
+        # for workflow_dispatch it checks out the tip of the selected branch
+        # (the tag may not exist as a git ref yet — action-gh-release creates
+        # it from this same commit in the release job below).
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0.x"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Set package version
+        run: node scripts/set-version.mjs ${{ needs.determine-version.outputs.version }}
+
+      - name: Build and package
+        run: npm run ${{ matrix.package_script }}
+        env:
+          # No Apple Developer identity is configured for CI dmg builds; skip
+          # electron-builder's automatic keychain signing-identity lookup so
+          # the build doesn't fail trying to find one.
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.artifact_glob }}
+          if-no-files-found: error
+
+  release:
+    name: Create GitHub release
+    needs: [determine-version, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all installer artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create release and upload artifacts
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.determine-version.outputs.tag }}
+          name: Maktaba ${{ needs.determine-version.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          generate_release_notes: true
+          files: artifacts/*

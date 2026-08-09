@@ -67,37 +67,46 @@ function waitForHealth(port: number, timeoutMs = 15000): Promise<void> {
   });
 }
 
+export interface SidecarOptions {
+  /** true in a packaged (installed) build, false when running via `npm run dev`. */
+  isPackaged: boolean;
+  /** Electron's `process.resourcesPath`; only used when `isPackaged` is true. */
+  resourcesPath: string;
+}
+
+function packagedExecutablePath(resourcesPath: string): string {
+  const exeName = process.platform === "win32" ? "Maktaba.Api.exe" : "Maktaba.Api";
+  return path.join(resourcesPath, "backend", exeName);
+}
+
 /**
- * Dev-mode launch: `dotnet run` against the backend project directly.
- * Packaged-app launch (M4) will instead spawn the self-contained published
- * executable bundled as an electron-builder extraResource.
+ * Dev mode: `dotnet run` against the backend project directly.
+ * Packaged mode: spawn the self-contained published executable bundled as an
+ * electron-builder extraResource under `resources/backend/` (see
+ * apps/desktop/package.json's `build.win/mac/linux.extraResources` and
+ * scripts/publish-backend.mjs).
  */
-export async function startSidecar(): Promise<SidecarHandle> {
+export async function startSidecar(options: SidecarOptions): Promise<SidecarHandle> {
   const port = await getFreePort();
   const token = crypto.randomBytes(24).toString("hex");
 
-  const backendProjectPath = path.join(
-    __dirname,
-    "..",
-    "..",
-    "..",
-    "backend",
-    "Maktaba.Api",
-  );
-
-  const child = spawn(
-    "dotnet",
-    [
-      "run",
-      "--no-launch-profile",
-      "--project",
-      backendProjectPath,
-      "--",
-      `--port=${port}`,
-      `--token=${token}`,
-    ],
-    { stdio: "inherit" },
-  );
+  const child = options.isPackaged
+    ? spawn(packagedExecutablePath(options.resourcesPath), [`--port=${port}`, `--token=${token}`], {
+        stdio: "inherit",
+      })
+    : spawn(
+        "dotnet",
+        [
+          "run",
+          "--no-launch-profile",
+          "--project",
+          path.join(__dirname, "..", "..", "..", "backend", "Maktaba.Api"),
+          "--",
+          `--port=${port}`,
+          `--token=${token}`,
+        ],
+        { stdio: "inherit" },
+      );
 
   child.on("error", (err) => {
     console.error("Failed to start Maktaba.Api sidecar:", err);
