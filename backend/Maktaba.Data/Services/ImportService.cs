@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using Maktaba.Core.Entities;
 using Maktaba.Core.Naming;
 using Maktaba.Core.Services;
@@ -11,7 +10,10 @@ public class ImportService(
     ILibraryPathProvider libraryPath,
     IEnumerable<IBookMetadataExtractor> extractors) : IImportService
 {
-    public async Task<Book> ImportFileAsync(string sourceFilePath, CancellationToken ct = default)
+    public async Task<Book> ImportFileAsync(
+        string sourceFilePath,
+        ImportDuplicateResolution resolution = ImportDuplicateResolution.Auto,
+        CancellationToken ct = default)
     {
         // MaktabaDbContext (a constructor dependency) already requires an open library to have been
         // constructed, so LibraryRootPath is guaranteed non-null by the time this method runs.
@@ -21,8 +23,30 @@ public class ImportService(
             ?? throw new NotSupportedException($"Unsupported ebook file type: {Path.GetExtension(sourceFilePath)}");
 
         var metadata = await extractor.ExtractAsync(sourceFilePath, ct);
-        var contentHash = await ComputeSha256Async(sourceFilePath, ct);
-        var format = DetectFormat(sourceFilePath);
+        var contentHash = await EbookFileHelpers.ComputeSha256Async(sourceFilePath, ct);
+        var format = EbookFileHelpers.DetectFormat(sourceFilePath);
+
+        if (resolution != ImportDuplicateResolution.KeepBoth)
+        {
+            var duplicate = await FindDuplicateAsync(metadata.Title, metadata.Authors, contentHash, ct);
+            if (duplicate is not null)
+            {
+                switch (resolution)
+                {
+                    case ImportDuplicateResolution.Auto:
+                        throw new DuplicateBookDetectedException(
+                            duplicate.Value.Book.Id,
+                            duplicate.Value.Book.Title,
+                            duplicate.Value.Book.BookAuthors.Select(ba => ba.Author.Name).ToArray(),
+                            duplicate.Value.SameContentHash);
+                    case ImportDuplicateResolution.Skip:
+                        return duplicate.Value.Book;
+                    case ImportDuplicateResolution.Merge:
+                        return await MergeFileIntoExistingBookAsync(
+                            duplicate.Value.Book, sourceFilePath, format, contentHash, ct);
+                }
+            }
+        }
 
         var bookId = Guid.NewGuid();
         var sortTitle = TitleSorting.ComputeSortTitle(metadata.Title);
@@ -45,7 +69,7 @@ public class ImportService(
 
             if (metadata.CoverImageBytes is { Length: > 0 })
             {
-                var coverExtension = CoverExtensionFor(metadata.CoverContentType);
+                var coverExtension = EbookFileHelpers.CoverExtensionFor(metadata.CoverContentType);
                 await File.WriteAllBytesAsync(
                     Path.Combine(absoluteFolder, $"cover.{coverExtension}"), metadata.CoverImageBytes, ct);
             }
@@ -98,24 +122,54 @@ public class ImportService(
         }
     }
 
-    private static BookFormat DetectFormat(string filePath) => Path.GetExtension(filePath).ToLowerInvariant() switch
+    private async Task<(Book Book, bool SameContentHash)?> FindDuplicateAsync(
+        string title, IReadOnlyList<string> authorNames, string contentHash, CancellationToken ct)
     {
-        ".epub" => BookFormat.Epub,
-        ".pdf" => BookFormat.Pdf,
-        var ext => throw new NotSupportedException($"Unsupported ebook file type: {ext}"),
-    };
+        var hashMatch = await db.BookFiles
+            .Include(f => f.Book).ThenInclude(b => b.BookAuthors).ThenInclude(ba => ba.Author)
+            .FirstOrDefaultAsync(f => f.ContentHash == contentHash, ct);
+        if (hashMatch is not null)
+        {
+            return (hashMatch.Book, true);
+        }
 
-    private static string CoverExtensionFor(string? contentType) => contentType switch
-    {
-        "image/png" => "png",
-        "image/jpeg" => "jpg",
-        _ => "jpg",
-    };
+        var normalizedTitle = title.Trim().ToLowerInvariant();
+        var normalizedAuthors = authorNames.Select(a => a.Trim().ToLowerInvariant()).ToHashSet();
 
-    private static async Task<string> ComputeSha256Async(string filePath, CancellationToken ct)
+        var titleCandidates = await db.Books
+            .Where(b => b.Title.ToLower() == normalizedTitle)
+            .Include(b => b.BookAuthors).ThenInclude(ba => ba.Author)
+            .ToListAsync(ct);
+
+        var titleAndAuthorMatch = titleCandidates.FirstOrDefault(b =>
+            b.BookAuthors.Any(ba => normalizedAuthors.Contains(ba.Author.Name.ToLowerInvariant())));
+
+        return titleAndAuthorMatch is not null ? (titleAndAuthorMatch, false) : null;
+    }
+
+    private async Task<Book> MergeFileIntoExistingBookAsync(
+        Book existingBook, string sourceFilePath, BookFormat format, string contentHash, CancellationToken ct)
     {
-        await using var stream = File.OpenRead(filePath);
-        var hashBytes = await SHA256.HashDataAsync(stream, ct);
-        return Convert.ToHexString(hashBytes).ToLowerInvariant();
+        var libraryRoot = libraryPath.LibraryRootPath!;
+        var folderAbsolute = Path.Combine(libraryRoot, existingBook.FolderPath);
+        Directory.CreateDirectory(folderAbsolute);
+
+        var baseFileName = FileNaming.SanitizePathSegment(existingBook.Title) +
+            Path.GetExtension(sourceFilePath).ToLowerInvariant();
+        var destFilePath = EbookFileHelpers.GetUniqueFilePath(folderAbsolute, baseFileName);
+        File.Copy(sourceFilePath, destFilePath, overwrite: false);
+
+        db.BookFiles.Add(new BookFile
+        {
+            BookId = existingBook.Id,
+            Format = format,
+            FilePath = Path.Combine(existingBook.FolderPath, Path.GetFileName(destFilePath)),
+            FileSizeBytes = new FileInfo(destFilePath).Length,
+            ContentHash = contentHash,
+        });
+
+        await db.SaveChangesAsync(ct);
+
+        return existingBook;
     }
 }

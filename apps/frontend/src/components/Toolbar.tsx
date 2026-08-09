@@ -9,6 +9,8 @@ interface ToolbarProps {
   onViewModeChange: (mode: ViewMode) => void;
   onImport: () => void;
   importing: boolean;
+  onRescan: () => void;
+  rescanning: boolean;
   bookCount: number;
 }
 
@@ -20,6 +22,8 @@ export function Toolbar({
   onViewModeChange,
   onImport,
   importing,
+  onRescan,
+  rescanning,
   bookCount,
 }: ToolbarProps) {
   return (
@@ -27,6 +31,9 @@ export function Toolbar({
       <div className="toolbar-left">
         <button type="button" onClick={onImport} disabled={importing}>
           {importing ? "Importing…" : "Import Book(s)"}
+        </button>
+        <button type="button" onClick={onRescan} disabled={rescanning} title="Rebuild the library index from files on disk">
+          {rescanning ? "Rescanning…" : "Rescan Library"}
         </button>
         <span className="book-count">{bookCount} book{bookCount === 1 ? "" : "s"}</span>
       </div>

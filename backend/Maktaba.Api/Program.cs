@@ -32,6 +32,8 @@ builder.Services.AddSingleton<IBookMetadataExtractor, EpubMetadataExtractor>();
 builder.Services.AddSingleton<IBookMetadataExtractor, PdfMetadataExtractor>();
 builder.Services.AddScoped<IImportService, ImportService>();
 builder.Services.AddScoped<IBookEditService, BookEditService>();
+builder.Services.AddScoped<IBookRemovalService, BookRemovalService>();
+builder.Services.AddScoped<ILibraryRescanService, LibraryRescanService>();
 
 var app = builder.Build();
 

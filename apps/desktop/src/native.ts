@@ -36,4 +36,8 @@ export function registerNativeHandlers(getWindow: () => BrowserWindow | null): v
       throw new Error(error);
     }
   });
+
+  ipcMain.handle("maktaba:trash-path", async (_event, filePath: string) => {
+    await shell.trashItem(filePath);
+  });
 }

@@ -174,6 +174,12 @@ public static class BookEndpoints
             return book is null ? Results.NotFound() : Results.NoContent();
         });
 
+        group.MapDelete("/{id:guid}", async (Guid id, IBookRemovalService removalService, CancellationToken ct) =>
+        {
+            var result = await removalService.RemoveAsync(id, ct);
+            return result is null ? Results.NotFound() : Results.Ok(new { folderPath = result.AbsoluteFolderPath });
+        });
+
         group.MapPost("/import", async (ImportBookRequest request, IImportService importService, CancellationToken ct) =>
         {
             if (string.IsNullOrWhiteSpace(request.FilePath) || !File.Exists(request.FilePath))
@@ -181,14 +187,30 @@ public static class BookEndpoints
                 return Results.BadRequest(new { error = "File not found." });
             }
 
+            var resolution = request.DuplicateAction switch
+            {
+                "skip" => ImportDuplicateResolution.Skip,
+                "keep-both" => ImportDuplicateResolution.KeepBoth,
+                "merge" => ImportDuplicateResolution.Merge,
+                _ => ImportDuplicateResolution.Auto,
+            };
+
             try
             {
-                var book = await importService.ImportFileAsync(request.FilePath, ct);
+                var book = await importService.ImportFileAsync(request.FilePath, resolution, ct);
                 return Results.Created($"/api/books/{book.Id}", new { id = book.Id });
             }
             catch (NotSupportedException ex)
             {
                 return Results.BadRequest(new { error = ex.Message });
+            }
+            catch (DuplicateBookDetectedException ex)
+            {
+                return Results.Conflict(new
+                {
+                    error = ex.Message,
+                    duplicate = new DuplicateBookDto(ex.ExistingBookId, ex.ExistingTitle, [.. ex.ExistingAuthors], ex.SameContentHash),
+                });
             }
         });
     }

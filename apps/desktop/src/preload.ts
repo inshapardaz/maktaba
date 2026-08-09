@@ -29,6 +29,8 @@ contextBridge.exposeInMainWorld("maktaba", {
 
   openPath: (filePath: string): Promise<void> => ipcRenderer.invoke("maktaba:open-path", filePath),
 
+  trashPath: (filePath: string): Promise<void> => ipcRenderer.invoke("maktaba:trash-path", filePath),
+
   // Resolves the real filesystem path for a File dropped onto the window (drag-and-drop import).
   getPathForFile: (file: File): string => webUtils.getPathForFile(file),
 });

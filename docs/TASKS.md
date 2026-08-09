@@ -48,10 +48,12 @@ Verified end-to-end against real files: a real PDF ebook (from Downloads) import
 
 ## M3 — File Organization & Duplicates
 
-- [ ] On metadata edit that changes title/author: rename/move the on-disk book folder, update `BookFile.FilePath`
-- [ ] Duplicate detection on import: content-hash match and (title, author) match; resolution UI (skip / merge / keep both)
-- [ ] Remove book: send files to OS trash (`shell.trashItem` in Electron), clean up DB records
-- [ ] "Rescan library" operation: rebuild `metadata.db` from on-disk files + embedded metadata
+- [x] On metadata edit that changes title/author: rename/move the on-disk book folder and its files, update `Book.FolderPath`/`BookFile.FilePath`. Best-effort rollback (moves the folder back) if the DB save fails after the move. Also cleans up the old author folder if it's left empty.
+- [x] Duplicate detection on import: content-hash match (exact file) or title+author match (same book, different file); by default (`Auto`) the API returns `409` with the existing book's info so the caller can decide. Resolution actions: `skip` (leave existing untouched), `keep-both` (import as a separate book), `merge` (add this file as an additional format on the existing book, with automatic ` (2)`/` (3)` filename disambiguation)
+- [x] Remove book: `DELETE /api/books/{id}` removes DB records (cascade-deletes join rows) and returns the absolute folder path; Electron's `shell.trashItem` (new `trashPath` bridge) does the actual OS-trash move, keeping file-system-shell concerns in Electron per the existing architecture split
+- [x] "Rescan library" operation: `POST /api/libraries/rescan` wipes and rebuilds the index by walking `{Author}/{Title} ({BookId})` folders and re-extracting metadata from each file found. Folders not matching that convention are skipped (documented limitation). Because metadata is re-derived from each file's embedded data, DB-only edits (rating, tags, series, manual title/author corrections not reflected in the file itself) are lost on rescan — this is called out in the UI's confirmation prompt and in `ILibraryRescanService`'s docs
+
+Verified via a single continuous backend smoke-test scenario (not just isolated calls): rename-on-title-change and rename-on-author-change both correctly moved the folder/files and left no orphaned empty author folder; duplicate detection correctly 409'd on an exact re-import and all three resolutions (`skip`, `keep-both`, `merge`) behaved correctly, including the merge path producing two distinct files in one book's folder with automatic disambiguation; `DELETE` removed DB rows and returned the right folder path without touching disk; rescan after manually deleting a book's folder correctly dropped it, and after a full rescan correctly rebuilt both remaining books (preserving their original IDs via the folder-embedded GUID) including the merged book's two files — while confirming title/metadata reverted to what's embedded in the file, as expected. Frontend and desktop both type-check and production-build; dev pipeline sequencing confirmed correct up to the same `ELECTRON_RUN_AS_NODE=1` sandbox wall as prior milestones.
 
 ## M4 — Packaging
 

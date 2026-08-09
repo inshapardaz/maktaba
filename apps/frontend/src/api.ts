@@ -63,6 +63,25 @@ export interface BookFilters {
   minRating?: number;
 }
 
+export interface DuplicateBookInfo {
+  existingBookId: string;
+  existingTitle: string;
+  existingAuthors: string[];
+  sameContentHash: boolean;
+}
+
+export class DuplicateBookError extends Error {
+  duplicate: DuplicateBookInfo;
+
+  constructor(duplicate: DuplicateBookInfo) {
+    super(`A matching book already exists: "${duplicate.existingTitle}".`);
+    this.name = "DuplicateBookError";
+    this.duplicate = duplicate;
+  }
+}
+
+export type DuplicateAction = "skip" | "keep-both" | "merge";
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const { apiBaseUrl, token } = window.maktaba;
 
@@ -76,14 +95,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
 
   if (!res.ok) {
-    let message = `Request failed: ${res.status}`;
-    try {
-      const body = (await res.json()) as { error?: string };
-      if (body.error) message = body.error;
-    } catch {
-      // non-JSON error body; keep the generic message
+    const body = await res
+      .json()
+      .catch(() => null) as { error?: string; duplicate?: DuplicateBookInfo } | null;
+
+    if (res.status === 409 && body?.duplicate) {
+      throw new DuplicateBookError(body.duplicate);
     }
-    throw new Error(message);
+    throw new Error(body?.error ?? `Request failed: ${res.status}`);
   }
 
   if (res.status === 204) {
@@ -121,10 +140,10 @@ export function getBook(id: string): Promise<BookDetail> {
   return request<BookDetail>(`/api/books/${id}`);
 }
 
-export function importBook(filePath: string): Promise<{ id: string }> {
+export function importBook(filePath: string, duplicateAction?: DuplicateAction): Promise<{ id: string }> {
   return request<{ id: string }>("/api/books/import", {
     method: "POST",
-    body: JSON.stringify({ filePath }),
+    body: JSON.stringify({ filePath, duplicateAction }),
   });
 }
 
@@ -133,6 +152,14 @@ export function updateBook(id: string, edit: BookEditRequest): Promise<void> {
     method: "PUT",
     body: JSON.stringify(edit),
   });
+}
+
+export function deleteBook(id: string): Promise<{ folderPath: string }> {
+  return request<{ folderPath: string }>(`/api/books/${id}`, { method: "DELETE" });
+}
+
+export function rescanLibrary(): Promise<{ bookCount: number }> {
+  return request<{ bookCount: number }>("/api/libraries/rescan", { method: "POST" });
 }
 
 export function listAuthors(): Promise<BrowseGroup[]> {

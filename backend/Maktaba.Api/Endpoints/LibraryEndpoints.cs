@@ -24,5 +24,11 @@ public static class LibraryEndpoints
             var info = await libraryService.OpenAsync(request.Path, ct);
             return Results.Ok(new LibraryDto(info.Path));
         });
+
+        group.MapPost("/rescan", async (ILibraryRescanService rescanService, CancellationToken ct) =>
+        {
+            var bookCount = await rescanService.RescanAsync(ct);
+            return Results.Ok(new { bookCount });
+        });
     }
 }

@@ -9,5 +9,12 @@ public interface IImportService
     /// extracts metadata/cover, copies the file into the library's folder layout, and persists the
     /// resulting Book/Author/BookFile records. The original source file is left untouched.
     /// </summary>
-    Task<Book> ImportFileAsync(string sourceFilePath, CancellationToken ct = default);
+    /// <exception cref="DuplicateBookDetectedException">
+    /// Thrown when <paramref name="resolution"/> is <see cref="ImportDuplicateResolution.Auto"/> and a
+    /// likely-duplicate book is found (by content hash or matching title+author).
+    /// </exception>
+    Task<Book> ImportFileAsync(
+        string sourceFilePath,
+        ImportDuplicateResolution resolution = ImportDuplicateResolution.Auto,
+        CancellationToken ct = default);
 }

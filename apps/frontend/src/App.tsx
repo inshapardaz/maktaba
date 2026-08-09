@@ -1,6 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { getCurrentLibrary, importBook, listBooks, type BookFilters, type BookSummary } from "./api";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  getCurrentLibrary,
+  importBook,
+  listBooks,
+  rescanLibrary,
+  DuplicateBookError,
+  type BookFilters,
+  type BookSummary,
+  type DuplicateAction,
+  type DuplicateBookInfo,
+} from "./api";
 import { LibraryPicker } from "./components/LibraryPicker";
 import { Toolbar, type SortKey, type ViewMode } from "./components/Toolbar";
 import { BookGrid } from "./components/BookGrid";
@@ -8,6 +18,7 @@ import { BookList } from "./components/BookList";
 import { BookDetailPanel } from "./components/BookDetailPanel";
 import { Sidebar, type GroupFilter } from "./components/Sidebar";
 import { FilterBar } from "./components/FilterBar";
+import { DuplicateDialog } from "./components/DuplicateDialog";
 import "./App.css";
 
 const EBOOK_EXTENSIONS = [".epub", ".pdf"];
@@ -40,6 +51,13 @@ function useDebounced<T>(value: T, delayMs: number): T {
   return debounced;
 }
 
+function invalidateLibraryQueries(queryClient: ReturnType<typeof useQueryClient>) {
+  void queryClient.invalidateQueries({ queryKey: ["books"] });
+  void queryClient.invalidateQueries({ queryKey: ["authors"] });
+  void queryClient.invalidateQueries({ queryKey: ["series"] });
+  void queryClient.invalidateQueries({ queryKey: ["tags"] });
+}
+
 function App() {
   const queryClient = useQueryClient();
   const [sortKey, setSortKey] = useState<SortKey>("title");
@@ -47,6 +65,12 @@ function App() {
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null);
   const [isDragActive, setDragActive] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
+  const [isImporting, setImporting] = useState(false);
+  const [isRescanning, setRescanning] = useState(false);
+  const [pendingDuplicate, setPendingDuplicate] = useState<{ filePath: string; info: DuplicateBookInfo } | null>(
+    null,
+  );
+  const duplicateResolverRef = useRef<((action: DuplicateAction | "cancel") => void) | null>(null);
 
   const [search, setSearch] = useState("");
   const [format, setFormat] = useState("");
@@ -74,33 +98,59 @@ function App() {
     enabled: !!libraryQuery.data,
   });
 
-  const importMutation = useMutation({
-    mutationFn: async (filePaths: string[]) => {
-      const errors: string[] = [];
-      for (const filePath of filePaths) {
-        try {
-          await importBook(filePath);
-        } catch (err) {
-          errors.push(`${filePath}: ${err instanceof Error ? err.message : String(err)}`);
-        }
-      }
-      return errors;
-    },
-    onSuccess: (errors) => {
-      void queryClient.invalidateQueries({ queryKey: ["books"] });
-      setImportError(errors.length > 0 ? errors.join("\n") : null);
-    },
-  });
-
   const sortedBooks = useMemo(
     () => sortBooks(booksQuery.data ?? [], sortKey),
     [booksQuery.data, sortKey],
   );
 
+  function askUserForDuplicateAction(filePath: string, info: DuplicateBookInfo): Promise<DuplicateAction | "cancel"> {
+    return new Promise((resolve) => {
+      duplicateResolverRef.current = resolve;
+      setPendingDuplicate({ filePath, info });
+    });
+  }
+
+  function resolveDuplicate(action: DuplicateAction | "cancel") {
+    setPendingDuplicate(null);
+    duplicateResolverRef.current?.(action);
+    duplicateResolverRef.current = null;
+  }
+
+  async function runImport(filePaths: string[]) {
+    setImporting(true);
+    const errors: string[] = [];
+
+    filePathLoop: for (const filePath of filePaths) {
+      let action: DuplicateAction | undefined;
+
+      for (;;) {
+        try {
+          await importBook(filePath, action);
+          break;
+        } catch (err) {
+          if (err instanceof DuplicateBookError) {
+            const choice = await askUserForDuplicateAction(filePath, err.duplicate);
+            if (choice === "cancel") {
+              break filePathLoop;
+            }
+            action = choice;
+            continue;
+          }
+          errors.push(`${filePath}: ${err instanceof Error ? err.message : String(err)}`);
+          break;
+        }
+      }
+    }
+
+    setImporting(false);
+    invalidateLibraryQueries(queryClient);
+    setImportError(errors.length > 0 ? errors.join("\n") : null);
+  }
+
   const handleImportClick = async () => {
     const files = await window.maktaba.pickEbookFiles();
     if (files.length > 0) {
-      importMutation.mutate(files);
+      void runImport(files);
     }
   };
 
@@ -113,7 +163,29 @@ function App() {
       .filter(isEbookPath);
 
     if (paths.length > 0) {
-      importMutation.mutate(paths);
+      void runImport(paths);
+    }
+  };
+
+  const handleRescan = async () => {
+    if (
+      !window.confirm(
+        "Rebuild the library index from the files on disk? Ratings, tags, series, and any manual " +
+          "corrections not reflected in the files themselves will be lost and re-derived from each " +
+          "file's embedded metadata.",
+      )
+    ) {
+      return;
+    }
+
+    setRescanning(true);
+    try {
+      await rescanLibrary();
+      invalidateLibraryQueries(queryClient);
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRescanning(false);
     }
   };
 
@@ -142,7 +214,9 @@ function App() {
         viewMode={viewMode}
         onViewModeChange={setViewMode}
         onImport={handleImportClick}
-        importing={importMutation.isPending}
+        importing={isImporting}
+        onRescan={handleRescan}
+        rescanning={isRescanning}
         bookCount={sortedBooks.length}
       />
 
@@ -190,7 +264,22 @@ function App() {
       </div>
 
       {selectedBookId && (
-        <BookDetailPanel bookId={selectedBookId} onClose={() => setSelectedBookId(null)} />
+        <BookDetailPanel
+          bookId={selectedBookId}
+          onClose={() => setSelectedBookId(null)}
+          onRemoved={() => {
+            setSelectedBookId(null);
+            invalidateLibraryQueries(queryClient);
+          }}
+        />
+      )}
+
+      {pendingDuplicate && (
+        <DuplicateDialog
+          filePath={pendingDuplicate.filePath}
+          info={pendingDuplicate.info}
+          onResolve={resolveDuplicate}
+        />
       )}
 
       {isDragActive && <div className="drag-overlay">Drop EPUB/PDF files to import</div>}

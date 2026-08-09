@@ -1,15 +1,18 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { getBook, coverUrl } from "../api";
+import { getBook, deleteBook, coverUrl } from "../api";
 import { BookEditForm } from "./BookEditForm";
 
 interface BookDetailPanelProps {
   bookId: string;
   onClose: () => void;
+  onRemoved: () => void;
 }
 
-export function BookDetailPanel({ bookId, onClose }: BookDetailPanelProps) {
+export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelProps) {
   const [isEditing, setEditing] = useState(false);
+  const [isRemoving, setRemoving] = useState(false);
+  const [removeError, setRemoveError] = useState<string | null>(null);
 
   const {
     data: book,
@@ -25,6 +28,24 @@ export function BookDetailPanel({ bookId, onClose }: BookDetailPanelProps) {
       <BookEditForm bookId={bookId} onClose={() => setEditing(false)} onSaved={() => setEditing(false)} />
     );
   }
+
+  const handleRemove = async () => {
+    if (!book) return;
+    if (!window.confirm(`Remove "${book.title}" from the library? The files will be sent to the trash.`)) {
+      return;
+    }
+
+    setRemoving(true);
+    setRemoveError(null);
+    try {
+      const { folderPath } = await deleteBook(bookId);
+      await window.maktaba.trashPath(folderPath);
+      onRemoved();
+    } catch (err) {
+      setRemoveError(err instanceof Error ? err.message : String(err));
+      setRemoving(false);
+    }
+  };
 
   return (
     <div className="book-detail-overlay" onClick={onClose}>
@@ -60,8 +81,13 @@ export function BookDetailPanel({ bookId, onClose }: BookDetailPanelProps) {
                 <button type="button" onClick={() => setEditing(true)}>
                   Edit
                 </button>
+                <button type="button" onClick={() => void handleRemove()} disabled={isRemoving}>
+                  {isRemoving ? "Removing…" : "Remove"}
+                </button>
               </div>
             </div>
+
+            {removeError && <p className="error-text">{removeError}</p>}
 
             {book.description && <p className="book-detail-description">{book.description}</p>}
 

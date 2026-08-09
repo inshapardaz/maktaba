@@ -33,7 +33,10 @@ public record BookDetailDto(
     bool HasCover
 );
 
-public record ImportBookRequest(string FilePath);
+/// <summary>DuplicateAction: null (ask) | "skip" | "keep-both" | "merge".</summary>
+public record ImportBookRequest(string FilePath, string? DuplicateAction = null);
+
+public record DuplicateBookDto(Guid ExistingBookId, string ExistingTitle, string[] ExistingAuthors, bool SameContentHash);
 
 public record BookEditRequestDto(
     string Title,
