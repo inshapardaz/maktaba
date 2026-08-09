@@ -1,11 +1,14 @@
 import { app, BrowserWindow } from "electron";
 import * as path from "node:path";
 import { startSidecar, stopSidecar, SidecarHandle } from "./sidecar";
+import { registerNativeHandlers } from "./native";
 
 let sidecar: SidecarHandle | null = null;
 let mainWindow: BrowserWindow | null = null;
 
 const isDev = !app.isPackaged;
+
+registerNativeHandlers(() => mainWindow);
 
 async function createWindow(): Promise<void> {
   sidecar = await startSidecar();

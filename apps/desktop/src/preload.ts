@@ -1,4 +1,4 @@
-import { contextBridge } from "electron";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
 
 function getArg(name: string): string | undefined {
   const prefix = `--${name}=`;
@@ -18,4 +18,17 @@ if (!port || !token) {
 contextBridge.exposeInMainWorld("maktaba", {
   apiBaseUrl: `http://127.0.0.1:${port}`,
   token,
+
+  pickLibraryFolder: (): Promise<string | null> =>
+    ipcRenderer.invoke("maktaba:pick-library-folder"),
+
+  pickEbookFiles: (): Promise<string[]> => ipcRenderer.invoke("maktaba:pick-ebook-files"),
+
+  revealInFolder: (filePath: string): Promise<void> =>
+    ipcRenderer.invoke("maktaba:reveal-in-folder", filePath),
+
+  openPath: (filePath: string): Promise<void> => ipcRenderer.invoke("maktaba:open-path", filePath),
+
+  // Resolves the real filesystem path for a File dropped onto the window (drag-and-drop import).
+  getPathForFile: (file: File): string => webUtils.getPathForFile(file),
 });

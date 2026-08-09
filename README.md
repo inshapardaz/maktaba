@@ -2,16 +2,21 @@
 
 A local-first, cross-platform ebook library manager. See [docs/SPEC.md](docs/SPEC.md) for the full design and [docs/TASKS.md](docs/TASKS.md) for the implementation backlog.
 
-## Architecture (M0)
+## Architecture
 
-- `apps/frontend` — React + TypeScript UI (Vite dev server).
-- `apps/desktop` — Electron main/preload process. Spawns the C# backend as a local sidecar on a random loopback port with a per-launch auth token, and injects that port/token into the renderer via `contextBridge` (see `apps/desktop/src/sidecar.ts` and `preload.ts`).
-- `backend/Maktaba.Api` — ASP.NET Core minimal API, the sidecar process. `backend/Maktaba.Core`, `Maktaba.Data`, `Maktaba.Metadata` hold domain logic, persistence, and file metadata extraction respectively (empty scaffolding until M1+).
+- `apps/frontend` — React + TypeScript UI (Vite dev server). Talks to the backend via `fetch`, using the port/token injected by the preload script (`src/api.ts`).
+- `apps/desktop` — Electron main/preload process. Spawns the C# backend as a local sidecar on a random loopback port with a per-launch auth token, injects that port/token into the renderer via `contextBridge` (`src/sidecar.ts`, `preload.ts`), and exposes native OS integrations (folder/file pickers, drag-and-drop path resolution, open/reveal-in-folder) via `src/native.ts`.
+- `backend/Maktaba.Api` — ASP.NET Core minimal API, the sidecar process; endpoints in `Endpoints/`.
+- `backend/Maktaba.Core` — domain entities (`Entities/`) and service interfaces/DTOs (`Services/`), with no infrastructure dependencies.
+- `backend/Maktaba.Data` — EF Core `DbContext` (SQLite), and the `LibraryService`/`ImportService` implementations.
+- `backend/Maktaba.Metadata` — per-format metadata/cover extractors (EPUB via `VersOne.Epub`; PDF is M2).
+
+As of M1: you can open/create a library folder, import `.epub` files (via file picker or drag-and-drop), and browse them in a virtualized grid or list view with a metadata detail panel. See [docs/TASKS.md](docs/TASKS.md) for what's done vs. pending per milestone.
 
 ## Prerequisites
 
 - .NET SDK 9
-- Node.js 20.19+ or 22.12+ recommended (developed against 20.17 — works, but some tooling prints an engine warning)
+- Node.js 20.17+ (tested on 20.17 and 20.19+)
 - `dotnet` and `node`/`npm` on `PATH`
 
 ## Dev setup

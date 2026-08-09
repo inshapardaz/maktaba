@@ -21,15 +21,17 @@ Verified in this environment: backend builds and its `/health` (no auth) and `/a
 
 ## M1 — Import & Browse (EPUB only)
 
-- [ ] `Maktaba.Data`: EF Core `DbContext` + SQLite provider
-- [ ] Initial EF Core migration: `Book`, `Author`, `BookAuthor`, `Series`, `BookSeries`, `Tag`, `BookTag`, `BookFile`, `Identifier`
-- [ ] "Open/create library" flow: folder picker (Electron), persist chosen path in app config (e.g. `electron-store`), create `metadata.db` on first open
-- [ ] `Maktaba.Metadata`: EPUB parser (`VersOne.Epub`) — title, author(s), language, publisher, date, description, identifiers, cover image
-- [ ] Import service: SHA-256 hash file, copy/move into library folder layout (§4), write DB records in a transaction
-- [ ] API: `POST /libraries/open`, `POST /books/import`, `GET /books`, `GET /books/{id}`, `GET /books/{id}/cover`
-- [ ] Electron: native file/folder picker and drag-and-drop onto the window, both feeding `POST /books/import`
-- [ ] Frontend: virtualized grid view (covers) and list/table view; sort by title/author/date-added/rating
-- [ ] Frontend: book detail panel (cover, metadata, available formats)
+- [x] `Maktaba.Data`: EF Core `DbContext` + SQLite provider
+- [x] ~~Initial EF Core migration~~ — used `Database.EnsureCreatedAsync()` instead of migrations tooling: the on-disk library is already documented (§4) as a rebuildable index, so versioned migrations add tooling overhead (`dotnet-ef`, a design-time factory) without a matching benefit yet. Revisit if/when schema changes need to preserve existing users' data rather than a rescan.
+- [x] "Open/create library" flow: folder picker (Electron `dialog.showOpenDialog`), last-opened path persisted by the backend itself to `%AppData%/Maktaba/config.json` (cross-platform via `Environment.SpecialFolder.ApplicationData`) rather than via Electron, so the backend stays usable independent of any particular frontend
+- [x] `Maktaba.Metadata`: EPUB parser (`VersOne.Epub`) — title, author(s), language, publisher, date, description, identifiers, cover image
+- [x] Import service: SHA-256 hash file, copy into library folder layout (§4) (copy, not move — the original source file is never touched/deleted), write DB records in a transaction, with best-effort cleanup of partially-written files on failure
+- [x] API: `POST /api/libraries/open`, `GET /api/libraries/current`, `POST /api/books/import`, `GET /api/books`, `GET /api/books/{id}`, `GET /api/books/{id}/cover`. A `LibraryNotOpenException` + middleware maps "no library open" to a clean 400 instead of a 500. Cover endpoint additionally accepts `?access_token=` since `<img>` tags can't set an Authorization header.
+- [x] Electron: native file/folder picker (`dialog`), drag-and-drop via `webUtils.getPathForFile`, plus `shell.openPath`/`shell.showItemInFolder` for the detail panel's Open/Show-in-folder actions — all feeding `POST /api/books/import`
+- [x] Frontend: virtualized grid view (covers, via `@tanstack/react-virtual`) and list/table view; sort by title/author/date-added/rating
+- [x] Frontend: book detail panel (cover, metadata, available formats, Open/Show-in-folder actions)
+
+Verified in this environment via `dotnet build` (whole solution) and a full HTTP smoke test against a synthetic EPUB: open library → import → list → detail → cover, plus the no-library-open 400 path. Frontend and desktop both type-check and production-build. **Not verified here:** the actual Electron GUI (drag-and-drop, native dialogs, grid rendering) — same `ELECTRON_RUN_AS_NODE=1` sandbox limitation as M0; run `npm run dev` on a normal desktop machine to confirm the UI end-to-end.
 
 ## M2 — PDF Support + Editing
 
