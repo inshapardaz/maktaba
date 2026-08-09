@@ -8,5 +8,5 @@ public record BookRemovalResult(string AbsoluteFolderPath);
 /// </summary>
 public interface IBookRemovalService
 {
-    Task<BookRemovalResult?> RemoveAsync(Guid bookId, CancellationToken ct = default);
+    Task<BookRemovalResult?> RemoveAsync(int bookId, CancellationToken ct = default);
 }

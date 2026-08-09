@@ -20,10 +20,10 @@ public enum ImportDuplicateResolution
 /// finds a likely-duplicate book, so the caller can ask the user how to proceed.
 /// </summary>
 public class DuplicateBookDetectedException(
-    Guid existingBookId, string existingTitle, IReadOnlyList<string> existingAuthors, bool sameContentHash)
+    int existingBookId, string existingTitle, IReadOnlyList<string> existingAuthors, bool sameContentHash)
     : Exception($"A matching book already exists: \"{existingTitle}\".")
 {
-    public Guid ExistingBookId { get; } = existingBookId;
+    public int ExistingBookId { get; } = existingBookId;
     public string ExistingTitle { get; } = existingTitle;
     public IReadOnlyList<string> ExistingAuthors { get; } = existingAuthors;
 

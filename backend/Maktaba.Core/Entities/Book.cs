@@ -2,7 +2,7 @@ namespace Maktaba.Core.Entities;
 
 public class Book
 {
-    public Guid Id { get; set; } = Guid.NewGuid();
+    public int Id { get; set; }
     public string Title { get; set; } = string.Empty;
     public string SortTitle { get; set; } = string.Empty;
     public string? Description { get; set; }

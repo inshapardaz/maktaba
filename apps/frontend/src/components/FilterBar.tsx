@@ -1,3 +1,7 @@
+import { Group, Select, TextInput, Pill } from "@mantine/core";
+import { IconSearch } from "@tabler/icons-react";
+import { useLanguage } from "../i18n/LanguageContext";
+
 interface FilterBarProps {
   search: string;
   onSearchChange: (value: string) => void;
@@ -9,6 +13,15 @@ interface FilterBarProps {
   onClearGroup: () => void;
 }
 
+const RATING_OPTIONS = [
+  { value: "0", label: "" },
+  { value: "1", label: "★+" },
+  { value: "2", label: "★★+" },
+  { value: "3", label: "★★★+" },
+  { value: "4", label: "★★★★+" },
+  { value: "5", label: "★★★★★" },
+];
+
 export function FilterBar({
   search,
   onSearchChange,
@@ -19,48 +32,55 @@ export function FilterBar({
   activeGroupLabel,
   onClearGroup,
 }: FilterBarProps) {
+  const { t } = useLanguage();
+
+  const formatOptions = [
+    { value: "", label: t("filterBar.allFormats") },
+    { value: "Epub", label: "EPUB" },
+    { value: "Pdf", label: "PDF" },
+  ];
+
+  const ratingOptions = RATING_OPTIONS.map((option) =>
+    option.value === "0" ? { ...option, label: t("filterBar.anyRating") } : option,
+  );
+
   return (
-    <>
-      <div className="search-bar">
-        <input
-          type="search"
-          placeholder="Search title, author, series, tag…"
-          value={search}
-          onChange={(e) => onSearchChange(e.target.value)}
-        />
-      </div>
+    <Group
+      px="md"
+      py="sm"
+      gap="sm"
+      wrap="wrap"
+      style={{ borderBottom: "1px solid var(--mantine-color-default-border)" }}
+    >
+      <TextInput
+        flex="0 1 360px"
+        placeholder={t("filterBar.searchPlaceholder")}
+        leftSection={<IconSearch size={16} />}
+        value={search}
+        onChange={(e) => onSearchChange(e.currentTarget.value)}
+      />
 
-      <div className="filter-bar">
-        <label>
-          Format{" "}
-          <select value={format} onChange={(e) => onFormatChange(e.target.value)}>
-            <option value="">All</option>
-            <option value="Epub">EPUB</option>
-            <option value="Pdf">PDF</option>
-          </select>
-        </label>
+      <Select
+        w={140}
+        data={formatOptions}
+        value={format}
+        onChange={(value) => onFormatChange(value ?? "")}
+        allowDeselect={false}
+      />
 
-        <label>
-          Min rating{" "}
-          <select value={minRating} onChange={(e) => onMinRatingChange(Number(e.target.value))}>
-            <option value={0}>Any</option>
-            {[1, 2, 3, 4, 5].map((n) => (
-              <option key={n} value={n}>
-                {"★".repeat(n)}+
-              </option>
-            ))}
-          </select>
-        </label>
+      <Select
+        w={140}
+        data={ratingOptions}
+        value={String(minRating)}
+        onChange={(value) => onMinRatingChange(Number(value ?? 0))}
+        allowDeselect={false}
+      />
 
-        {activeGroupLabel && (
-          <span className="active-filter-chip">
-            {activeGroupLabel}
-            <button type="button" onClick={onClearGroup}>
-              ×
-            </button>
-          </span>
-        )}
-      </div>
-    </>
+      {activeGroupLabel && (
+        <Pill withRemoveButton onRemove={onClearGroup}>
+          {activeGroupLabel}
+        </Pill>
+      )}
+    </Group>
   );
 }

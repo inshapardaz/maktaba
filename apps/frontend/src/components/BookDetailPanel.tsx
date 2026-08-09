@@ -1,6 +1,24 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import {
+  Alert,
+  Anchor,
+  Badge,
+  Button,
+  Center,
+  Divider,
+  Group,
+  Image,
+  List,
+  Loader,
+  Modal,
+  Stack,
+  Text,
+  Title,
+} from "@mantine/core";
+import { IconAlertCircle, IconFolder, IconExternalLink, IconTrash } from "@tabler/icons-react";
 import { getBook, deleteBook, coverUrl } from "../api";
+import { useLanguage } from "../i18n/LanguageContext";
 import { BookEditForm } from "./BookEditForm";
 
 interface BookDetailPanelProps {
@@ -10,9 +28,11 @@ interface BookDetailPanelProps {
 }
 
 export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelProps) {
+  const { t } = useLanguage();
   const [isEditing, setEditing] = useState(false);
   const [isRemoving, setRemoving] = useState(false);
   const [removeError, setRemoveError] = useState<string | null>(null);
+  const [confirmingRemove, setConfirmingRemove] = useState(false);
 
   const {
     data: book,
@@ -31,9 +51,6 @@ export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelP
 
   const handleRemove = async () => {
     if (!book) return;
-    if (!window.confirm(`Remove "${book.title}" from the library? The files will be sent to the trash.`)) {
-      return;
-    }
 
     setRemoving(true);
     setRemoveError(null);
@@ -48,103 +65,167 @@ export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelP
   };
 
   return (
-    <div className="book-detail-overlay" onClick={onClose}>
-      <div className="book-detail-panel" onClick={(e) => e.stopPropagation()}>
-        <button type="button" className="close-button" onClick={onClose}>
-          ×
-        </button>
+    <Modal opened onClose={onClose} title={book?.title ?? t("bookDetail.defaultTitle")} size="lg">
+      {isLoading && (
+        <Center py="xl">
+          <Loader />
+        </Center>
+      )}
 
-        {isLoading && <p>Loading…</p>}
-        {error && <p className="error-text">{error instanceof Error ? error.message : String(error)}</p>}
+      {error && (
+        <Alert color="red" icon={<IconAlertCircle size={18} />}>
+          {error instanceof Error ? error.message : String(error)}
+        </Alert>
+      )}
 
-        {book && (
-          <>
-            <div className="book-detail-header">
-              {book.hasCover ? (
-                <img className="book-detail-cover" src={coverUrl(book.id)} alt="" />
-              ) : (
-                <div className="book-detail-cover-placeholder">{book.title}</div>
+      {book && (
+        <Stack gap="md">
+          <Group align="flex-start" gap="md">
+            {book.hasCover ? (
+              <Image src={coverUrl(book.id)} alt="" w={120} h={170} fit="cover" radius="sm" style={{ flexShrink: 0 }} />
+            ) : (
+              <Center
+                w={120}
+                h={170}
+                bg="var(--mantine-color-default-hover)"
+                style={{ borderRadius: "var(--mantine-radius-sm)", flexShrink: 0 }}
+              >
+                <Text size="xs" c="dimmed" ta="center" p={4}>
+                  {book.title}
+                </Text>
+              </Center>
+            )}
+
+            <Stack gap={4} style={{ flex: 1 }}>
+              <Title order={3}>{book.title}</Title>
+              <Text c="dimmed">{book.authors.join(", ") || t("common.unknownAuthor")}</Text>
+              {book.seriesName && (
+                <Text size="sm">
+                  {book.seriesName}
+                  {book.seriesIndex != null ? ` #${book.seriesIndex}` : ""}
+                </Text>
               )}
-              <div>
-                <h2>{book.title}</h2>
-                <p className="book-detail-authors">{book.authors.join(", ") || "Unknown author"}</p>
-                {book.seriesName && (
-                  <p>
-                    {book.seriesName}
-                    {book.seriesIndex != null ? ` #${book.seriesIndex}` : ""}
-                  </p>
+              <Text>
+                {"★".repeat(book.rating)}
+                {"☆".repeat(5 - book.rating)}
+              </Text>
+              <Group gap="xs" mt="xs">
+                <Button size="xs" variant="default" onClick={() => setEditing(true)}>
+                  {t("bookDetail.edit")}
+                </Button>
+                {confirmingRemove ? (
+                  <Group gap={6}>
+                    <Text size="xs" c="dimmed">
+                      {t("bookDetail.confirmRemove")}
+                    </Text>
+                    <Button size="xs" color="red" loading={isRemoving} onClick={() => void handleRemove()}>
+                      {t("common.confirm")}
+                    </Button>
+                    <Button size="xs" variant="subtle" onClick={() => setConfirmingRemove(false)} disabled={isRemoving}>
+                      {t("common.cancel")}
+                    </Button>
+                  </Group>
+                ) : (
+                  <Button
+                    size="xs"
+                    variant="default"
+                    color="red"
+                    leftSection={<IconTrash size={14} />}
+                    onClick={() => setConfirmingRemove(true)}
+                  >
+                    {t("bookDetail.remove")}
+                  </Button>
                 )}
-                <p>
-                  {"★".repeat(book.rating)}
-                  {"☆".repeat(5 - book.rating)}
-                </p>
-                <button type="button" onClick={() => setEditing(true)}>
-                  Edit
-                </button>
-                <button type="button" onClick={() => void handleRemove()} disabled={isRemoving}>
-                  {isRemoving ? "Removing…" : "Remove"}
-                </button>
+              </Group>
+              {removeError && (
+                <Text size="xs" c="red">
+                  {removeError}
+                </Text>
+              )}
+            </Stack>
+          </Group>
+
+          {book.description && <Text size="sm">{book.description}</Text>}
+
+          <Divider />
+
+          <Group gap="lg">
+            {book.publisher && (
+              <div>
+                <Text size="xs" c="dimmed">
+                  {t("bookDetail.publisher")}
+                </Text>
+                <Text size="sm">{book.publisher}</Text>
               </div>
-            </div>
+            )}
+            {book.datePublished && (
+              <div>
+                <Text size="xs" c="dimmed">
+                  {t("bookDetail.published")}
+                </Text>
+                <Text size="sm">{book.datePublished}</Text>
+              </div>
+            )}
+            {book.language && (
+              <div>
+                <Text size="xs" c="dimmed">
+                  {t("bookDetail.language")}
+                </Text>
+                <Text size="sm">{book.language}</Text>
+              </div>
+            )}
+          </Group>
 
-            {removeError && <p className="error-text">{removeError}</p>}
+          {book.tags.length > 0 && (
+            <Group gap={6}>
+              {book.tags.map((tag) => (
+                <Badge key={tag} variant="light">
+                  {tag}
+                </Badge>
+              ))}
+            </Group>
+          )}
 
-            {book.description && <p className="book-detail-description">{book.description}</p>}
+          {book.identifiers.length > 0 && (
+            <Text size="xs" c="dimmed">
+              {book.identifiers.map((i) => `${i.scheme.toUpperCase()}: ${i.value}`).join(" · ")}
+            </Text>
+          )}
 
-            <dl className="book-detail-meta">
-              {book.publisher && (
-                <>
-                  <dt>Publisher</dt>
-                  <dd>{book.publisher}</dd>
-                </>
-              )}
-              {book.datePublished && (
-                <>
-                  <dt>Published</dt>
-                  <dd>{book.datePublished}</dd>
-                </>
-              )}
-              {book.language && (
-                <>
-                  <dt>Language</dt>
-                  <dd>{book.language}</dd>
-                </>
-              )}
-              {book.tags.length > 0 && (
-                <>
-                  <dt>Tags</dt>
-                  <dd>{book.tags.join(", ")}</dd>
-                </>
-              )}
-              {book.identifiers.length > 0 && (
-                <>
-                  <dt>Identifiers</dt>
-                  <dd>{book.identifiers.map((i) => `${i.scheme.toUpperCase()}: ${i.value}`).join(", ")}</dd>
-                </>
-              )}
-            </dl>
+          <Divider label={t("bookDetail.files")} labelPosition="left" />
 
-            <div className="book-detail-files">
-              <h3>Files</h3>
-              <ul>
-                {book.files.map((f) => (
-                  <li key={f.absolutePath}>
-                    <span>
-                      {f.format} — {(f.fileSizeBytes / 1024).toFixed(0)} KB
-                    </span>
-                    <button type="button" onClick={() => window.maktaba.openPath(f.absolutePath)}>
-                      Open
-                    </button>
-                    <button type="button" onClick={() => window.maktaba.revealInFolder(f.absolutePath)}>
-                      Show in folder
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
+          <List spacing="xs" listStyleType="none">
+            {book.files.map((f) => (
+              <List.Item key={f.absolutePath}>
+                <Group justify="space-between">
+                  <Text size="sm">
+                    {f.format} — {(f.fileSizeBytes / 1024).toFixed(0)} KB
+                  </Text>
+                  <Group gap={4}>
+                    <Anchor size="sm" component="button" type="button" onClick={() => window.maktaba.openPath(f.absolutePath)}>
+                      <Group gap={4}>
+                        <IconExternalLink size={14} />
+                        {t("bookDetail.open")}
+                      </Group>
+                    </Anchor>
+                    <Anchor
+                      size="sm"
+                      component="button"
+                      type="button"
+                      onClick={() => window.maktaba.revealInFolder(f.absolutePath)}
+                    >
+                      <Group gap={4}>
+                        <IconFolder size={14} />
+                        {t("bookDetail.showInFolder")}
+                      </Group>
+                    </Anchor>
+                  </Group>
+                </Group>
+              </List.Item>
+            ))}
+          </List>
+        </Stack>
+      )}
+    </Modal>
   );
 }

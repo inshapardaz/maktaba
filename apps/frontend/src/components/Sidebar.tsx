@@ -1,5 +1,7 @@
+import { Box, NavLink, ScrollArea, Text } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { listAuthors, listSeries, listTags, type BrowseGroup } from "../api";
+import { useLanguage } from "../i18n/LanguageContext";
 
 export type GroupFilterKind = "authorId" | "seriesId" | "tagId";
 
@@ -32,57 +34,61 @@ function GroupSection({
   }
 
   return (
-    <div className="sidebar-section">
-      <h3>{title}</h3>
-      <ul>
-        {groups.map((group) => {
-          const isActive = activeFilter?.kind === kind && activeFilter.id === group.id;
-          return (
-            <li key={group.id}>
-              <button
-                type="button"
-                className={isActive ? "active" : ""}
-                onClick={() => onSelect(isActive ? null : { kind, id: group.id, name: group.name })}
-              >
-                <span>{group.name}</span>
-                <span className="count">{group.bookCount}</span>
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-    </div>
+    <Box mb="sm">
+      <Text size="xs" fw={700} c="dimmed" tt="uppercase" px="md" py={4}>
+        {title}
+      </Text>
+      {groups.map((group) => {
+        const isActive = activeFilter?.kind === kind && activeFilter.id === group.id;
+        return (
+          <NavLink
+            key={group.id}
+            label={group.name}
+            active={isActive}
+            onClick={() => onSelect(isActive ? null : { kind, id: group.id, name: group.name })}
+            rightSection={
+              <Text size="xs" c="dimmed">
+                {group.bookCount}
+              </Text>
+            }
+            px="md"
+            py={5}
+          />
+        );
+      })}
+    </Box>
   );
 }
 
 export function Sidebar({ activeFilter, onSelect }: SidebarProps) {
+  const { t } = useLanguage();
   const authorsQuery = useQuery({ queryKey: ["authors"], queryFn: listAuthors });
   const seriesQuery = useQuery({ queryKey: ["series"], queryFn: listSeries });
   const tagsQuery = useQuery({ queryKey: ["tags"], queryFn: listTags });
 
   return (
-    <nav className="sidebar">
+    <ScrollArea component="nav" w={220} py="sm">
       <GroupSection
-        title="Authors"
+        title={t("sidebar.authors")}
         kind="authorId"
         activeFilter={activeFilter}
         onSelect={onSelect}
         groups={authorsQuery.data}
       />
       <GroupSection
-        title="Series"
+        title={t("sidebar.series")}
         kind="seriesId"
         activeFilter={activeFilter}
         onSelect={onSelect}
         groups={seriesQuery.data}
       />
       <GroupSection
-        title="Tags"
+        title={t("sidebar.tags")}
         kind="tagId"
         activeFilter={activeFilter}
         onSelect={onSelect}
         groups={tagsQuery.data}
       />
-    </nav>
+    </ScrollArea>
   );
 }

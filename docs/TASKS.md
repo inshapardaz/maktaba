@@ -65,6 +65,21 @@ Verified via a single continuous backend smoke-test scenario (not just isolated 
 
 **What was actually verified here:** the self-contained `win-x64` publish output runs standalone and correctly serves `/health` and bearer-token-gated API endpoints when launched directly with `--port`/`--token` argv (the same convention `sidecar.ts` uses), confirming the packaged-mode launch path is wired correctly. Frontend and desktop both build cleanly, and `electron-builder` successfully parses the packaging config and reaches the point of invoking its native helper tool. **Not verified here:** the final `electron-builder` packaging step (producing an actual `.exe`/`.dmg`/`AppImage`) — in this sandbox, `electron-builder`'s unsigned `app-builder.exe` helper (from the `app-builder-bin` npm package) is removed moments after `npm install` extracts it, consistent with antivirus/EDR quarantine of an unsigned downloaded binary, which is outside this environment's control. mac and linux publishing/packaging also weren't exercised at all (no access to those OSes here). Run `npm run package:win`/`:mac`/`:linux` on a normal desktop machine (or CI) to build and smoke-test the real installers — see README's "Known issues".
 
+## Post-M4 — Entity ids switched to Sqids
+
+Not a milestone from the original plan; a cross-cutting change requested afterward.
+
+- [x] Replaced GUID primary keys (Book/Author/Series/Tag/BookFile/Identifier) with plain auto-increment `int`s, never exposed outside the database — `Maktaba.Core/Ids/IdCodec.cs` wraps a shared [Sqids](https://sqids.org) encoder (`MinLength = 8`) to turn them into short opaque strings (e.g. `UkLWZg9D`) everywhere else: API request/response bodies and the id embedded in a book's on-disk folder name
+- [x] `ImportService` reworked: a book's id (needed for its folder name) isn't known until the DB assigns it, so the book row is now inserted first (inside a transaction) to obtain the id, then the folder/file are created and a second save records `FolderPath`; the transaction rolls back if folder/file creation fails
+- [x] `LibraryRescanService`'s folder-name regex loosened from a GUID-shaped pattern to "any non-empty parenthesized segment," with validity now decided by whether `IdCodec.TryDecode` succeeds rather than by regex shape alone — also means it correctly ignores stray old GUID-named folders left over from before this change (skipped, not crashed on)
+- [x] API routes changed from `{id:guid}` to a plain `{id}` string, decoded via `IdCodec.TryDecode` at the top of each handler (404 on failure); `GET /api/books`'s `authorId`/`seriesId`/`tagId` filters likewise decode from strings, with an undecodable filter value yielding an empty result rather than an error or a silently-ignored filter
+
+One shared encoder/alphabet is used for all entity types, so a Book and an Author can encode to the identical string when their underlying integer ids match — documented in `IdCodec`'s doc comment as an accepted tradeoff, since each id is only ever decoded in the context of the one table it's looked up against.
+
+**Breaking change**: this changed both the DB schema and the on-disk folder-naming convention rescan depends on, so a library created before this change needs `metadata.db` deleted and re-imported (or a fresh library folder) — see README's "Known issues".
+
+Verified via a live backend smoke test against a synthetic EPUB (no frontend/Electron involved, same sandbox limitation as every other milestone): import produced a sqid-named folder (`Sqids Test Book (UkLWZg9D)`); editing the book (rename) moved the folder to a new name while keeping the same sqid; browse (`/api/authors`, `/api/series`, `/api/tags`) and filtered `/api/books` queries all round-tripped sqids correctly, including a deliberately-malformed filter value returning an empty list instead of an error; delete removed the DB row and returned the right folder path; rescan correctly recovered both books' original ids from their folder names, and a subsequent fresh import correctly continued the id sequence (no collision with a deleted id). Frontend required no code changes at all — it already treated ids as opaque strings — confirmed by a clean `tsc`/`vite build`.
+
 ## Backlog (post-v1, from SPEC.md §7)
 
 - [ ] Format conversion (EPUB⇄MOBI/AZW3/PDF via external/embedded converter)

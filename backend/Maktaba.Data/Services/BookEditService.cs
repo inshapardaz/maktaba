@@ -1,4 +1,5 @@
 using Maktaba.Core.Entities;
+using Maktaba.Core.Ids;
 using Maktaba.Core.Naming;
 using Maktaba.Core.Services;
 using Microsoft.EntityFrameworkCore;
@@ -9,7 +10,7 @@ public class BookEditService(MaktabaDbContext db, ILibraryPathProvider libraryPa
 {
     private readonly record struct FolderMove(string OldAbsolute, string NewAbsolute);
 
-    public async Task<Book?> UpdateAsync(Guid bookId, BookEditRequest request, CancellationToken ct = default)
+    public async Task<Book?> UpdateAsync(int bookId, BookEditRequest request, CancellationToken ct = default)
     {
         var book = await db.Books
             .Include(b => b.BookAuthors)
@@ -97,7 +98,7 @@ public class BookEditService(MaktabaDbContext db, ILibraryPathProvider libraryPa
 
         var newFolderRelative = Path.Combine(
             FileNaming.SanitizePathSegment(newAuthorSortName),
-            FileNaming.SanitizePathSegment($"{book.Title} ({book.Id})"));
+            FileNaming.SanitizePathSegment($"{book.Title} ({IdCodec.Encode(book.Id)})"));
 
         if (string.Equals(newFolderRelative, oldFolderRelative, StringComparison.Ordinal))
         {

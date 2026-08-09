@@ -5,7 +5,7 @@ namespace Maktaba.Data.Services;
 
 public class BookRemovalService(MaktabaDbContext db, ILibraryPathProvider libraryPath) : IBookRemovalService
 {
-    public async Task<BookRemovalResult?> RemoveAsync(Guid bookId, CancellationToken ct = default)
+    public async Task<BookRemovalResult?> RemoveAsync(int bookId, CancellationToken ct = default)
     {
         var book = await db.Books.FirstOrDefaultAsync(b => b.Id == bookId, ct);
         if (book is null)

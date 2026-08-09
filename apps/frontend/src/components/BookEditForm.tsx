@@ -1,6 +1,21 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  Alert,
+  Button,
+  Center,
+  Group,
+  Loader,
+  Modal,
+  NumberInput,
+  Select,
+  Stack,
+  Textarea,
+  TextInput,
+} from "@mantine/core";
+import { IconAlertCircle } from "@tabler/icons-react";
 import { getBook, updateBook, type BookEditRequest } from "../api";
+import { useLanguage } from "../i18n/LanguageContext";
 
 interface BookEditFormProps {
   bookId: string;
@@ -34,9 +49,19 @@ const EMPTY_FORM: FormState = {
   tags: "",
 };
 
+const STAR_RATING_OPTIONS = [
+  { value: "1", label: "★" },
+  { value: "2", label: "★★" },
+  { value: "3", label: "★★★" },
+  { value: "4", label: "★★★★" },
+  { value: "5", label: "★★★★★" },
+];
+
 export function BookEditForm({ bookId, onClose, onSaved }: BookEditFormProps) {
+  const { t } = useLanguage();
   const queryClient = useQueryClient();
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const ratingOptions = [{ value: "0", label: t("bookEdit.unrated") }, ...STAR_RATING_OPTIONS];
 
   const { data: book, isLoading } = useQuery({
     queryKey: ["book", bookId],
@@ -94,135 +119,104 @@ export function BookEditForm({ bookId, onClose, onSaved }: BookEditFormProps) {
   };
 
   return (
-    <div className="book-detail-overlay" onClick={onClose}>
-      <div className="book-detail-panel" onClick={(e) => e.stopPropagation()}>
-        <button type="button" className="close-button" onClick={onClose}>
-          ×
-        </button>
+    <Modal opened onClose={onClose} title={t("bookEdit.title")} size="lg">
+      {isLoading && (
+        <Center py="xl">
+          <Loader />
+        </Center>
+      )}
 
-        <h2>Edit book</h2>
+      {!isLoading && (
+        <form onSubmit={handleSubmit}>
+          <Stack gap="sm">
+            <TextInput
+              label={t("bookEdit.titleField")}
+              required
+              value={form.title}
+              onChange={(e) => setForm({ ...form, title: e.currentTarget.value })}
+            />
 
-        {isLoading && <p>Loading…</p>}
+            <TextInput
+              label={t("bookEdit.authors")}
+              description={t("bookEdit.commaSeparated")}
+              value={form.authors}
+              onChange={(e) => setForm({ ...form, authors: e.currentTarget.value })}
+            />
 
-        {!isLoading && (
-          <form className="book-edit-form" onSubmit={handleSubmit}>
-            <label>
-              Title
-              <input
-                type="text"
-                required
-                value={form.title}
-                onChange={(e) => setForm({ ...form, title: e.target.value })}
+            <Group grow align="flex-start">
+              <TextInput
+                label={t("bookEdit.series")}
+                value={form.seriesName}
+                onChange={(e) => setForm({ ...form, seriesName: e.currentTarget.value })}
               />
-            </label>
-
-            <label>
-              Authors (comma-separated)
-              <input
-                type="text"
-                value={form.authors}
-                onChange={(e) => setForm({ ...form, authors: e.target.value })}
+              <NumberInput
+                label={t("bookEdit.seriesIndex")}
+                step={0.1}
+                value={form.seriesIndex}
+                onChange={(value) => setForm({ ...form, seriesIndex: value === "" ? "" : String(value) })}
               />
-            </label>
+            </Group>
 
-            <div className="form-row">
-              <label>
-                Series
-                <input
-                  type="text"
-                  value={form.seriesName}
-                  onChange={(e) => setForm({ ...form, seriesName: e.target.value })}
-                />
-              </label>
-              <label className="form-row-narrow">
-                Series #
-                <input
-                  type="number"
-                  step="0.1"
-                  value={form.seriesIndex}
-                  onChange={(e) => setForm({ ...form, seriesIndex: e.target.value })}
-                />
-              </label>
-            </div>
+            <TextInput
+              label={t("bookEdit.tags")}
+              description={t("bookEdit.commaSeparated")}
+              value={form.tags}
+              onChange={(e) => setForm({ ...form, tags: e.currentTarget.value })}
+            />
 
-            <label>
-              Tags (comma-separated)
-              <input
-                type="text"
-                value={form.tags}
-                onChange={(e) => setForm({ ...form, tags: e.target.value })}
+            <Group grow align="flex-start">
+              <TextInput
+                label={t("bookEdit.publisher")}
+                value={form.publisher}
+                onChange={(e) => setForm({ ...form, publisher: e.currentTarget.value })}
               />
-            </label>
-
-            <div className="form-row">
-              <label>
-                Publisher
-                <input
-                  type="text"
-                  value={form.publisher}
-                  onChange={(e) => setForm({ ...form, publisher: e.target.value })}
-                />
-              </label>
-              <label>
-                Language
-                <input
-                  type="text"
-                  value={form.language}
-                  onChange={(e) => setForm({ ...form, language: e.target.value })}
-                />
-              </label>
-            </div>
-
-            <div className="form-row">
-              <label>
-                Published date
-                <input
-                  type="date"
-                  value={form.publishedDate}
-                  onChange={(e) => setForm({ ...form, publishedDate: e.target.value })}
-                />
-              </label>
-              <label className="form-row-narrow">
-                Rating
-                <select
-                  value={form.rating}
-                  onChange={(e) => setForm({ ...form, rating: Number(e.target.value) })}
-                >
-                  {[0, 1, 2, 3, 4, 5].map((n) => (
-                    <option key={n} value={n}>
-                      {n === 0 ? "Unrated" : "★".repeat(n)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-
-            <label>
-              Description
-              <textarea
-                rows={4}
-                value={form.description}
-                onChange={(e) => setForm({ ...form, description: e.target.value })}
+              <TextInput
+                label={t("bookEdit.language")}
+                value={form.language}
+                onChange={(e) => setForm({ ...form, language: e.currentTarget.value })}
               />
-            </label>
+            </Group>
+
+            <Group grow align="flex-start">
+              <TextInput
+                type="date"
+                label={t("bookEdit.publishedDate")}
+                value={form.publishedDate}
+                onChange={(e) => setForm({ ...form, publishedDate: e.currentTarget.value })}
+              />
+              <Select
+                label={t("bookEdit.rating")}
+                data={ratingOptions}
+                value={String(form.rating)}
+                onChange={(value) => setForm({ ...form, rating: Number(value ?? 0) })}
+                allowDeselect={false}
+              />
+            </Group>
+
+            <Textarea
+              label={t("bookEdit.description")}
+              rows={4}
+              value={form.description}
+              onChange={(e) => setForm({ ...form, description: e.currentTarget.value })}
+            />
 
             {saveMutation.isError && (
-              <p className="error-text">
+              <Alert color="red" icon={<IconAlertCircle size={18} />}>
                 {saveMutation.error instanceof Error ? saveMutation.error.message : String(saveMutation.error)}
-              </p>
+              </Alert>
             )}
 
-            <div className="form-actions">
-              <button type="button" onClick={onClose}>
-                Cancel
-              </button>
-              <button type="submit" disabled={saveMutation.isPending}>
-                {saveMutation.isPending ? "Saving…" : "Save"}
-              </button>
-            </div>
-          </form>
-        )}
-      </div>
-    </div>
+            <Group justify="flex-end" mt="xs">
+              <Button variant="default" onClick={onClose}>
+                {t("common.cancel")}
+              </Button>
+              <Button type="submit" loading={saveMutation.isPending}>
+                {t("common.save")}
+              </Button>
+            </Group>
+          </Stack>
+        </form>
+      )}
+    </Modal>
   );
 }

@@ -1,11 +1,15 @@
 import { useState } from "react";
+import { Alert, Button, Stack, Text, Title } from "@mantine/core";
+import { IconAlertCircle, IconFolderOpen } from "@tabler/icons-react";
 import { openLibrary } from "../api";
+import { useLanguage } from "../i18n/LanguageContext";
 
 interface LibraryPickerProps {
   onOpened: (path: string) => void;
 }
 
 export function LibraryPicker({ onOpened }: LibraryPickerProps) {
+  const { t } = useLanguage();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -28,13 +32,17 @@ export function LibraryPicker({ onOpened }: LibraryPickerProps) {
   };
 
   return (
-    <div className="library-picker">
-      <h1>مکتبہ — Maktaba</h1>
-      <p>Choose a folder to use as your library, or create a new one.</p>
-      <button type="button" onClick={handleChoose} disabled={busy}>
-        {busy ? "Opening…" : "Choose Library Folder"}
-      </button>
-      {error && <p className="error-text">{error}</p>}
-    </div>
+    <Stack align="center" justify="center" h="100%" gap="sm" p="xl" ta="center">
+      <Title order={1}>مکتبہ — Maktaba</Title>
+      <Text c="dimmed">{t("libraryPicker.subtitle")}</Text>
+      <Button leftSection={<IconFolderOpen size={18} />} onClick={handleChoose} loading={busy} mt="sm">
+        {busy ? t("libraryPicker.opening") : t("libraryPicker.choose")}
+      </Button>
+      {error && (
+        <Alert color="red" icon={<IconAlertCircle size={18} />} title={t("libraryPicker.errorTitle")} maw={480}>
+          {error}
+        </Alert>
+      )}
+    </Stack>
   );
 }

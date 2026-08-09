@@ -67,8 +67,9 @@ Mirrors Calibre's approach so the library folder stays portable/inspectable outs
 
 ```
 Book
-  Id (guid), Title, SortTitle, Description, Language, Publisher,
-  DatePublished, DateAdded, Rating (0-5), FolderPath
+  Id (auto-increment int; exposed everywhere outside the DB - API responses, the on-disk folder
+  name - as a sqids.org-encoded string, e.g. "UkLWZg9D"; see Maktaba.Core/Ids/IdCodec.cs), Title,
+  SortTitle, Description, Language, Publisher, DatePublished, DateAdded, Rating (0-5), FolderPath
 
 Author
   Id, Name, SortName

@@ -2,9 +2,9 @@ namespace Maktaba.Core.Entities;
 
 public class Identifier
 {
-    public Guid Id { get; set; } = Guid.NewGuid();
+    public int Id { get; set; }
 
-    public Guid BookId { get; set; }
+    public int BookId { get; set; }
     public Book Book { get; set; } = null!;
 
     /// <summary>e.g. "isbn", "asin", "doi".</summary>

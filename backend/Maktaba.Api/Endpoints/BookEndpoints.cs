@@ -1,5 +1,6 @@
 using Maktaba.Api.Dtos;
 using Maktaba.Core.Entities;
+using Maktaba.Core.Ids;
 using Maktaba.Core.Services;
 using Maktaba.Data;
 using Microsoft.EntityFrameworkCore;
@@ -16,9 +17,9 @@ public static class BookEndpoints
             MaktabaDbContext db,
             ILibraryPathProvider libraryPath,
             string? search,
-            Guid? authorId,
-            Guid? seriesId,
-            Guid? tagId,
+            string? authorId,
+            string? seriesId,
+            string? tagId,
             string? format,
             int? minRating) =>
         {
@@ -32,18 +33,24 @@ public static class BookEndpoints
                 .AsNoTracking()
                 .AsQueryable();
 
-            if (authorId is { } aId)
+            // An id that fails to decode can't match anything, so its filter is just left applied with
+            // no matching rows below rather than treated as "no filter" - a malformed/stale id should
+            // yield an empty result, not silently ignore the filter.
+            if (authorId is not null)
             {
+                var aId = IdCodec.TryDecode(authorId, out var decoded) ? decoded : -1;
                 query = query.Where(b => b.BookAuthors.Any(ba => ba.AuthorId == aId));
             }
 
-            if (seriesId is { } sId)
+            if (seriesId is not null)
             {
+                var sId = IdCodec.TryDecode(seriesId, out var decoded) ? decoded : -1;
                 query = query.Where(b => b.BookSeries.Any(bs => bs.SeriesId == sId));
             }
 
-            if (tagId is { } tId)
+            if (tagId is not null)
             {
+                var tId = IdCodec.TryDecode(tagId, out var decoded) ? decoded : -1;
                 query = query.Where(b => b.BookTags.Any(bt => bt.TagId == tId));
             }
 
@@ -76,7 +83,7 @@ public static class BookEndpoints
             var dtos = books
                 .OrderBy(b => b.SortTitle, StringComparer.OrdinalIgnoreCase)
                 .Select(b => new BookSummaryDto(
-                    b.Id,
+                    IdCodec.Encode(b.Id),
                     b.Title,
                     b.SortTitle,
                     b.BookAuthors.OrderBy(ba => ba.Order).Select(ba => ba.Author.Name).ToArray(),
@@ -88,8 +95,13 @@ public static class BookEndpoints
             return Results.Ok(dtos);
         });
 
-        group.MapGet("/{id:guid}", async (Guid id, MaktabaDbContext db, ILibraryPathProvider libraryPath) =>
+        group.MapGet("/{id}", async (string id, MaktabaDbContext db, ILibraryPathProvider libraryPath) =>
         {
+            if (!IdCodec.TryDecode(id, out var bookId))
+            {
+                return Results.NotFound();
+            }
+
             var root = libraryPath.LibraryRootPath!;
 
             var book = await db.Books
@@ -99,7 +111,7 @@ public static class BookEndpoints
                 .Include(b => b.Files)
                 .Include(b => b.Identifiers)
                 .AsNoTracking()
-                .FirstOrDefaultAsync(b => b.Id == id);
+                .FirstOrDefaultAsync(b => b.Id == bookId);
 
             if (book is null)
             {
@@ -109,7 +121,7 @@ public static class BookEndpoints
             var series = book.BookSeries.FirstOrDefault();
 
             var dto = new BookDetailDto(
-                book.Id,
+                id,
                 book.Title,
                 book.SortTitle,
                 book.Description,
@@ -130,12 +142,17 @@ public static class BookEndpoints
             return Results.Ok(dto);
         });
 
-        group.MapGet("/{id:guid}/cover", async (Guid id, MaktabaDbContext db, ILibraryPathProvider libraryPath) =>
+        group.MapGet("/{id}/cover", async (string id, MaktabaDbContext db, ILibraryPathProvider libraryPath) =>
         {
+            if (!IdCodec.TryDecode(id, out var bookId))
+            {
+                return Results.NotFound();
+            }
+
             var root = libraryPath.LibraryRootPath!;
 
             var folderPath = await db.Books
-                .Where(b => b.Id == id)
+                .Where(b => b.Id == bookId)
                 .Select(b => b.FolderPath)
                 .FirstOrDefaultAsync();
 
@@ -150,9 +167,14 @@ public static class BookEndpoints
                 : Results.NotFound();
         });
 
-        group.MapPut("/{id:guid}", async (
-            Guid id, BookEditRequestDto request, IBookEditService editService, CancellationToken ct) =>
+        group.MapPut("/{id}", async (
+            string id, BookEditRequestDto request, IBookEditService editService, CancellationToken ct) =>
         {
+            if (!IdCodec.TryDecode(id, out var bookId))
+            {
+                return Results.NotFound();
+            }
+
             if (string.IsNullOrWhiteSpace(request.Title))
             {
                 return Results.BadRequest(new { error = "Title is required." });
@@ -170,13 +192,18 @@ public static class BookEndpoints
                 request.SeriesIndex,
                 request.Tags);
 
-            var book = await editService.UpdateAsync(id, editRequest, ct);
+            var book = await editService.UpdateAsync(bookId, editRequest, ct);
             return book is null ? Results.NotFound() : Results.NoContent();
         });
 
-        group.MapDelete("/{id:guid}", async (Guid id, IBookRemovalService removalService, CancellationToken ct) =>
+        group.MapDelete("/{id}", async (string id, IBookRemovalService removalService, CancellationToken ct) =>
         {
-            var result = await removalService.RemoveAsync(id, ct);
+            if (!IdCodec.TryDecode(id, out var bookId))
+            {
+                return Results.NotFound();
+            }
+
+            var result = await removalService.RemoveAsync(bookId, ct);
             return result is null ? Results.NotFound() : Results.Ok(new { folderPath = result.AbsoluteFolderPath });
         });
 
@@ -198,7 +225,8 @@ public static class BookEndpoints
             try
             {
                 var book = await importService.ImportFileAsync(request.FilePath, resolution, ct);
-                return Results.Created($"/api/books/{book.Id}", new { id = book.Id });
+                var sqid = IdCodec.Encode(book.Id);
+                return Results.Created($"/api/books/{sqid}", new { id = sqid });
             }
             catch (NotSupportedException ex)
             {
@@ -209,7 +237,8 @@ public static class BookEndpoints
                 return Results.Conflict(new
                 {
                     error = ex.Message,
-                    duplicate = new DuplicateBookDto(ex.ExistingBookId, ex.ExistingTitle, [.. ex.ExistingAuthors], ex.SameContentHash),
+                    duplicate = new DuplicateBookDto(
+                        IdCodec.Encode(ex.ExistingBookId), ex.ExistingTitle, [.. ex.ExistingAuthors], ex.SameContentHash),
                 });
             }
         });

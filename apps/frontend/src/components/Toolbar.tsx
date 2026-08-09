@@ -1,3 +1,9 @@
+import { Group, Select, SegmentedControl, Text, Button, Tooltip } from "@mantine/core";
+import { IconLayoutGrid, IconList, IconRefresh, IconUpload } from "@tabler/icons-react";
+import { useLanguage } from "../i18n/LanguageContext";
+import { ColorSchemeToggle } from "./ColorSchemeToggle";
+import { LanguageSwitcher } from "./LanguageSwitcher";
+
 export type SortKey = "title" | "author" | "dateAdded" | "rating";
 export type ViewMode = "grid" | "list";
 
@@ -26,50 +32,71 @@ export function Toolbar({
   rescanning,
   bookCount,
 }: ToolbarProps) {
+  const { t } = useLanguage();
+
+  const sortOptions: { value: SortKey; label: string }[] = [
+    { value: "title", label: t("toolbar.sortTitle") },
+    { value: "author", label: t("toolbar.sortAuthor") },
+    { value: "dateAdded", label: t("toolbar.sortDateAdded") },
+    { value: "rating", label: t("toolbar.sortRating") },
+  ];
+
   return (
-    <div className="toolbar">
-      <div className="toolbar-left">
-        <button type="button" onClick={onImport} disabled={importing}>
-          {importing ? "Importing…" : "Import Book(s)"}
-        </button>
-        <button type="button" onClick={onRescan} disabled={rescanning} title="Rebuild the library index from files on disk">
-          {rescanning ? "Rescanning…" : "Rescan Library"}
-        </button>
-        <span className="book-count">{bookCount} book{bookCount === 1 ? "" : "s"}</span>
-      </div>
+    <Group
+      justify="space-between"
+      wrap="wrap"
+      gap="md"
+      px="md"
+      py="sm"
+      style={{ borderBottom: "1px solid var(--mantine-color-default-border)" }}
+    >
+      <Group gap="md">
+        <Button leftSection={<IconUpload size={16} />} onClick={onImport} loading={importing}>
+          {t("toolbar.import")}
+        </Button>
+        <Tooltip label={t("toolbar.rescanTooltip")}>
+          <Button variant="default" leftSection={<IconRefresh size={16} />} onClick={onRescan} loading={rescanning}>
+            {t("toolbar.rescan")}
+          </Button>
+        </Tooltip>
+        <Text size="sm" c="dimmed">
+          {t(bookCount === 1 ? "toolbar.bookCount_one" : "toolbar.bookCount_other", { count: bookCount })}
+        </Text>
+      </Group>
 
-      <div className="toolbar-right">
-        <label>
-          Sort by{" "}
-          <select value={sortKey} onChange={(e) => onSortKeyChange(e.target.value as SortKey)}>
-            <option value="title">Title</option>
-            <option value="author">Author</option>
-            <option value="dateAdded">Date added</option>
-            <option value="rating">Rating</option>
-          </select>
-        </label>
+      <Group gap="md">
+        <Group gap={6}>
+          <Text size="sm" c="dimmed">
+            {t("toolbar.sortBy")}
+          </Text>
+          <Select
+            size="sm"
+            w={150}
+            aria-label={t("toolbar.sortBy")}
+            value={sortKey}
+            onChange={(value) => value && onSortKeyChange(value as SortKey)}
+            data={sortOptions}
+            allowDeselect={false}
+          />
+        </Group>
 
-        <div className="view-toggle">
-          <button
-            type="button"
-            className={viewMode === "grid" ? "active" : ""}
-            onClick={() => onViewModeChange("grid")}
-          >
-            Grid
-          </button>
-          <button
-            type="button"
-            className={viewMode === "list" ? "active" : ""}
-            onClick={() => onViewModeChange("list")}
-          >
-            List
-          </button>
-        </div>
+        <SegmentedControl
+          size="sm"
+          value={viewMode}
+          onChange={(value) => onViewModeChange(value as ViewMode)}
+          data={[
+            { value: "grid", label: <IconLayoutGrid size={16} style={{ display: "block" }} /> },
+            { value: "list", label: <IconList size={16} style={{ display: "block" }} /> },
+          ]}
+        />
 
-        <span className="library-path" title={libraryPath}>
+        <LanguageSwitcher />
+        <ColorSchemeToggle />
+
+        <Text size="xs" c="dimmed" ff="monospace" truncate="end" maw={220} title={libraryPath}>
           {libraryPath}
-        </span>
-      </div>
-    </div>
+        </Text>
+      </Group>
+    </Group>
   );
 }

@@ -8,9 +8,9 @@ public enum BookFormat
 
 public class BookFile
 {
-    public Guid Id { get; set; } = Guid.NewGuid();
+    public int Id { get; set; }
 
-    public Guid BookId { get; set; }
+    public int BookId { get; set; }
     public Book Book { get; set; } = null!;
 
     public BookFormat Format { get; set; }

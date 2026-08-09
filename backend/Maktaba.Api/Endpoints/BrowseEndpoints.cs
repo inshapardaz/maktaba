@@ -1,4 +1,5 @@
 using Maktaba.Api.Dtos;
+using Maktaba.Core.Ids;
 using Maktaba.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -11,12 +12,14 @@ public static class BrowseEndpoints
     {
         app.MapGet("/api/authors", async (MaktabaDbContext db) =>
         {
+            // IdCodec.Encode can't be translated to SQL, so the raw int id is projected first and
+            // encoded afterwards, in memory.
             var authors = await db.Authors
                 .Where(a => a.BookAuthors.Count > 0)
                 .OrderBy(a => a.Name)
-                .Select(a => new BrowseGroupDto(a.Id, a.Name, a.BookAuthors.Count))
+                .Select(a => new { a.Id, a.Name, Count = a.BookAuthors.Count })
                 .ToListAsync();
-            return Results.Ok(authors);
+            return Results.Ok(authors.Select(a => new BrowseGroupDto(IdCodec.Encode(a.Id), a.Name, a.Count)));
         });
 
         app.MapGet("/api/series", async (MaktabaDbContext db) =>
@@ -24,9 +27,9 @@ public static class BrowseEndpoints
             var series = await db.Series
                 .Where(s => s.BookSeries.Count > 0)
                 .OrderBy(s => s.Name)
-                .Select(s => new BrowseGroupDto(s.Id, s.Name, s.BookSeries.Count))
+                .Select(s => new { s.Id, s.Name, Count = s.BookSeries.Count })
                 .ToListAsync();
-            return Results.Ok(series);
+            return Results.Ok(series.Select(s => new BrowseGroupDto(IdCodec.Encode(s.Id), s.Name, s.Count)));
         });
 
         app.MapGet("/api/tags", async (MaktabaDbContext db) =>
@@ -34,9 +37,9 @@ public static class BrowseEndpoints
             var tags = await db.Tags
                 .Where(t => t.BookTags.Count > 0)
                 .OrderBy(t => t.Name)
-                .Select(t => new BrowseGroupDto(t.Id, t.Name, t.BookTags.Count))
+                .Select(t => new { t.Id, t.Name, Count = t.BookTags.Count })
                 .ToListAsync();
-            return Results.Ok(tags);
+            return Results.Ok(tags.Select(t => new BrowseGroupDto(IdCodec.Encode(t.Id), t.Name, t.Count)));
         });
     }
 }

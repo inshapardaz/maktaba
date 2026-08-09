@@ -21,5 +21,5 @@ public record BookEditRequest(
 /// </summary>
 public interface IBookEditService
 {
-    Task<Book?> UpdateAsync(Guid bookId, BookEditRequest request, CancellationToken ct = default);
+    Task<Book?> UpdateAsync(int bookId, BookEditRequest request, CancellationToken ct = default);
 }

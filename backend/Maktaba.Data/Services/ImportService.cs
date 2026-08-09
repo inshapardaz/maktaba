@@ -1,4 +1,5 @@
 using Maktaba.Core.Entities;
+using Maktaba.Core.Ids;
 using Maktaba.Core.Naming;
 using Maktaba.Core.Services;
 using Microsoft.EntityFrameworkCore;
@@ -48,14 +49,40 @@ public class ImportService(
             }
         }
 
-        var bookId = Guid.NewGuid();
         var sortTitle = TitleSorting.ComputeSortTitle(metadata.Title);
-
         var authors = await EntityResolvers.ResolveAuthorsAsync(db, metadata.Authors, ct);
+
+        var book = new Book
+        {
+            Title = metadata.Title,
+            SortTitle = sortTitle,
+            Description = metadata.Description,
+            Language = metadata.Language,
+            Publisher = metadata.Publisher,
+            DatePublished = metadata.PublishedDate,
+        };
+
+        for (var i = 0; i < authors.Count; i++)
+        {
+            book.BookAuthors.Add(new BookAuthor { Author = authors[i], Order = i });
+        }
+
+        foreach (var identifier in metadata.Identifiers)
+        {
+            book.Identifiers.Add(new Identifier { Scheme = identifier.Scheme, Value = identifier.Value });
+        }
+
+        // The on-disk folder name embeds this book's id (as a sqid, so a rescan can recover it), which
+        // means the id has to exist before the folder can be created - so this book row is inserted
+        // first (letting SQLite assign the auto-increment id), and the folder/file/FolderPath are filled
+        // in afterwards inside the same transaction, which is rolled back if anything below fails.
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        db.Books.Add(book);
+        await db.SaveChangesAsync(ct);
 
         var authorFolderSegment = FileNaming.SanitizePathSegment(
             authors.Count > 0 ? authors[0].SortName : "Unknown Author");
-        var bookFolderSegment = FileNaming.SanitizePathSegment($"{metadata.Title} ({bookId})");
+        var bookFolderSegment = FileNaming.SanitizePathSegment($"{metadata.Title} ({IdCodec.Encode(book.Id)})");
         var relativeFolder = Path.Combine(authorFolderSegment, bookFolderSegment);
         var absoluteFolder = Path.Combine(libraryRoot, relativeFolder);
 
@@ -74,49 +101,23 @@ public class ImportService(
                     Path.Combine(absoluteFolder, $"cover.{coverExtension}"), metadata.CoverImageBytes, ct);
             }
 
-            var book = new Book
-            {
-                Id = bookId,
-                Title = metadata.Title,
-                SortTitle = sortTitle,
-                Description = metadata.Description,
-                Language = metadata.Language,
-                Publisher = metadata.Publisher,
-                DatePublished = metadata.PublishedDate,
-                FolderPath = relativeFolder,
-            };
-
-            for (var i = 0; i < authors.Count; i++)
-            {
-                book.BookAuthors.Add(new BookAuthor { BookId = bookId, Author = authors[i], Order = i });
-            }
-
+            book.FolderPath = relativeFolder;
             book.Files.Add(new BookFile
             {
-                BookId = bookId,
                 Format = format,
                 FilePath = Path.Combine(relativeFolder, destFileName),
                 FileSizeBytes = new FileInfo(destFilePath).Length,
                 ContentHash = contentHash,
             });
 
-            foreach (var identifier in metadata.Identifiers)
-            {
-                book.Identifiers.Add(new Identifier
-                {
-                    BookId = bookId,
-                    Scheme = identifier.Scheme,
-                    Value = identifier.Value,
-                });
-            }
-
-            db.Books.Add(book);
             await db.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
 
             return book;
         }
         catch
         {
+            // Transaction rolls back (undoing the book insert) on dispose since it was never committed.
             Directory.Delete(absoluteFolder, recursive: true);
             throw;
         }

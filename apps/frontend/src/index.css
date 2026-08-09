@@ -1,62 +1,9 @@
-:root {
-  --text: #3f3b46;
-  --text-h: #08060d;
-  --bg: #fff;
-  --bg-elevated: #f8f7fa;
-  --border: #e5e4e7;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --danger: #c0392b;
-  --danger-bg: rgba(192, 57, 43, 0.08);
-
-  --sans: system-ui, "Segoe UI", Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
-
-  font: 15px/145% var(--sans);
-  color-scheme: light dark;
-  color: var(--text);
-  background: var(--bg);
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: #c7c5cc;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --bg-elevated: #1e1f27;
-    --border: #2e303a;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --danger: #e07a6c;
-    --danger-bg: rgba(224, 122, 108, 0.12);
-  }
-}
-
-* {
-  box-sizing: border-box;
-}
-
+/* Mantine (see main.tsx / theme.ts) owns colors, typography, and dark mode.
+   This file only resets the app's root element sizing, which Mantine's
+   stylesheet doesn't do for a plain Vite SPA shell. */
 html,
 body,
 #root {
   height: 100%;
   margin: 0;
-}
-
-h1,
-h2,
-h3 {
-  font-family: var(--sans);
-  font-weight: 600;
-  color: var(--text-h);
-  margin: 0 0 8px;
-}
-
-button {
-  font: inherit;
-  cursor: pointer;
 }

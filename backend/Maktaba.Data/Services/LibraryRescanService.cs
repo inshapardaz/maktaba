@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using Maktaba.Core.Entities;
+using Maktaba.Core.Ids;
 using Maktaba.Core.Naming;
 using Maktaba.Core.Services;
 using Microsoft.EntityFrameworkCore;
@@ -11,7 +12,10 @@ public partial class LibraryRescanService(
     ILibraryPathProvider libraryPath,
     IEnumerable<IBookMetadataExtractor> extractors) : ILibraryRescanService
 {
-    [GeneratedRegex(@"^(?<title>.+) \((?<id>[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\)$")]
+    // The trailing "(...)" is expected to be a sqid (see IdCodec) - actual validity is checked by
+    // trying to decode it, rather than matching the sqid alphabet/length here, since both are
+    // implementation details of the shared encoder rather than something worth duplicating in a regex.
+    [GeneratedRegex(@"^(?<title>.+) \((?<id>[^()]+)\)$")]
     private static partial Regex BookFolderPattern();
 
     public async Task<int> RescanAsync(CancellationToken ct = default)
@@ -53,7 +57,7 @@ public partial class LibraryRescanService(
     private async Task<bool> TryIndexBookFolderAsync(string libraryRoot, string bookDir, CancellationToken ct)
     {
         var match = BookFolderPattern().Match(Path.GetFileName(bookDir));
-        if (!match.Success || !Guid.TryParse(match.Groups["id"].Value, out var bookId))
+        if (!match.Success || !IdCodec.TryDecode(match.Groups["id"].Value, out var bookId))
         {
             // Not one of our own "{Title} ({BookId})" folders - skip (see ILibraryRescanService docs).
             return false;

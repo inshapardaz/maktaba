@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { Box, Center, Image, Text, UnstyledButton } from "@mantine/core";
 import type { BookSummary } from "../api";
 import { coverUrl } from "../api";
+import { useLanguage } from "../i18n/LanguageContext";
 
 interface BookGridProps {
   books: BookSummary[];
@@ -9,10 +11,12 @@ interface BookGridProps {
 }
 
 const CARD_WIDTH = 160;
-const CARD_HEIGHT = 260;
+const COVER_HEIGHT = 220;
+const CARD_HEIGHT = 270;
 const GAP = 16;
 
 export function BookGrid({ books, onSelect }: BookGridProps) {
+  const { t } = useLanguage();
   const parentRef = useRef<HTMLDivElement>(null);
   const [columnCount, setColumnCount] = useState(1);
 
@@ -41,16 +45,15 @@ export function BookGrid({ books, onSelect }: BookGridProps) {
   });
 
   return (
-    <div className="book-grid-scroll" ref={parentRef}>
+    <Box ref={parentRef} style={{ flex: 1, overflow: "auto" }} p="md">
       <div style={{ height: rowVirtualizer.getTotalSize(), position: "relative" }}>
         {rowVirtualizer.getVirtualItems().map((virtualRow) => {
           const rowStart = virtualRow.index * columnCount;
           const rowBooks = books.slice(rowStart, rowStart + columnCount);
 
           return (
-            <div
+            <Box
               key={virtualRow.key}
-              className="book-grid-row"
               style={{
                 position: "absolute",
                 top: 0,
@@ -58,35 +61,44 @@ export function BookGrid({ books, onSelect }: BookGridProps) {
                 width: "100%",
                 height: virtualRow.size,
                 transform: `translateY(${virtualRow.start}px)`,
+                display: "flex",
+                gap: GAP,
               }}
             >
               {rowBooks.map((book) => (
-                <button
-                  key={book.id}
-                  type="button"
-                  className="book-card"
-                  style={{ width: CARD_WIDTH }}
-                  onClick={() => onSelect(book.id)}
-                >
-                  <div className="book-cover">
+                <UnstyledButton key={book.id} w={CARD_WIDTH} onClick={() => onSelect(book.id)}>
+                  <Box
+                    w={CARD_WIDTH}
+                    h={COVER_HEIGHT}
+                    style={{
+                      borderRadius: "var(--mantine-radius-sm)",
+                      overflow: "hidden",
+                      border: "1px solid var(--mantine-color-default-border)",
+                      background: "var(--mantine-color-default-hover)",
+                    }}
+                  >
                     {book.hasCover ? (
-                      <img src={coverUrl(book.id)} alt="" loading="lazy" />
+                      <Image src={coverUrl(book.id)} alt="" loading="lazy" w={CARD_WIDTH} h={COVER_HEIGHT} fit="cover" />
                     ) : (
-                      <div className="book-cover-placeholder">{book.title}</div>
+                      <Center h="100%" p="xs">
+                        <Text size="xs" c="dimmed" ta="center" lineClamp={4}>
+                          {book.title}
+                        </Text>
+                      </Center>
                     )}
-                  </div>
-                  <div className="book-title" title={book.title}>
+                  </Box>
+                  <Text size="sm" fw={600} mt={6} truncate="end" title={book.title}>
                     {book.title}
-                  </div>
-                  <div className="book-author" title={book.authors.join(", ")}>
-                    {book.authors.join(", ") || "Unknown author"}
-                  </div>
-                </button>
+                  </Text>
+                  <Text size="xs" c="dimmed" truncate="end" title={book.authors.join(", ")}>
+                    {book.authors.join(", ") || t("common.unknownAuthor")}
+                  </Text>
+                </UnstyledButton>
               ))}
-            </div>
+            </Box>
           );
         })}
       </div>
-    </div>
+    </Box>
   );
 }

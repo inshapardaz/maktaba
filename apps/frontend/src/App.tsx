@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { AppShell, Box, Center, Loader, Overlay, Stack, Text, Modal, Group, Button } from "@mantine/core";
+import { notifications } from "@mantine/notifications";
+import { IconUpload } from "@tabler/icons-react";
 import {
   getCurrentLibrary,
   importBook,
@@ -19,7 +22,7 @@ import { BookDetailPanel } from "./components/BookDetailPanel";
 import { Sidebar, type GroupFilter } from "./components/Sidebar";
 import { FilterBar } from "./components/FilterBar";
 import { DuplicateDialog } from "./components/DuplicateDialog";
-import "./App.css";
+import { useLanguage } from "./i18n/LanguageContext";
 
 const EBOOK_EXTENSIONS = [".epub", ".pdf"];
 
@@ -58,15 +61,33 @@ function invalidateLibraryQueries(queryClient: ReturnType<typeof useQueryClient>
   void queryClient.invalidateQueries({ queryKey: ["tags"] });
 }
 
+function notifyError(title: string, message: string) {
+  notifications.show({
+    color: "red",
+    title,
+    message: (
+      <Stack gap={2}>
+        {message.split("\n").map((line, i) => (
+          <Text key={i} size="sm">
+            {line}
+          </Text>
+        ))}
+      </Stack>
+    ),
+    autoClose: 8000,
+  });
+}
+
 function App() {
+  const { t } = useLanguage();
   const queryClient = useQueryClient();
   const [sortKey, setSortKey] = useState<SortKey>("title");
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null);
   const [isDragActive, setDragActive] = useState(false);
-  const [importError, setImportError] = useState<string | null>(null);
   const [isImporting, setImporting] = useState(false);
   const [isRescanning, setRescanning] = useState(false);
+  const [rescanConfirmOpen, setRescanConfirmOpen] = useState(false);
   const [pendingDuplicate, setPendingDuplicate] = useState<{ filePath: string; info: DuplicateBookInfo } | null>(
     null,
   );
@@ -144,7 +165,9 @@ function App() {
 
     setImporting(false);
     invalidateLibraryQueries(queryClient);
-    setImportError(errors.length > 0 ? errors.join("\n") : null);
+    if (errors.length > 0) {
+      notifyError(t("app.importFailedTitle"), errors.join("\n"));
+    }
   }
 
   const handleImportClick = async () => {
@@ -168,29 +191,24 @@ function App() {
   };
 
   const handleRescan = async () => {
-    if (
-      !window.confirm(
-        "Rebuild the library index from the files on disk? Ratings, tags, series, and any manual " +
-          "corrections not reflected in the files themselves will be lost and re-derived from each " +
-          "file's embedded metadata.",
-      )
-    ) {
-      return;
-    }
-
+    setRescanConfirmOpen(false);
     setRescanning(true);
     try {
       await rescanLibrary();
       invalidateLibraryQueries(queryClient);
     } catch (err) {
-      setImportError(err instanceof Error ? err.message : String(err));
+      notifyError(t("app.rescanFailedTitle"), err instanceof Error ? err.message : String(err));
     } finally {
       setRescanning(false);
     }
   };
 
   if (libraryQuery.isLoading) {
-    return <div className="centered-message">Loading…</div>;
+    return (
+      <Center h="100vh">
+        <Loader />
+      </Center>
+    );
   }
 
   if (!libraryQuery.data) {
@@ -198,8 +216,9 @@ function App() {
   }
 
   return (
-    <div
-      className={`app-shell${isDragActive ? " drag-active" : ""}`}
+    <Box
+      pos="relative"
+      h="100vh"
       onDragOver={(e) => {
         e.preventDefault();
         setDragActive(true);
@@ -207,32 +226,27 @@ function App() {
       onDragLeave={() => setDragActive(false)}
       onDrop={handleDrop}
     >
-      <Toolbar
-        libraryPath={libraryQuery.data.path}
-        sortKey={sortKey}
-        onSortKeyChange={setSortKey}
-        viewMode={viewMode}
-        onViewModeChange={setViewMode}
-        onImport={handleImportClick}
-        importing={isImporting}
-        onRescan={handleRescan}
-        rescanning={isRescanning}
-        bookCount={sortedBooks.length}
-      />
+      <AppShell header={{ height: 56 }} navbar={{ width: 220, breakpoint: 0 }} padding={0}>
+        <AppShell.Header>
+          <Toolbar
+            libraryPath={libraryQuery.data.path}
+            sortKey={sortKey}
+            onSortKeyChange={setSortKey}
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
+            onImport={handleImportClick}
+            importing={isImporting}
+            onRescan={() => setRescanConfirmOpen(true)}
+            rescanning={isRescanning}
+            bookCount={sortedBooks.length}
+          />
+        </AppShell.Header>
 
-      {importError && (
-        <pre className="error-text import-error">
-          {importError}
-          <button type="button" onClick={() => setImportError(null)}>
-            Dismiss
-          </button>
-        </pre>
-      )}
+        <AppShell.Navbar>
+          <Sidebar activeFilter={groupFilter} onSelect={setGroupFilter} />
+        </AppShell.Navbar>
 
-      <div className="main-area">
-        <Sidebar activeFilter={groupFilter} onSelect={setGroupFilter} />
-
-        <div className="main-content">
+        <AppShell.Main style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
           <FilterBar
             search={search}
             onSearchChange={setSearch}
@@ -244,14 +258,18 @@ function App() {
             onClearGroup={() => setGroupFilter(null)}
           />
 
-          {booksQuery.isLoading && <div className="centered-message">Loading books…</div>}
+          {booksQuery.isLoading && (
+            <Center style={{ flex: 1 }}>
+              <Loader />
+            </Center>
+          )}
 
           {booksQuery.data && sortedBooks.length === 0 && (
-            <div className="centered-message">
-              {search || format || minRating || groupFilter
-                ? "No books match these filters."
-                : 'No books yet. Click "Import Book(s)" or drag EPUB/PDF files onto this window.'}
-            </div>
+            <Center style={{ flex: 1 }} p="xl">
+              <Text c="dimmed" ta="center">
+                {search || format || minRating || groupFilter ? t("app.noResults") : t("app.emptyLibrary")}
+              </Text>
+            </Center>
           )}
 
           {sortedBooks.length > 0 &&
@@ -260,8 +278,8 @@ function App() {
             ) : (
               <BookList books={sortedBooks} onSelect={setSelectedBookId} />
             ))}
-        </div>
-      </div>
+        </AppShell.Main>
+      </AppShell>
 
       {selectedBookId && (
         <BookDetailPanel
@@ -282,8 +300,33 @@ function App() {
         />
       )}
 
-      {isDragActive && <div className="drag-overlay">Drop EPUB/PDF files to import</div>}
-    </div>
+      <Modal opened={rescanConfirmOpen} onClose={() => setRescanConfirmOpen(false)} title={t("app.rescanTitle")} centered>
+        <Text size="sm" mb="md">
+          {t("app.rescanBody")}
+        </Text>
+        <Group justify="flex-end">
+          <Button variant="default" onClick={() => setRescanConfirmOpen(false)}>
+            {t("common.cancel")}
+          </Button>
+          <Button color="red" onClick={() => void handleRescan()}>
+            {t("app.rescanConfirm")}
+          </Button>
+        </Group>
+      </Modal>
+
+      {isDragActive && (
+        <Overlay color="var(--mantine-color-brand-6)" backgroundOpacity={0.15} zIndex={1000}>
+          <Center h="100%">
+            <Group gap="xs" c="var(--mantine-color-brand-6)">
+              <IconUpload size={24} />
+              <Text fw={600} size="lg">
+                {t("app.dropToImport")}
+              </Text>
+            </Group>
+          </Center>
+        </Overlay>
+      )}
+    </Box>
   );
 }
 

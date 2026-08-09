@@ -1,0 +1,181 @@
+export type Language = "en" | "ur";
+
+export const LANGUAGES: { value: Language; label: string }[] = [
+  { value: "en", label: "EN" },
+  { value: "ur", label: "اردو" },
+];
+
+const en = {
+  "common.cancel": "Cancel",
+  "common.save": "Save",
+  "common.saving": "Saving…",
+  "common.confirm": "Confirm",
+  "common.unknownAuthor": "Unknown author",
+
+  "libraryPicker.subtitle": "Choose a folder to use as your library, or create a new one.",
+  "libraryPicker.choose": "Choose Library Folder",
+  "libraryPicker.opening": "Opening…",
+  "libraryPicker.errorTitle": "Couldn't open library",
+
+  "toolbar.import": "Import Book(s)",
+  "toolbar.importing": "Importing…",
+  "toolbar.rescan": "Rescan Library",
+  "toolbar.rescanning": "Rescanning…",
+  "toolbar.rescanTooltip": "Rebuild the library index from files on disk",
+  "toolbar.bookCount_one": "{count} book",
+  "toolbar.bookCount_other": "{count} books",
+  "toolbar.sortBy": "Sort by",
+  "toolbar.sortTitle": "Title",
+  "toolbar.sortAuthor": "Author",
+  "toolbar.sortDateAdded": "Date added",
+  "toolbar.sortRating": "Rating",
+  "toolbar.colorSchemeToggle": "Toggle color scheme",
+  "toolbar.language": "Language",
+
+  "sidebar.authors": "Authors",
+  "sidebar.series": "Series",
+  "sidebar.tags": "Tags",
+
+  "filterBar.searchPlaceholder": "Search title, author, series, tag…",
+  "filterBar.allFormats": "All formats",
+  "filterBar.anyRating": "Any rating",
+
+  "bookList.title": "Title",
+  "bookList.author": "Author",
+  "bookList.rating": "Rating",
+  "bookList.dateAdded": "Date added",
+
+  "bookDetail.defaultTitle": "Book details",
+  "bookDetail.edit": "Edit",
+  "bookDetail.remove": "Remove",
+  "bookDetail.confirmRemove": "Send files to trash?",
+  "bookDetail.publisher": "Publisher",
+  "bookDetail.published": "Published",
+  "bookDetail.language": "Language",
+  "bookDetail.files": "Files",
+  "bookDetail.open": "Open",
+  "bookDetail.showInFolder": "Show in folder",
+
+  "bookEdit.title": "Edit book",
+  "bookEdit.titleField": "Title",
+  "bookEdit.authors": "Authors",
+  "bookEdit.commaSeparated": "Comma-separated",
+  "bookEdit.series": "Series",
+  "bookEdit.seriesIndex": "Series #",
+  "bookEdit.tags": "Tags",
+  "bookEdit.publisher": "Publisher",
+  "bookEdit.language": "Language",
+  "bookEdit.publishedDate": "Published date",
+  "bookEdit.rating": "Rating",
+  "bookEdit.unrated": "Unrated",
+  "bookEdit.description": "Description",
+
+  "duplicate.title": "Possible duplicate",
+  "duplicate.sameFile": "This exact file is already in your library as:",
+  "duplicate.sameTitleAuthor": "A book with the same title and author is already in your library:",
+  "duplicate.importing": "Importing: {path}",
+  "duplicate.cancelRemaining": "Cancel remaining",
+  "duplicate.skip": "Skip this file",
+  "duplicate.addFormat": "Add as another format",
+  "duplicate.importNew": "Import as new book",
+
+  "app.noResults": "No books match these filters.",
+  "app.emptyLibrary": 'No books yet. Click "Import Book(s)" or drag EPUB/PDF files onto this window.',
+  "app.importFailedTitle": "Some files failed to import",
+  "app.rescanFailedTitle": "Rescan failed",
+  "app.rescanTitle": "Rescan library",
+  "app.rescanBody":
+    "Rebuild the library index from the files on disk? Ratings, tags, series, and any manual corrections not reflected in the files themselves will be lost and re-derived from each file's embedded metadata.",
+  "app.rescanConfirm": "Rescan",
+  "app.dropToImport": "Drop EPUB/PDF files to import",
+};
+
+export type TranslationKey = keyof typeof en;
+type TranslationDict = Record<TranslationKey, string>;
+
+const ur: TranslationDict = {
+  "common.cancel": "منسوخ کریں",
+  "common.save": "محفوظ کریں",
+  "common.saving": "محفوظ ہو رہا ہے…",
+  "common.confirm": "تصدیق کریں",
+  "common.unknownAuthor": "نامعلوم مصنف",
+
+  "libraryPicker.subtitle": "لائبریری کے لیے ایک فولڈر منتخب کریں، یا نئی لائبریری بنائیں۔",
+  "libraryPicker.choose": "لائبریری فولڈر منتخب کریں",
+  "libraryPicker.opening": "کھولا جا رہا ہے…",
+  "libraryPicker.errorTitle": "لائبریری نہیں کھل سکی",
+
+  "toolbar.import": "کتاب درآمد کریں",
+  "toolbar.importing": "درآمد ہو رہی ہے…",
+  "toolbar.rescan": "لائبریری دوبارہ اسکین کریں",
+  "toolbar.rescanning": "دوبارہ اسکین ہو رہا ہے…",
+  "toolbar.rescanTooltip": "ڈسک پر موجود فائلوں سے لائبریری انڈیکس دوبارہ تشکیل دیں",
+  "toolbar.bookCount_one": "{count} کتاب",
+  "toolbar.bookCount_other": "{count} کتابیں",
+  "toolbar.sortBy": "ترتیب",
+  "toolbar.sortTitle": "عنوان",
+  "toolbar.sortAuthor": "مصنف",
+  "toolbar.sortDateAdded": "شامل کرنے کی تاریخ",
+  "toolbar.sortRating": "درجہ بندی",
+  "toolbar.colorSchemeToggle": "رنگ سکیم تبدیل کریں",
+  "toolbar.language": "زبان",
+
+  "sidebar.authors": "مصنفین",
+  "sidebar.series": "سیریز",
+  "sidebar.tags": "ٹیگز",
+
+  "filterBar.searchPlaceholder": "عنوان، مصنف، سیریز یا ٹیگ تلاش کریں…",
+  "filterBar.allFormats": "تمام فارمیٹس",
+  "filterBar.anyRating": "کوئی بھی درجہ بندی",
+
+  "bookList.title": "عنوان",
+  "bookList.author": "مصنف",
+  "bookList.rating": "درجہ بندی",
+  "bookList.dateAdded": "شامل کرنے کی تاریخ",
+
+  "bookDetail.defaultTitle": "کتاب کی تفصیلات",
+  "bookDetail.edit": "ترمیم کریں",
+  "bookDetail.remove": "ہٹا دیں",
+  "bookDetail.confirmRemove": "فائلیں ردی کی ٹوکری میں بھیجیں؟",
+  "bookDetail.publisher": "ناشر",
+  "bookDetail.published": "تاریخ اشاعت",
+  "bookDetail.language": "زبان",
+  "bookDetail.files": "فائلیں",
+  "bookDetail.open": "کھولیں",
+  "bookDetail.showInFolder": "فولڈر میں دکھائیں",
+
+  "bookEdit.title": "کتاب میں ترمیم کریں",
+  "bookEdit.titleField": "عنوان",
+  "bookEdit.authors": "مصنفین",
+  "bookEdit.commaSeparated": "کاما سے الگ کریں",
+  "bookEdit.series": "سیریز",
+  "bookEdit.seriesIndex": "سیریز نمبر",
+  "bookEdit.tags": "ٹیگز",
+  "bookEdit.publisher": "ناشر",
+  "bookEdit.language": "زبان",
+  "bookEdit.publishedDate": "تاریخ اشاعت",
+  "bookEdit.rating": "درجہ بندی",
+  "bookEdit.unrated": "غیر درجہ بند",
+  "bookEdit.description": "تفصیل",
+
+  "duplicate.title": "ممکنہ ڈپلیکیٹ",
+  "duplicate.sameFile": "یہ فائل پہلے ہی آپ کی لائبریری میں موجود ہے:",
+  "duplicate.sameTitleAuthor": "اسی عنوان اور مصنف کی ایک کتاب پہلے ہی آپ کی لائبریری میں موجود ہے:",
+  "duplicate.importing": "درآمد ہو رہی ہے: {path}",
+  "duplicate.cancelRemaining": "باقی منسوخ کریں",
+  "duplicate.skip": "یہ فائل نظر انداز کریں",
+  "duplicate.addFormat": "دوسرے فارمیٹ کے طور پر شامل کریں",
+  "duplicate.importNew": "نئی کتاب کے طور پر درآمد کریں",
+
+  "app.noResults": "کوئی کتاب ان فلٹرز سے مطابقت نہیں رکھتی۔",
+  "app.emptyLibrary": '"کتاب درآمد کریں" پر کلک کریں یا EPUB/PDF فائلیں اس ونڈو پر گھسیٹ لائیں۔ ابھی کوئی کتاب موجود نہیں۔',
+  "app.importFailedTitle": "کچھ فائلیں درآمد نہیں ہو سکیں",
+  "app.rescanFailedTitle": "دوبارہ اسکین ناکام ہوا",
+  "app.rescanTitle": "لائبریری دوبارہ اسکین کریں",
+  "app.rescanBody":
+    "ڈسک پر موجود فائلوں سے لائبریری انڈیکس دوبارہ تشکیل دیں؟ درجہ بندی، ٹیگز، سیریز، اور کوئی بھی دستی تصحیح جو فائلوں میں شامل نہیں، ضائع ہو جائے گی اور ہر فائل کے اندرونی میٹا ڈیٹا سے دوبارہ اخذ کی جائے گی۔",
+  "app.rescanConfirm": "دوبارہ اسکین کریں",
+  "app.dropToImport": "درآمد کرنے کے لیے EPUB/PDF فائلیں یہاں چھوڑیں",
+};
+
+export const translations: Record<Language, TranslationDict> = { en, ur };

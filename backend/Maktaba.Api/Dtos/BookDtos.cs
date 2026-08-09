@@ -1,7 +1,11 @@
 namespace Maktaba.Api.Dtos;
 
+// Every id below is a sqids.org-encoded string (see Maktaba.Core.Ids.IdCodec), not the database's
+// internal integer primary key - encoding/decoding at this API boundary is what all the "sqid"-named
+// helper params in Endpoints/ are for.
+
 public record BookSummaryDto(
-    Guid Id,
+    string Id,
     string Title,
     string SortTitle,
     string[] Authors,
@@ -15,7 +19,7 @@ public record IdentifierDto(string Scheme, string Value);
 public record BookFileDto(string Format, long FileSizeBytes, string AbsolutePath);
 
 public record BookDetailDto(
-    Guid Id,
+    string Id,
     string Title,
     string SortTitle,
     string? Description,
@@ -36,7 +40,7 @@ public record BookDetailDto(
 /// <summary>DuplicateAction: null (ask) | "skip" | "keep-both" | "merge".</summary>
 public record ImportBookRequest(string FilePath, string? DuplicateAction = null);
 
-public record DuplicateBookDto(Guid ExistingBookId, string ExistingTitle, string[] ExistingAuthors, bool SameContentHash);
+public record DuplicateBookDto(string ExistingBookId, string ExistingTitle, string[] ExistingAuthors, bool SameContentHash);
 
 public record BookEditRequestDto(
     string Title,
@@ -55,4 +59,4 @@ public record OpenLibraryRequest(string Path);
 
 public record LibraryDto(string Path);
 
-public record BrowseGroupDto(Guid Id, string Name, int BookCount);
+public record BrowseGroupDto(string Id, string Name, int BookCount);
