@@ -35,6 +35,21 @@ public record BookDetailDto(
 
 public record ImportBookRequest(string FilePath);
 
+public record BookEditRequestDto(
+    string Title,
+    string[] Authors,
+    string? Language,
+    string? Publisher,
+    DateOnly? PublishedDate,
+    string? Description,
+    int Rating,
+    string? SeriesName,
+    double? SeriesIndex,
+    string[] Tags
+);
+
 public record OpenLibraryRequest(string Path);
 
 public record LibraryDto(string Path);
+
+public record BrowseGroupDto(Guid Id, string Name, int BookCount);

@@ -1,11 +1,13 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { getCurrentLibrary, importBook, listBooks, type BookSummary } from "./api";
+import { getCurrentLibrary, importBook, listBooks, type BookFilters, type BookSummary } from "./api";
 import { LibraryPicker } from "./components/LibraryPicker";
 import { Toolbar, type SortKey, type ViewMode } from "./components/Toolbar";
 import { BookGrid } from "./components/BookGrid";
 import { BookList } from "./components/BookList";
 import { BookDetailPanel } from "./components/BookDetailPanel";
+import { Sidebar, type GroupFilter } from "./components/Sidebar";
+import { FilterBar } from "./components/FilterBar";
 import "./App.css";
 
 const EBOOK_EXTENSIONS = [".epub", ".pdf"];
@@ -29,6 +31,15 @@ function sortBooks(books: BookSummary[], sortKey: SortKey): BookSummary[] {
   }
 }
 
+function useDebounced<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delayMs);
+    return () => clearTimeout(timer);
+  }, [value, delayMs]);
+  return debounced;
+}
+
 function App() {
   const queryClient = useQueryClient();
   const [sortKey, setSortKey] = useState<SortKey>("title");
@@ -37,14 +48,29 @@ function App() {
   const [isDragActive, setDragActive] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
 
+  const [search, setSearch] = useState("");
+  const [format, setFormat] = useState("");
+  const [minRating, setMinRating] = useState(0);
+  const [groupFilter, setGroupFilter] = useState<GroupFilter | null>(null);
+  const debouncedSearch = useDebounced(search, 300);
+
+  const filters: BookFilters = {
+    search: debouncedSearch || undefined,
+    format: format || undefined,
+    minRating: minRating || undefined,
+    authorId: groupFilter?.kind === "authorId" ? groupFilter.id : undefined,
+    seriesId: groupFilter?.kind === "seriesId" ? groupFilter.id : undefined,
+    tagId: groupFilter?.kind === "tagId" ? groupFilter.id : undefined,
+  };
+
   const libraryQuery = useQuery({
     queryKey: ["library"],
     queryFn: getCurrentLibrary,
   });
 
   const booksQuery = useQuery({
-    queryKey: ["books"],
-    queryFn: listBooks,
+    queryKey: ["books", filters],
+    queryFn: () => listBooks(filters),
     enabled: !!libraryQuery.data,
   });
 
@@ -129,20 +155,39 @@ function App() {
         </pre>
       )}
 
-      {booksQuery.isLoading && <div className="centered-message">Loading books…</div>}
+      <div className="main-area">
+        <Sidebar activeFilter={groupFilter} onSelect={setGroupFilter} />
 
-      {booksQuery.data && sortedBooks.length === 0 && (
-        <div className="centered-message">
-          No books yet. Click "Import Book(s)" or drag EPUB/PDF files onto this window.
+        <div className="main-content">
+          <FilterBar
+            search={search}
+            onSearchChange={setSearch}
+            format={format}
+            onFormatChange={setFormat}
+            minRating={minRating}
+            onMinRatingChange={setMinRating}
+            activeGroupLabel={groupFilter?.name ?? null}
+            onClearGroup={() => setGroupFilter(null)}
+          />
+
+          {booksQuery.isLoading && <div className="centered-message">Loading books…</div>}
+
+          {booksQuery.data && sortedBooks.length === 0 && (
+            <div className="centered-message">
+              {search || format || minRating || groupFilter
+                ? "No books match these filters."
+                : 'No books yet. Click "Import Book(s)" or drag EPUB/PDF files onto this window.'}
+            </div>
+          )}
+
+          {sortedBooks.length > 0 &&
+            (viewMode === "grid" ? (
+              <BookGrid books={sortedBooks} onSelect={setSelectedBookId} />
+            ) : (
+              <BookList books={sortedBooks} onSelect={setSelectedBookId} />
+            ))}
         </div>
-      )}
-
-      {sortedBooks.length > 0 &&
-        (viewMode === "grid" ? (
-          <BookGrid books={sortedBooks} onSelect={setSelectedBookId} />
-        ) : (
-          <BookList books={sortedBooks} onSelect={setSelectedBookId} />
-        ))}
+      </div>
 
       {selectedBookId && (
         <BookDetailPanel bookId={selectedBookId} onClose={() => setSelectedBookId(null)} />

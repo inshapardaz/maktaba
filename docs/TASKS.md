@@ -35,12 +35,16 @@ Verified in this environment via `dotnet build` (whole solution) and a full HTTP
 
 ## M2 — PDF Support + Editing
 
-- [ ] `Maktaba.Metadata`: PDF parser (`PdfPig`) — info dict / XMP metadata
-- [ ] PDF cover fallback: render first page to an image (e.g. `PDFtoImage`) when no embedded cover exists
-- [ ] API: `PUT /books/{id}` (metadata edit); CRUD for tags/series/authors as needed by the editor
-- [ ] Frontend: metadata editor (title, authors, series+index, tags, rating, description, language, publisher, date)
-- [ ] Frontend: search bar (title/author/series/tag) + filter panel (author, series, tag, format, rating)
-- [ ] Frontend: browse-by-group views (author / series / tag)
+- [x] `Maktaba.Metadata`: PDF parser (`PdfPig`) — info dict (title, author, subject-as-description, creation date). The standard PDF info dictionary has no publisher/language/identifier fields (unlike EPUB's OPF metadata), so those stay null for PDFs.
+- [x] PDF cover fallback: first page rendered via `PDFtoImage`/PDFium (bundled cross-platform natives for win/linux/macOS) since PDFs have no embedded-cover concept; failures (encrypted/malformed PDFs) are swallowed so import still proceeds without a cover
+- [x] API: `PUT /api/books/{id}` (metadata edit — DB only, no on-disk rename; that's M3). Authors/series/tags are find-or-create by case-insensitive name, via a resolver shared with the import path (`EntityResolvers`, `Maktaba.Data/Services`)
+- [x] Frontend: metadata editor (title, authors, series+index, tags, rating, description, language, publisher, date)
+- [x] Frontend: search bar (title/author/series/tag, debounced) + filter panel (format, min rating) on `GET /api/books`
+- [x] Frontend: browse-by-group sidebar (author / series / tag, each with book counts via `GET /api/authors|series|tags`), clicking a group filters the book list
+
+Two real bugs turned up and were fixed during smoke testing (both verified against a real PDF ebook, not just the synthetic EPUB): (1) newly-created `Author`/`Series`/`Tag` entities reached only through a new join row's reference navigation weren't reliably cascade-inserted by EF Core's change tracker, causing a `FOREIGN KEY constraint failed` on edit — fixed by explicitly `db.Add()`-ing them in `EntityResolvers`; (2) the browse-group endpoints filtered on a computed property *after* projecting into the DTO, which EF Core can't translate to SQL — fixed by filtering on the raw navigation `.Count` before `.Select()`.
+
+Verified end-to-end against real files: a real PDF ebook (from Downloads) imported with correct title/author/date and a real rendered cover thumbnail; an EPUB and a PDF coexisting in one library; edits persisting correctly including a tag shared across two separate edit calls (find-or-create correctly reused the existing tag rather than duplicating it); format/rating/search/group filters all verified via curl. Frontend and desktop both type-check and production-build. **Not verified here:** the Electron GUI itself — same `ELECTRON_RUN_AS_NODE=1` sandbox limitation as M0/M1.
 
 ## M3 — File Organization & Duplicates
 

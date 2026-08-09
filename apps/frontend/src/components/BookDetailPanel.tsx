@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getBook, coverUrl } from "../api";
+import { BookEditForm } from "./BookEditForm";
 
 interface BookDetailPanelProps {
   bookId: string;
@@ -7,6 +9,8 @@ interface BookDetailPanelProps {
 }
 
 export function BookDetailPanel({ bookId, onClose }: BookDetailPanelProps) {
+  const [isEditing, setEditing] = useState(false);
+
   const {
     data: book,
     isLoading,
@@ -15,6 +19,12 @@ export function BookDetailPanel({ bookId, onClose }: BookDetailPanelProps) {
     queryKey: ["book", bookId],
     queryFn: () => getBook(bookId),
   });
+
+  if (isEditing) {
+    return (
+      <BookEditForm bookId={bookId} onClose={() => setEditing(false)} onSaved={() => setEditing(false)} />
+    );
+  }
 
   return (
     <div className="book-detail-overlay" onClick={onClose}>
@@ -47,6 +57,9 @@ export function BookDetailPanel({ bookId, onClose }: BookDetailPanelProps) {
                   {"★".repeat(book.rating)}
                   {"☆".repeat(5 - book.rating)}
                 </p>
+                <button type="button" onClick={() => setEditing(true)}>
+                  Edit
+                </button>
               </div>
             </div>
 

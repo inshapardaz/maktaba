@@ -1,4 +1,5 @@
 using Maktaba.Api.Dtos;
+using Maktaba.Core.Entities;
 using Maktaba.Core.Services;
 using Maktaba.Data;
 using Microsoft.EntityFrameworkCore;
@@ -11,14 +12,66 @@ public static class BookEndpoints
     {
         var group = app.MapGroup("/api/books");
 
-        group.MapGet("", async (MaktabaDbContext db, ILibraryPathProvider libraryPath) =>
+        group.MapGet("", async (
+            MaktabaDbContext db,
+            ILibraryPathProvider libraryPath,
+            string? search,
+            Guid? authorId,
+            Guid? seriesId,
+            Guid? tagId,
+            string? format,
+            int? minRating) =>
         {
             var root = libraryPath.LibraryRootPath!;
 
-            var books = await db.Books
+            var query = db.Books
                 .Include(b => b.BookAuthors).ThenInclude(ba => ba.Author)
+                .Include(b => b.BookSeries).ThenInclude(bs => bs.Series)
+                .Include(b => b.BookTags).ThenInclude(bt => bt.Tag)
+                .Include(b => b.Files)
                 .AsNoTracking()
-                .ToListAsync();
+                .AsQueryable();
+
+            if (authorId is { } aId)
+            {
+                query = query.Where(b => b.BookAuthors.Any(ba => ba.AuthorId == aId));
+            }
+
+            if (seriesId is { } sId)
+            {
+                query = query.Where(b => b.BookSeries.Any(bs => bs.SeriesId == sId));
+            }
+
+            if (tagId is { } tId)
+            {
+                query = query.Where(b => b.BookTags.Any(bt => bt.TagId == tId));
+            }
+
+            if (minRating is { } rating)
+            {
+                query = query.Where(b => b.Rating >= rating);
+            }
+
+            if (Enum.TryParse<BookFormat>(format, ignoreCase: true, out var parsedFormat))
+            {
+                query = query.Where(b => b.Files.Any(f => f.Format == parsedFormat));
+            }
+
+            var books = await query.ToListAsync();
+
+            // Free-text search runs against the already-materialized list: EF Core can't translate the
+            // StringComparison overload of Contains to SQL, and this dataset is small enough (v1: single
+            // local library) that in-memory filtering after the SQL-side filters above is simplest.
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                var term = search.Trim();
+                books = books.Where(b =>
+                    b.Title.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                    b.BookAuthors.Any(ba => ba.Author.Name.Contains(term, StringComparison.OrdinalIgnoreCase)) ||
+                    b.BookSeries.Any(bs => bs.Series.Name.Contains(term, StringComparison.OrdinalIgnoreCase)) ||
+                    b.BookTags.Any(bt => bt.Tag.Name.Contains(term, StringComparison.OrdinalIgnoreCase))
+                ).ToList();
+            }
 
             var dtos = books
                 .OrderBy(b => b.SortTitle, StringComparer.OrdinalIgnoreCase)
@@ -95,6 +148,30 @@ public static class BookEndpoints
             return cover is { } found
                 ? Results.File(found.FilePath, found.ContentType)
                 : Results.NotFound();
+        });
+
+        group.MapPut("/{id:guid}", async (
+            Guid id, BookEditRequestDto request, IBookEditService editService, CancellationToken ct) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.Title))
+            {
+                return Results.BadRequest(new { error = "Title is required." });
+            }
+
+            var editRequest = new BookEditRequest(
+                request.Title.Trim(),
+                request.Authors,
+                request.Language,
+                request.Publisher,
+                request.PublishedDate,
+                request.Description,
+                request.Rating,
+                request.SeriesName,
+                request.SeriesIndex,
+                request.Tags);
+
+            var book = await editService.UpdateAsync(id, editRequest, ct);
+            return book is null ? Results.NotFound() : Results.NoContent();
         });
 
         group.MapPost("/import", async (ImportBookRequest request, IImportService importService, CancellationToken ct) =>

@@ -29,7 +29,9 @@ builder.Services.AddSingleton<ILibraryPathProvider>(sp => sp.GetRequiredService<
 builder.Services.AddScoped(sp => MaktabaDbContextFactory.Create(sp.GetRequiredService<ILibraryPathProvider>()));
 
 builder.Services.AddSingleton<IBookMetadataExtractor, EpubMetadataExtractor>();
+builder.Services.AddSingleton<IBookMetadataExtractor, PdfMetadataExtractor>();
 builder.Services.AddScoped<IImportService, ImportService>();
+builder.Services.AddScoped<IBookEditService, BookEditService>();
 
 var app = builder.Build();
 
@@ -81,5 +83,6 @@ app.MapGet("/api/hello", () => Results.Ok(new { message = "Hello from Maktaba.Ap
 
 app.MapLibraryEndpoints();
 app.MapBookEndpoints();
+app.MapBrowseEndpoints();
 
 app.Run();

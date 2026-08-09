@@ -35,6 +35,34 @@ export interface LibraryInfo {
   path: string;
 }
 
+export interface BrowseGroup {
+  id: string;
+  name: string;
+  bookCount: number;
+}
+
+export interface BookEditRequest {
+  title: string;
+  authors: string[];
+  language: string | null;
+  publisher: string | null;
+  publishedDate: string | null;
+  description: string | null;
+  rating: number;
+  seriesName: string | null;
+  seriesIndex: number | null;
+  tags: string[];
+}
+
+export interface BookFilters {
+  search?: string;
+  authorId?: string;
+  seriesId?: string;
+  tagId?: string;
+  format?: string;
+  minRating?: number;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const { apiBaseUrl, token } = window.maktaba;
 
@@ -76,8 +104,17 @@ export function openLibrary(path: string): Promise<LibraryInfo> {
   });
 }
 
-export function listBooks(): Promise<BookSummary[]> {
-  return request<BookSummary[]>("/api/books");
+export function listBooks(filters: BookFilters = {}): Promise<BookSummary[]> {
+  const params = new URLSearchParams();
+  if (filters.search) params.set("search", filters.search);
+  if (filters.authorId) params.set("authorId", filters.authorId);
+  if (filters.seriesId) params.set("seriesId", filters.seriesId);
+  if (filters.tagId) params.set("tagId", filters.tagId);
+  if (filters.format) params.set("format", filters.format);
+  if (filters.minRating) params.set("minRating", String(filters.minRating));
+
+  const query = params.toString();
+  return request<BookSummary[]>(`/api/books${query ? `?${query}` : ""}`);
 }
 
 export function getBook(id: string): Promise<BookDetail> {
@@ -89,6 +126,25 @@ export function importBook(filePath: string): Promise<{ id: string }> {
     method: "POST",
     body: JSON.stringify({ filePath }),
   });
+}
+
+export function updateBook(id: string, edit: BookEditRequest): Promise<void> {
+  return request<void>(`/api/books/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(edit),
+  });
+}
+
+export function listAuthors(): Promise<BrowseGroup[]> {
+  return request<BrowseGroup[]>("/api/authors");
+}
+
+export function listSeries(): Promise<BrowseGroup[]> {
+  return request<BrowseGroup[]>("/api/series");
+}
+
+export function listTags(): Promise<BrowseGroup[]> {
+  return request<BrowseGroup[]>("/api/tags");
 }
 
 export function coverUrl(id: string): string {

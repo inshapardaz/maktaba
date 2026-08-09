@@ -27,7 +27,7 @@ public class ImportService(
         var bookId = Guid.NewGuid();
         var sortTitle = TitleSorting.ComputeSortTitle(metadata.Title);
 
-        var authors = await ResolveAuthorsAsync(metadata.Authors, ct);
+        var authors = await EntityResolvers.ResolveAuthorsAsync(db, metadata.Authors, ct);
 
         var authorFolderSegment = FileNaming.SanitizePathSegment(
             authors.Count > 0 ? authors[0].SortName : "Unknown Author");
@@ -96,31 +96,6 @@ public class ImportService(
             Directory.Delete(absoluteFolder, recursive: true);
             throw;
         }
-    }
-
-    private async Task<List<Author>> ResolveAuthorsAsync(IReadOnlyList<string> authorNames, CancellationToken ct)
-    {
-        var authors = new List<Author>();
-
-        foreach (var name in authorNames)
-        {
-            var trimmedName = name.Trim();
-            if (trimmedName.Length == 0)
-            {
-                continue;
-            }
-
-            var existing = await db.Authors.FirstOrDefaultAsync(
-                a => a.Name.ToLower() == trimmedName.ToLower(), ct);
-
-            authors.Add(existing ?? new Author
-            {
-                Name = trimmedName,
-                SortName = TitleSorting.ComputeAuthorSortName(trimmedName),
-            });
-        }
-
-        return authors;
     }
 
     private static BookFormat DetectFormat(string filePath) => Path.GetExtension(filePath).ToLowerInvariant() switch
