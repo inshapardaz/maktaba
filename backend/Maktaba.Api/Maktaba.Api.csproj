@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Maktaba.Core\Maktaba.Core.csproj" />
+    <ProjectReference Include="..\Maktaba.Data\Maktaba.Data.csproj" />
+    <ProjectReference Include="..\Maktaba.Metadata\Maktaba.Metadata.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+</Project>

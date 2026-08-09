@@ -1,0 +1,30 @@
+# Node
+node_modules/
+npm-debug.log*
+dist/
+dist-electron/
+release/
+.vite/
+
+# .NET
+bin/
+obj/
+*.user
+*.dbmdl
+
+# SQLite / library data used during local dev
+*.db
+*.db-shm
+*.db-wal
+
+# Editor/OS
+.vs/
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+.env.local

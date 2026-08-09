@@ -1,0 +1,21 @@
+{
+  "name": "maktaba",
+  "private": true,
+  "version": "0.0.0",
+  "workspaces": [
+    "apps/frontend",
+    "apps/desktop"
+  ],
+  "scripts": {
+    "dev:frontend": "npm run dev --workspace maktaba-frontend",
+    "dev:desktop:build": "npm run build --workspace maktaba-desktop -- --watch",
+    "dev:electron": "wait-on tcp:5173 apps/desktop/dist/main.js --window 250 && electron apps/desktop",
+    "dev": "concurrently -k -n frontend,desktop,electron -c blue,green,magenta \"npm:dev:frontend\" \"npm:dev:desktop:build\" \"npm:dev:electron\"",
+    "build:frontend": "npm run build --workspace maktaba-frontend",
+    "build:desktop": "npm run build --workspace maktaba-desktop"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0",
+    "wait-on": "^8.0.0"
+  }
+}
