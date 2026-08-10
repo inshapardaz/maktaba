@@ -1,3 +1,5 @@
+export type ReadingStatus = "Unread" | "Reading" | "Finished";
+
 export interface BookSummary {
   id: string;
   title: string;
@@ -6,6 +8,7 @@ export interface BookSummary {
   rating: number;
   dateAdded: string;
   hasCover: boolean;
+  readingStatus: ReadingStatus;
 }
 
 export interface BookFileInfo {
@@ -19,6 +22,11 @@ export interface Identifier {
   value: string;
 }
 
+export interface BookCollectionRef {
+  id: string;
+  name: string;
+}
+
 export interface BookDetail extends BookSummary {
   description: string | null;
   language: string | null;
@@ -29,6 +37,7 @@ export interface BookDetail extends BookSummary {
   tags: string[];
   identifiers: Identifier[];
   files: BookFileInfo[];
+  collections: BookCollectionRef[];
 }
 
 export interface LibraryInfo {
@@ -52,6 +61,7 @@ export interface BookEditRequest {
   seriesName: string | null;
   seriesIndex: number | null;
   tags: string[];
+  collectionIds: string[];
 }
 
 export interface BookFilters {
@@ -59,8 +69,15 @@ export interface BookFilters {
   authorId?: string;
   seriesId?: string;
   tagId?: string;
+  collectionId?: string;
+  readingStatus?: ReadingStatus;
   format?: string;
   minRating?: number;
+}
+
+export interface ReadingStatusCount {
+  status: ReadingStatus;
+  count: number;
 }
 
 export interface DuplicateBookInfo {
@@ -129,6 +146,8 @@ export function listBooks(filters: BookFilters = {}): Promise<BookSummary[]> {
   if (filters.authorId) params.set("authorId", filters.authorId);
   if (filters.seriesId) params.set("seriesId", filters.seriesId);
   if (filters.tagId) params.set("tagId", filters.tagId);
+  if (filters.collectionId) params.set("collectionId", filters.collectionId);
+  if (filters.readingStatus) params.set("readingStatus", filters.readingStatus);
   if (filters.format) params.set("format", filters.format);
   if (filters.minRating) params.set("minRating", String(filters.minRating));
 
@@ -172,6 +191,58 @@ export function listSeries(): Promise<BrowseGroup[]> {
 
 export function listTags(): Promise<BrowseGroup[]> {
   return request<BrowseGroup[]>("/api/tags");
+}
+
+export function listCollections(): Promise<BrowseGroup[]> {
+  return request<BrowseGroup[]>("/api/collections");
+}
+
+export function createCollection(name: string): Promise<BrowseGroup> {
+  return request<BrowseGroup>("/api/collections", {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+}
+
+export function deleteCollection(id: string): Promise<void> {
+  return request<void>(`/api/collections/${id}`, { method: "DELETE" });
+}
+
+export function listReadingStatusCounts(): Promise<ReadingStatusCount[]> {
+  return request<ReadingStatusCount[]>("/api/reading-statuses");
+}
+
+export function updateBookStatus(id: string, readingStatus: ReadingStatus): Promise<void> {
+  return request<void>(`/api/books/${id}/status`, {
+    method: "PATCH",
+    body: JSON.stringify({ readingStatus }),
+  });
+}
+
+export interface SystemCapabilities {
+  calibreAvailable: boolean;
+}
+
+export function getSystemCapabilities(): Promise<SystemCapabilities> {
+  return request<SystemCapabilities>("/api/system/capabilities");
+}
+
+export function convertBook(id: string, targetFormat: "Epub" | "Pdf"): Promise<BookFileInfo> {
+  return request<BookFileInfo>(`/api/books/${id}/convert`, {
+    method: "POST",
+    body: JSON.stringify({ targetFormat }),
+  });
+}
+
+export async function getBookFile(id: string, format: "Epub" | "Pdf"): Promise<ArrayBuffer> {
+  const { apiBaseUrl, token } = window.maktaba;
+  const res = await fetch(`${apiBaseUrl}/api/books/${id}/file?format=${format}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to load book file (${res.status}).`);
+  }
+  return res.arrayBuffer();
 }
 
 export function coverUrl(id: string): string {

@@ -1,19 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AppShell, Box, Center, Loader, Overlay, Stack, Text, Modal, Group, Button } from "@mantine/core";
-import { notifications } from "@mantine/notifications";
+import { AppShell, Box, Center, Loader, Overlay, Text, Group } from "@mantine/core";
 import { IconUpload } from "@tabler/icons-react";
-import {
-  getCurrentLibrary,
-  importBook,
-  listBooks,
-  rescanLibrary,
-  DuplicateBookError,
-  type BookFilters,
-  type BookSummary,
-  type DuplicateAction,
-  type DuplicateBookInfo,
-} from "./api";
+import { getCurrentLibrary, listBooks, type BookFilters, type BookSummary } from "./api";
 import { LibraryPicker } from "./components/LibraryPicker";
 import { Toolbar, type SortKey, type ViewMode } from "./components/Toolbar";
 import { BookGrid } from "./components/BookGrid";
@@ -21,7 +10,9 @@ import { BookList } from "./components/BookList";
 import { BookDetailPanel } from "./components/BookDetailPanel";
 import { Sidebar, type GroupFilter } from "./components/Sidebar";
 import { FilterBar } from "./components/FilterBar";
-import { DuplicateDialog } from "./components/DuplicateDialog";
+import { ImportDialog } from "./components/ImportDialog";
+import { SettingsScreen } from "./components/SettingsScreen";
+import { invalidateLibraryQueries } from "./queries";
 import { useLanguage } from "./i18n/LanguageContext";
 
 const EBOOK_EXTENSIONS = [".epub", ".pdf"];
@@ -54,44 +45,15 @@ function useDebounced<T>(value: T, delayMs: number): T {
   return debounced;
 }
 
-function invalidateLibraryQueries(queryClient: ReturnType<typeof useQueryClient>) {
-  void queryClient.invalidateQueries({ queryKey: ["books"] });
-  void queryClient.invalidateQueries({ queryKey: ["authors"] });
-  void queryClient.invalidateQueries({ queryKey: ["series"] });
-  void queryClient.invalidateQueries({ queryKey: ["tags"] });
-}
-
-function notifyError(title: string, message: string) {
-  notifications.show({
-    color: "red",
-    title,
-    message: (
-      <Stack gap={2}>
-        {message.split("\n").map((line, i) => (
-          <Text key={i} size="sm">
-            {line}
-          </Text>
-        ))}
-      </Stack>
-    ),
-    autoClose: 8000,
-  });
-}
-
 function App() {
   const { t } = useLanguage();
   const queryClient = useQueryClient();
+  const [mainView, setMainView] = useState<"library" | "settings">("library");
   const [sortKey, setSortKey] = useState<SortKey>("title");
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null);
   const [isDragActive, setDragActive] = useState(false);
-  const [isImporting, setImporting] = useState(false);
-  const [isRescanning, setRescanning] = useState(false);
-  const [rescanConfirmOpen, setRescanConfirmOpen] = useState(false);
-  const [pendingDuplicate, setPendingDuplicate] = useState<{ filePath: string; info: DuplicateBookInfo } | null>(
-    null,
-  );
-  const duplicateResolverRef = useRef<((action: DuplicateAction | "cancel") => void) | null>(null);
+  const [importFiles, setImportFiles] = useState<string[] | null>(null);
 
   const [search, setSearch] = useState("");
   const [format, setFormat] = useState("");
@@ -106,6 +68,8 @@ function App() {
     authorId: groupFilter?.kind === "authorId" ? groupFilter.id : undefined,
     seriesId: groupFilter?.kind === "seriesId" ? groupFilter.id : undefined,
     tagId: groupFilter?.kind === "tagId" ? groupFilter.id : undefined,
+    collectionId: groupFilter?.kind === "collectionId" ? groupFilter.id : undefined,
+    readingStatus: groupFilter?.kind === "readingStatus" ? (groupFilter.id as BookFilters["readingStatus"]) : undefined,
   };
 
   const libraryQuery = useQuery({
@@ -131,60 +95,18 @@ function App() {
         ? t("toolbar.filterAuthor")
         : groupFilter.kind === "seriesId"
           ? t("toolbar.filterSeries")
-          : t("toolbar.filterTag");
+          : groupFilter.kind === "tagId"
+            ? t("toolbar.filterTag")
+            : groupFilter.kind === "collectionId"
+              ? t("toolbar.filterCollection")
+              : t("toolbar.filterStatus");
     return `${kindLabel}: ${groupFilter.name}`;
   }, [groupFilter, t]);
-
-  function askUserForDuplicateAction(filePath: string, info: DuplicateBookInfo): Promise<DuplicateAction | "cancel"> {
-    return new Promise((resolve) => {
-      duplicateResolverRef.current = resolve;
-      setPendingDuplicate({ filePath, info });
-    });
-  }
-
-  function resolveDuplicate(action: DuplicateAction | "cancel") {
-    setPendingDuplicate(null);
-    duplicateResolverRef.current?.(action);
-    duplicateResolverRef.current = null;
-  }
-
-  async function runImport(filePaths: string[]) {
-    setImporting(true);
-    const errors: string[] = [];
-
-    filePathLoop: for (const filePath of filePaths) {
-      let action: DuplicateAction | undefined;
-
-      for (;;) {
-        try {
-          await importBook(filePath, action);
-          break;
-        } catch (err) {
-          if (err instanceof DuplicateBookError) {
-            const choice = await askUserForDuplicateAction(filePath, err.duplicate);
-            if (choice === "cancel") {
-              break filePathLoop;
-            }
-            action = choice;
-            continue;
-          }
-          errors.push(`${filePath}: ${err instanceof Error ? err.message : String(err)}`);
-          break;
-        }
-      }
-    }
-
-    setImporting(false);
-    invalidateLibraryQueries(queryClient);
-    if (errors.length > 0) {
-      notifyError(t("app.importFailedTitle"), errors.join("\n"));
-    }
-  }
 
   const handleImportClick = async () => {
     const files = await window.maktaba.pickEbookFiles();
     if (files.length > 0) {
-      void runImport(files);
+      setImportFiles(files);
     }
   };
 
@@ -197,21 +119,19 @@ function App() {
       .filter(isEbookPath);
 
     if (paths.length > 0) {
-      void runImport(paths);
+      setImportFiles(paths);
     }
   };
 
-  const handleRescan = async () => {
-    setRescanConfirmOpen(false);
-    setRescanning(true);
-    try {
-      await rescanLibrary();
-      invalidateLibraryQueries(queryClient);
-    } catch (err) {
-      notifyError(t("app.rescanFailedTitle"), err instanceof Error ? err.message : String(err));
-    } finally {
-      setRescanning(false);
-    }
+  const handleLibraryChanged = () => {
+    setSelectedBookId(null);
+    setGroupFilter(null);
+    setSearch("");
+    setFormat("");
+    setMinRating(0);
+    void queryClient.invalidateQueries({ queryKey: ["library"] });
+    invalidateLibraryQueries(queryClient);
+    setMainView("library");
   };
 
   if (libraryQuery.isLoading) {
@@ -240,7 +160,6 @@ function App() {
       <AppShell header={{ height: 60 }} navbar={{ width: 232, breakpoint: 0 }} padding={0}>
         <AppShell.Header>
           <Toolbar
-            libraryPath={libraryQuery.data.path}
             contextLabel={contextLabel}
             search={search}
             onSearchChange={setSearch}
@@ -249,47 +168,55 @@ function App() {
             viewMode={viewMode}
             onViewModeChange={setViewMode}
             onImport={handleImportClick}
-            importing={isImporting}
-            onRescan={() => setRescanConfirmOpen(true)}
-            rescanning={isRescanning}
             bookCount={sortedBooks.length}
           />
         </AppShell.Header>
 
         <AppShell.Navbar>
-          <Sidebar activeFilter={groupFilter} onSelect={setGroupFilter} />
+          <Sidebar
+            activeFilter={groupFilter}
+            onSelect={setGroupFilter}
+            settingsActive={mainView === "settings"}
+            onOpenSettings={() => setMainView("settings")}
+          />
         </AppShell.Navbar>
 
         <AppShell.Main style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
-          <FilterBar
-            format={format}
-            onFormatChange={setFormat}
-            minRating={minRating}
-            onMinRatingChange={setMinRating}
-            activeGroupLabel={groupFilter?.name ?? null}
-            onClearGroup={() => setGroupFilter(null)}
-          />
+          {mainView === "settings" ? (
+            <SettingsScreen libraryPath={libraryQuery.data.path} onLibraryChanged={handleLibraryChanged} />
+          ) : (
+            <>
+              <FilterBar
+                format={format}
+                onFormatChange={setFormat}
+                minRating={minRating}
+                onMinRatingChange={setMinRating}
+                activeGroupLabel={groupFilter?.name ?? null}
+                onClearGroup={() => setGroupFilter(null)}
+              />
 
-          {booksQuery.isLoading && (
-            <Center style={{ flex: 1 }}>
-              <Loader />
-            </Center>
+              {booksQuery.isLoading && (
+                <Center style={{ flex: 1 }}>
+                  <Loader />
+                </Center>
+              )}
+
+              {booksQuery.data && sortedBooks.length === 0 && (
+                <Center style={{ flex: 1 }} p="xl">
+                  <Text c="dimmed" ta="center">
+                    {search || format || minRating || groupFilter ? t("app.noResults") : t("app.emptyLibrary")}
+                  </Text>
+                </Center>
+              )}
+
+              {sortedBooks.length > 0 &&
+                (viewMode === "grid" ? (
+                  <BookGrid books={sortedBooks} onSelect={setSelectedBookId} />
+                ) : (
+                  <BookList books={sortedBooks} onSelect={setSelectedBookId} />
+                ))}
+            </>
           )}
-
-          {booksQuery.data && sortedBooks.length === 0 && (
-            <Center style={{ flex: 1 }} p="xl">
-              <Text c="dimmed" ta="center">
-                {search || format || minRating || groupFilter ? t("app.noResults") : t("app.emptyLibrary")}
-              </Text>
-            </Center>
-          )}
-
-          {sortedBooks.length > 0 &&
-            (viewMode === "grid" ? (
-              <BookGrid books={sortedBooks} onSelect={setSelectedBookId} />
-            ) : (
-              <BookList books={sortedBooks} onSelect={setSelectedBookId} />
-            ))}
         </AppShell.Main>
       </AppShell>
 
@@ -304,27 +231,13 @@ function App() {
         />
       )}
 
-      {pendingDuplicate && (
-        <DuplicateDialog
-          filePath={pendingDuplicate.filePath}
-          info={pendingDuplicate.info}
-          onResolve={resolveDuplicate}
+      {importFiles && (
+        <ImportDialog
+          initialFiles={importFiles}
+          onClose={() => setImportFiles(null)}
+          onImported={() => invalidateLibraryQueries(queryClient)}
         />
       )}
-
-      <Modal opened={rescanConfirmOpen} onClose={() => setRescanConfirmOpen(false)} title={t("app.rescanTitle")} centered>
-        <Text size="sm" mb="md">
-          {t("app.rescanBody")}
-        </Text>
-        <Group justify="flex-end">
-          <Button variant="default" onClick={() => setRescanConfirmOpen(false)}>
-            {t("common.cancel")}
-          </Button>
-          <Button color="red" onClick={() => void handleRescan()}>
-            {t("app.rescanConfirm")}
-          </Button>
-        </Group>
-      </Modal>
 
       {isDragActive && (
         <Overlay color="var(--mantine-color-accent-7)" backgroundOpacity={0.15} zIndex={1000}>

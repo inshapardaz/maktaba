@@ -23,10 +23,13 @@ public partial class LibraryRescanService(
         var libraryRoot = libraryPath.LibraryRootPath!;
 
         // Wipe the index (children before parents, to satisfy FK constraints) - metadata.db is designed
-        // to be a rebuildable cache over the on-disk layout (see docs/SPEC.md §4).
+        // to be a rebuildable cache over the on-disk layout (see docs/SPEC.md §4). Collections
+        // themselves are user-authored (not derived from file metadata) and survive a rescan, but
+        // per-book membership does not - it's re-set explicitly, same as ratings and reading status.
         await db.BookAuthors.ExecuteDeleteAsync(ct);
         await db.BookSeries.ExecuteDeleteAsync(ct);
         await db.BookTags.ExecuteDeleteAsync(ct);
+        await db.BookCollections.ExecuteDeleteAsync(ct);
         await db.Identifiers.ExecuteDeleteAsync(ct);
         await db.BookFiles.ExecuteDeleteAsync(ct);
         await db.Books.ExecuteDeleteAsync(ct);

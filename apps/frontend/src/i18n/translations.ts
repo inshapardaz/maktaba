@@ -18,10 +18,7 @@ const en = {
   "libraryPicker.errorTitle": "Couldn't open library",
 
   "toolbar.import": "Import Book(s)",
-  "toolbar.importing": "Importing…",
   "toolbar.rescan": "Rescan Library",
-  "toolbar.rescanning": "Rescanning…",
-  "toolbar.rescanTooltip": "Rebuild the library index from files on disk",
   "toolbar.bookCount_one": "{count} book",
   "toolbar.bookCount_other": "{count} books",
   "toolbar.sortBy": "Sort by",
@@ -38,10 +35,27 @@ const en = {
   "toolbar.filterAuthor": "Author",
   "toolbar.filterSeries": "Series",
   "toolbar.filterTag": "Tag",
+  "toolbar.filterCollection": "Collection",
+  "toolbar.filterStatus": "Status",
 
   "sidebar.authors": "Authors",
   "sidebar.series": "Series",
   "sidebar.tags": "Tags",
+  "sidebar.collections": "Collections",
+  "sidebar.manage": "Manage",
+  "sidebar.readingStatus": "Reading status",
+
+  "readingStatus.unread": "Unread",
+  "readingStatus.reading": "Reading",
+  "readingStatus.finished": "Finished",
+
+  "collectionsManager.title": "Manage collections",
+  "collectionsManager.namePlaceholder": "New collection name",
+  "collectionsManager.add": "Add",
+  "collectionsManager.empty": "No collections yet.",
+  "collectionsManager.confirmDelete": "Delete this collection? Books stay in your library.",
+  "collectionsManager.bookCount_one": "{count} book",
+  "collectionsManager.bookCount_other": "{count} books",
 
   "filterBar.allFormats": "All formats",
   "filterBar.anyRating": "Any rating",
@@ -50,6 +64,7 @@ const en = {
   "bookList.author": "Author",
   "bookList.rating": "Rating",
   "bookList.dateAdded": "Date added",
+  "bookList.status": "Status",
 
   "bookDetail.defaultTitle": "Book details",
   "bookDetail.edit": "Edit",
@@ -61,6 +76,9 @@ const en = {
   "bookDetail.files": "Files",
   "bookDetail.open": "Open",
   "bookDetail.showInFolder": "Show in folder",
+  "bookDetail.readingStatus": "Reading status",
+  "bookDetail.collections": "Collections",
+  "bookDetail.read": "Read",
 
   "bookEdit.title": "Edit book",
   "bookEdit.titleField": "Title",
@@ -75,6 +93,7 @@ const en = {
   "bookEdit.rating": "Rating",
   "bookEdit.unrated": "Unrated",
   "bookEdit.description": "Description",
+  "bookEdit.collections": "Collections",
 
   "duplicate.title": "Possible duplicate",
   "duplicate.sameFile": "This exact file is already in your library as:",
@@ -87,13 +106,42 @@ const en = {
 
   "app.noResults": "No books match these filters.",
   "app.emptyLibrary": 'No books yet. Click "Import Book(s)" or drag EPUB/PDF files onto this window.',
-  "app.importFailedTitle": "Some files failed to import",
   "app.rescanFailedTitle": "Rescan failed",
-  "app.rescanTitle": "Rescan library",
   "app.rescanBody":
-    "Rebuild the library index from the files on disk? Ratings, tags, series, and any manual corrections not reflected in the files themselves will be lost and re-derived from each file's embedded metadata.",
+    "Rebuild the library index from the files on disk? Ratings, tags, series, reading status, and collection assignments will be reset, and any manual corrections not reflected in the files themselves will be lost and re-derived from each file's embedded metadata.",
   "app.rescanConfirm": "Rescan",
   "app.dropToImport": "Drop EPUB/PDF files to import",
+
+  "settings.title": "Settings",
+  "settings.library": "Library",
+  "settings.libraryPath": "Library folder",
+  "settings.changeLibrary": "Change library…",
+  "settings.changeLibraryErrorTitle": "Couldn't open library",
+  "settings.appearance": "Appearance",
+  "settings.language": "Language",
+  "settings.colorScheme": "Color scheme",
+  "settings.import": "Import",
+  "settings.defaultConvertFormat": "Default \"convert to\" format for new imports",
+  "settings.maintenance": "Library maintenance",
+
+  "importDialog.title": "Import books",
+  "importDialog.dropzoneTitle": "Drag EPUB/PDF files here",
+  "importDialog.browse": "Browse files…",
+  "importDialog.convertTo": "Also convert to",
+  "importDialog.convertNone": "Don't convert",
+  "importDialog.calibreUnavailable": "Calibre's ebook-convert isn't installed, or isn't on PATH",
+  "importDialog.statusPending": "Waiting…",
+  "importDialog.statusImporting": "Importing…",
+  "importDialog.statusConverting": "Converting…",
+  "importDialog.statusDone": "Imported",
+  "importDialog.statusError": "Failed",
+  "importDialog.statusSkipped": "Skipped",
+  "importDialog.empty": "No files yet — drop EPUB/PDF files above, or browse.",
+  "importDialog.close": "Close",
+
+  "reader.close": "Close reader",
+  "reader.loadErrorTitle": "Couldn't load book",
+  "reader.errorTitle": "Reader error",
 };
 
 export type TranslationKey = keyof typeof en;
@@ -112,10 +160,7 @@ const ur: TranslationDict = {
   "libraryPicker.errorTitle": "لائبریری نہیں کھل سکی",
 
   "toolbar.import": "کتاب درآمد کریں",
-  "toolbar.importing": "درآمد ہو رہی ہے…",
   "toolbar.rescan": "لائبریری دوبارہ اسکین کریں",
-  "toolbar.rescanning": "دوبارہ اسکین ہو رہا ہے…",
-  "toolbar.rescanTooltip": "ڈسک پر موجود فائلوں سے لائبریری انڈیکس دوبارہ تشکیل دیں",
   "toolbar.bookCount_one": "{count} کتاب",
   "toolbar.bookCount_other": "{count} کتابیں",
   "toolbar.sortBy": "ترتیب",
@@ -132,10 +177,27 @@ const ur: TranslationDict = {
   "toolbar.filterAuthor": "مصنف",
   "toolbar.filterSeries": "سیریز",
   "toolbar.filterTag": "ٹیگ",
+  "toolbar.filterCollection": "مجموعہ",
+  "toolbar.filterStatus": "حیثیت",
 
   "sidebar.authors": "مصنفین",
   "sidebar.series": "سیریز",
   "sidebar.tags": "ٹیگز",
+  "sidebar.collections": "مجموعے",
+  "sidebar.manage": "انتظام کریں",
+  "sidebar.readingStatus": "مطالعے کی حیثیت",
+
+  "readingStatus.unread": "نامطالعہ شدہ",
+  "readingStatus.reading": "زیرِ مطالعہ",
+  "readingStatus.finished": "مکمل شدہ",
+
+  "collectionsManager.title": "مجموعوں کا انتظام",
+  "collectionsManager.namePlaceholder": "نئے مجموعے کا نام",
+  "collectionsManager.add": "شامل کریں",
+  "collectionsManager.empty": "ابھی کوئی مجموعہ موجود نہیں۔",
+  "collectionsManager.confirmDelete": "یہ مجموعہ حذف کریں؟ کتابیں آپ کی لائبریری میں رہیں گی۔",
+  "collectionsManager.bookCount_one": "{count} کتاب",
+  "collectionsManager.bookCount_other": "{count} کتابیں",
 
   "filterBar.allFormats": "تمام فارمیٹس",
   "filterBar.anyRating": "کوئی بھی درجہ بندی",
@@ -144,6 +206,7 @@ const ur: TranslationDict = {
   "bookList.author": "مصنف",
   "bookList.rating": "درجہ بندی",
   "bookList.dateAdded": "شامل کرنے کی تاریخ",
+  "bookList.status": "حیثیت",
 
   "bookDetail.defaultTitle": "کتاب کی تفصیلات",
   "bookDetail.edit": "ترمیم کریں",
@@ -155,6 +218,9 @@ const ur: TranslationDict = {
   "bookDetail.files": "فائلیں",
   "bookDetail.open": "کھولیں",
   "bookDetail.showInFolder": "فولڈر میں دکھائیں",
+  "bookDetail.readingStatus": "مطالعے کی حیثیت",
+  "bookDetail.collections": "مجموعے",
+  "bookDetail.read": "پڑھیں",
 
   "bookEdit.title": "کتاب میں ترمیم کریں",
   "bookEdit.titleField": "عنوان",
@@ -169,6 +235,7 @@ const ur: TranslationDict = {
   "bookEdit.rating": "درجہ بندی",
   "bookEdit.unrated": "غیر درجہ بند",
   "bookEdit.description": "تفصیل",
+  "bookEdit.collections": "مجموعے",
 
   "duplicate.title": "ممکنہ ڈپلیکیٹ",
   "duplicate.sameFile": "یہ فائل پہلے ہی آپ کی لائبریری میں موجود ہے:",
@@ -181,13 +248,42 @@ const ur: TranslationDict = {
 
   "app.noResults": "کوئی کتاب ان فلٹرز سے مطابقت نہیں رکھتی۔",
   "app.emptyLibrary": '"کتاب درآمد کریں" پر کلک کریں یا EPUB/PDF فائلیں اس ونڈو پر گھسیٹ لائیں۔ ابھی کوئی کتاب موجود نہیں۔',
-  "app.importFailedTitle": "کچھ فائلیں درآمد نہیں ہو سکیں",
   "app.rescanFailedTitle": "دوبارہ اسکین ناکام ہوا",
-  "app.rescanTitle": "لائبریری دوبارہ اسکین کریں",
   "app.rescanBody":
-    "ڈسک پر موجود فائلوں سے لائبریری انڈیکس دوبارہ تشکیل دیں؟ درجہ بندی، ٹیگز، سیریز، اور کوئی بھی دستی تصحیح جو فائلوں میں شامل نہیں، ضائع ہو جائے گی اور ہر فائل کے اندرونی میٹا ڈیٹا سے دوبارہ اخذ کی جائے گی۔",
+    "ڈسک پر موجود فائلوں سے لائبریری انڈیکس دوبارہ تشکیل دیں؟ درجہ بندی، ٹیگز، سیریز، مطالعے کی حیثیت، اور مجموعوں کی رکنیت ری سیٹ ہو جائیں گی، اور کوئی بھی دستی تصحیح جو فائلوں میں شامل نہیں، ضائع ہو جائے گی اور ہر فائل کے اندرونی میٹا ڈیٹا سے دوبارہ اخذ کی جائے گی۔",
   "app.rescanConfirm": "دوبارہ اسکین کریں",
   "app.dropToImport": "درآمد کرنے کے لیے EPUB/PDF فائلیں یہاں چھوڑیں",
+
+  "settings.title": "ترتیبات",
+  "settings.library": "لائبریری",
+  "settings.libraryPath": "لائبریری فولڈر",
+  "settings.changeLibrary": "لائبریری تبدیل کریں…",
+  "settings.changeLibraryErrorTitle": "لائبریری نہیں کھل سکی",
+  "settings.appearance": "ظاہری شکل",
+  "settings.language": "زبان",
+  "settings.colorScheme": "رنگ سکیم",
+  "settings.import": "درآمد",
+  "settings.defaultConvertFormat": "نئی درآمدات کے لیے پہلے سے طے شدہ \"تبدیل کریں\" فارمیٹ",
+  "settings.maintenance": "لائبریری کی دیکھ بھال",
+
+  "importDialog.title": "کتابیں درآمد کریں",
+  "importDialog.dropzoneTitle": "EPUB/PDF فائلیں یہاں گھسیٹ لائیں",
+  "importDialog.browse": "فائلیں منتخب کریں…",
+  "importDialog.convertTo": "اس میں بھی تبدیل کریں",
+  "importDialog.convertNone": "تبدیل نہ کریں",
+  "importDialog.calibreUnavailable": "Calibre کا ebook-convert نصب نہیں ہے، یا PATH میں موجود نہیں",
+  "importDialog.statusPending": "انتظار میں…",
+  "importDialog.statusImporting": "درآمد ہو رہی ہے…",
+  "importDialog.statusConverting": "تبدیل ہو رہی ہے…",
+  "importDialog.statusDone": "درآمد ہو گئی",
+  "importDialog.statusError": "ناکام",
+  "importDialog.statusSkipped": "نظر انداز کر دی گئی",
+  "importDialog.empty": "ابھی کوئی فائل نہیں — اوپر EPUB/PDF فائلیں گھسیٹیں، یا منتخب کریں۔",
+  "importDialog.close": "بند کریں",
+
+  "reader.close": "ریڈر بند کریں",
+  "reader.loadErrorTitle": "کتاب لوڈ نہیں ہو سکی",
+  "reader.errorTitle": "ریڈر میں خرابی",
 };
 
 export const translations: Record<Language, TranslationDict> = { en, ur };

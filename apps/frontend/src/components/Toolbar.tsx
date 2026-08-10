@@ -1,14 +1,11 @@
-import { Group, Select, SegmentedControl, Text, TextInput, Button, Tooltip, Divider } from "@mantine/core";
-import { IconLayoutGrid, IconList, IconRefresh, IconSearch, IconUpload } from "@tabler/icons-react";
+import { Group, Select, SegmentedControl, Text, TextInput, Button, Divider } from "@mantine/core";
+import { IconLayoutGrid, IconList, IconSearch, IconUpload } from "@tabler/icons-react";
 import { useLanguage } from "../i18n/LanguageContext";
-import { ColorSchemeToggle } from "./ColorSchemeToggle";
-import { LanguageSwitcher } from "./LanguageSwitcher";
 
 export type SortKey = "title" | "author" | "dateAdded" | "rating";
 export type ViewMode = "grid" | "list";
 
 interface ToolbarProps {
-  libraryPath: string;
   contextLabel: string;
   search: string;
   onSearchChange: (value: string) => void;
@@ -17,14 +14,10 @@ interface ToolbarProps {
   viewMode: ViewMode;
   onViewModeChange: (mode: ViewMode) => void;
   onImport: () => void;
-  importing: boolean;
-  onRescan: () => void;
-  rescanning: boolean;
   bookCount: number;
 }
 
 export function Toolbar({
-  libraryPath,
   contextLabel,
   search,
   onSearchChange,
@@ -33,9 +26,6 @@ export function Toolbar({
   viewMode,
   onViewModeChange,
   onImport,
-  importing,
-  onRescan,
-  rescanning,
   bookCount,
 }: ToolbarProps) {
   const { t } = useLanguage();
@@ -101,31 +91,6 @@ export function Toolbar({
         ]}
       />
 
-      <LanguageSwitcher />
-
-      <Button leftSection={<IconUpload size={14} />} onClick={onImport} loading={importing} style={{ flexShrink: 0 }}>
-        {t("toolbar.import")}
-      </Button>
-
-      <Divider orientation="vertical" style={{ height: 24, alignSelf: "center", flexShrink: 0 }} />
-
-      <Tooltip label={t("toolbar.rescanTooltip")}>
-        <Button
-          variant="subtle"
-          size="sm"
-          leftSection={<IconRefresh size={14} />}
-          onClick={onRescan}
-          loading={rescanning}
-          style={{ flexShrink: 0 }}
-        >
-          {t("toolbar.rescan")}
-        </Button>
-      </Tooltip>
-
-      <Text size="sm" c="dimmed" style={{ flexShrink: 0 }}>
-        {t(bookCount === 1 ? "toolbar.bookCount_one" : "toolbar.bookCount_other", { count: bookCount })}
-      </Text>
-
       <Select
         size="sm"
         w={130}
@@ -137,11 +102,13 @@ export function Toolbar({
         allowDeselect={false}
       />
 
-      <ColorSchemeToggle />
-
-      <Text size="xs" c="dimmed" ff="monospace" truncate="end" maw={160} title={libraryPath} style={{ flexShrink: 0 }}>
-        {libraryPath}
+      <Text size="sm" c="dimmed" style={{ flexShrink: 0 }}>
+        {t(bookCount === 1 ? "toolbar.bookCount_one" : "toolbar.bookCount_other", { count: bookCount })}
       </Text>
+
+      <Button leftSection={<IconUpload size={14} />} onClick={onImport} style={{ flexShrink: 0 }}>
+        {t("toolbar.import")}
+      </Button>
     </Group>
   );
 }

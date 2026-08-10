@@ -12,7 +12,8 @@ public record BookEditRequest(
     int Rating,
     string? SeriesName,
     double? SeriesIndex,
-    IReadOnlyList<string> Tags
+    IReadOnlyList<string> Tags,
+    IReadOnlyList<int> CollectionIds
 );
 
 /// <summary>

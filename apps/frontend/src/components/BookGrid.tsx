@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Box, Image, Text, UnstyledButton } from "@mantine/core";
+import { Badge, Box, Image, Text, UnstyledButton } from "@mantine/core";
 import type { BookSummary } from "../api";
 import { coverUrl } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
+import { READING_STATUS_COLOR, READING_STATUS_LABEL_KEY } from "../readingStatus";
 import { SpineCover } from "./SpineCover";
 
 interface BookGridProps {
@@ -68,26 +69,37 @@ export function BookGrid({ books, onSelect }: BookGridProps) {
             >
               {rowBooks.map((book) => (
                 <UnstyledButton key={book.id} w={CARD_WIDTH} onClick={() => onSelect(book.id)}>
-                  {book.hasCover ? (
-                    <Image
-                      src={coverUrl(book.id)}
-                      alt=""
-                      loading="lazy"
-                      w={CARD_WIDTH}
-                      h={COVER_HEIGHT}
-                      fit="cover"
-                      radius="sm"
-                      style={{ border: "1px solid var(--mantine-color-default-border)", boxShadow: "var(--mantine-shadow-sm)" }}
-                    />
-                  ) : (
-                    <SpineCover
-                      id={book.id}
-                      title={book.title}
-                      author={book.authors.join(", ") || t("common.unknownAuthor")}
-                      width={CARD_WIDTH}
-                      height={COVER_HEIGHT}
-                    />
-                  )}
+                  <Box pos="relative">
+                    {book.hasCover ? (
+                      <Image
+                        src={coverUrl(book.id)}
+                        alt=""
+                        loading="lazy"
+                        w={CARD_WIDTH}
+                        h={COVER_HEIGHT}
+                        fit="cover"
+                        radius="sm"
+                        style={{ border: "1px solid var(--mantine-color-default-border)", boxShadow: "var(--mantine-shadow-sm)" }}
+                      />
+                    ) : (
+                      <SpineCover
+                        id={book.id}
+                        title={book.title}
+                        author={book.authors.join(", ") || t("common.unknownAuthor")}
+                        width={CARD_WIDTH}
+                        height={COVER_HEIGHT}
+                      />
+                    )}
+                    {book.readingStatus !== "Unread" && (
+                      <Badge
+                        color={READING_STATUS_COLOR[book.readingStatus]}
+                        size="xs"
+                        style={{ position: "absolute", insetBlockStart: 8, insetInlineEnd: 8 }}
+                      >
+                        {t(READING_STATUS_LABEL_KEY[book.readingStatus])}
+                      </Badge>
+                    )}
+                  </Box>
                   <Text size="sm" fw={600} mt={8} lineClamp={2} title={book.title}>
                     {book.title}
                   </Text>

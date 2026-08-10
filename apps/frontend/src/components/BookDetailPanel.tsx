@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Alert,
   Anchor,
@@ -12,15 +12,21 @@ import {
   Image,
   List,
   Loader,
+  SegmentedControl,
   Stack,
   Text,
   Title,
 } from "@mantine/core";
-import { IconAlertCircle, IconFolder, IconExternalLink, IconTrash } from "@tabler/icons-react";
-import { getBook, deleteBook, coverUrl } from "../api";
+import { IconAlertCircle, IconBook2, IconFolder, IconExternalLink, IconTrash } from "@tabler/icons-react";
+import { getBook, deleteBook, coverUrl, updateBookStatus, type ReadingStatus } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
 import { BookEditForm } from "./BookEditForm";
+import { ReaderOverlay } from "./ReaderOverlay";
 import { SpineCover } from "./SpineCover";
+
+function isReadableFormat(format: string): format is "Epub" | "Pdf" {
+  return format === "Epub" || format === "Pdf";
+}
 
 interface BookDetailPanelProps {
   bookId: string;
@@ -30,10 +36,12 @@ interface BookDetailPanelProps {
 
 export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelProps) {
   const { t, language } = useLanguage();
+  const queryClient = useQueryClient();
   const [isEditing, setEditing] = useState(false);
   const [isRemoving, setRemoving] = useState(false);
   const [removeError, setRemoveError] = useState<string | null>(null);
   const [confirmingRemove, setConfirmingRemove] = useState(false);
+  const [readerFormat, setReaderFormat] = useState<"Epub" | "Pdf" | null>(null);
 
   const {
     data: book,
@@ -43,6 +51,21 @@ export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelP
     queryKey: ["book", bookId],
     queryFn: () => getBook(bookId),
   });
+
+  const statusMutation = useMutation({
+    mutationFn: (status: ReadingStatus) => updateBookStatus(bookId, status),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["book", bookId] });
+      void queryClient.invalidateQueries({ queryKey: ["books"] });
+      void queryClient.invalidateQueries({ queryKey: ["readingStatusCounts"] });
+    },
+  });
+
+  const statusOptions: { value: ReadingStatus; label: string }[] = [
+    { value: "Unread", label: t("readingStatus.unread") },
+    { value: "Reading", label: t("readingStatus.reading") },
+    { value: "Finished", label: t("readingStatus.finished") },
+  ];
 
   if (isEditing) {
     return (
@@ -129,6 +152,14 @@ export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelP
                 {"★".repeat(book.rating)}
                 {"☆".repeat(5 - book.rating)}
               </Text>
+              <SegmentedControl
+                size="xs"
+                fullWidth
+                data={statusOptions}
+                value={book.readingStatus}
+                onChange={(value) => statusMutation.mutate(value as ReadingStatus)}
+                disabled={statusMutation.isPending}
+              />
               <Group gap="xs" mt="xs">
                 <Button size="xs" variant="default" onClick={() => setEditing(true)}>
                   {t("bookDetail.edit")}
@@ -206,6 +237,21 @@ export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelP
             </Group>
           )}
 
+          {book.collections.length > 0 && (
+            <div>
+              <Text size="xs" c="dimmed" mb={4}>
+                {t("bookDetail.collections")}
+              </Text>
+              <Group gap={6}>
+                {book.collections.map((collection) => (
+                  <Badge key={collection.id} variant="outline">
+                    {collection.name}
+                  </Badge>
+                ))}
+              </Group>
+            </div>
+          )}
+
           {book.identifiers.length > 0 && (
             <Text size="xs" c="dimmed">
               {book.identifiers.map((i) => `${i.scheme.toUpperCase()}: ${i.value}`).join(" · ")}
@@ -222,6 +268,14 @@ export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelP
                     {f.format} — {(f.fileSizeBytes / 1024).toFixed(0)} KB
                   </Text>
                   <Group gap={4}>
+                    {isReadableFormat(f.format) && (
+                      <Anchor size="sm" component="button" type="button" onClick={() => setReaderFormat(f.format as "Epub" | "Pdf")}>
+                        <Group gap={4}>
+                          <IconBook2 size={14} />
+                          {t("bookDetail.read")}
+                        </Group>
+                      </Anchor>
+                    )}
                     <Anchor size="sm" component="button" type="button" onClick={() => window.maktaba.openPath(f.absolutePath)}>
                       <Group gap={4}>
                         <IconExternalLink size={14} />
@@ -245,6 +299,10 @@ export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelP
             ))}
           </List>
         </Stack>
+      )}
+
+      {readerFormat && (
+        <ReaderOverlay bookId={bookId} format={readerFormat} onClose={() => setReaderFormat(null)} />
       )}
     </Drawer>
   );

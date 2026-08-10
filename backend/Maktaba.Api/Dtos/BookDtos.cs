@@ -11,12 +11,15 @@ public record BookSummaryDto(
     string[] Authors,
     int Rating,
     DateTime DateAdded,
-    bool HasCover
+    bool HasCover,
+    string ReadingStatus
 );
 
 public record IdentifierDto(string Scheme, string Value);
 
 public record BookFileDto(string Format, long FileSizeBytes, string AbsolutePath);
+
+public record BookCollectionDto(string Id, string Name);
 
 public record BookDetailDto(
     string Id,
@@ -34,7 +37,9 @@ public record BookDetailDto(
     string[] Tags,
     IdentifierDto[] Identifiers,
     BookFileDto[] Files,
-    bool HasCover
+    bool HasCover,
+    string ReadingStatus,
+    BookCollectionDto[] Collections
 );
 
 /// <summary>DuplicateAction: null (ask) | "skip" | "keep-both" | "merge".</summary>
@@ -52,11 +57,22 @@ public record BookEditRequestDto(
     int Rating,
     string? SeriesName,
     double? SeriesIndex,
-    string[] Tags
+    string[] Tags,
+    string[] CollectionIds
 );
+
+public record UpdateBookStatusRequestDto(string ReadingStatus);
+
+public record ConvertBookRequestDto(string TargetFormat);
+
+public record SystemCapabilitiesDto(bool CalibreAvailable);
 
 public record OpenLibraryRequest(string Path);
 
 public record LibraryDto(string Path);
 
 public record BrowseGroupDto(string Id, string Name, int BookCount);
+
+public record CreateCollectionRequestDto(string Name);
+
+public record ReadingStatusCountDto(string Status, int Count);

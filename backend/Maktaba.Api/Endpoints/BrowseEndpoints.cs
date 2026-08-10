@@ -1,4 +1,5 @@
 using Maktaba.Api.Dtos;
+using Maktaba.Core.Entities;
 using Maktaba.Core.Ids;
 using Maktaba.Data;
 using Microsoft.EntityFrameworkCore;
@@ -40,6 +41,22 @@ public static class BrowseEndpoints
                 .Select(t => new { t.Id, t.Name, Count = t.BookTags.Count })
                 .ToListAsync();
             return Results.Ok(tags.Select(t => new BrowseGroupDto(IdCodec.Encode(t.Id), t.Name, t.Count)));
+        });
+
+        app.MapGet("/api/reading-statuses", async (MaktabaDbContext db) =>
+        {
+            var counts = await db.Books
+                .GroupBy(b => b.ReadingStatus)
+                .Select(g => new { Status = g.Key, Count = g.Count() })
+                .ToListAsync();
+
+            // Every status is always returned, even with a zero count, so the sidebar can render a
+            // stable Unread/Reading/Finished list without special-casing missing entries.
+            var byStatus = counts.ToDictionary(c => c.Status, c => c.Count);
+            var all = Enum.GetValues<ReadingStatus>()
+                .Select(status => new ReadingStatusCountDto(status.ToString(), byStatus.GetValueOrDefault(status)));
+
+            return Results.Ok(all);
         });
     }
 }

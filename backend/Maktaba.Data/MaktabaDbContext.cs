@@ -12,6 +12,8 @@ public class MaktabaDbContext(DbContextOptions<MaktabaDbContext> options) : DbCo
     public DbSet<BookSeries> BookSeries => Set<BookSeries>();
     public DbSet<Tag> Tags => Set<Tag>();
     public DbSet<BookTag> BookTags => Set<BookTag>();
+    public DbSet<Collection> Collections => Set<Collection>();
+    public DbSet<BookCollection> BookCollections => Set<BookCollection>();
     public DbSet<BookFile> BookFiles => Set<BookFile>();
     public DbSet<Identifier> Identifiers => Set<Identifier>();
 
@@ -36,6 +38,13 @@ public class MaktabaDbContext(DbContextOptions<MaktabaDbContext> options) : DbCo
             e.HasKey(bt => new { bt.BookId, bt.TagId });
             e.HasOne(bt => bt.Book).WithMany(b => b.BookTags).HasForeignKey(bt => bt.BookId);
             e.HasOne(bt => bt.Tag).WithMany(t => t.BookTags).HasForeignKey(bt => bt.TagId);
+        });
+
+        modelBuilder.Entity<BookCollection>(e =>
+        {
+            e.HasKey(bc => new { bc.BookId, bc.CollectionId });
+            e.HasOne(bc => bc.Book).WithMany(b => b.BookCollections).HasForeignKey(bc => bc.BookId);
+            e.HasOne(bc => bc.Collection).WithMany(c => c.BookCollections).HasForeignKey(bc => bc.CollectionId);
         });
 
         modelBuilder.Entity<BookFile>()

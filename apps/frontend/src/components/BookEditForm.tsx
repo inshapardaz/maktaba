@@ -7,6 +7,7 @@ import {
   Group,
   Loader,
   Modal,
+  MultiSelect,
   NumberInput,
   Select,
   Stack,
@@ -14,7 +15,7 @@ import {
   TextInput,
 } from "@mantine/core";
 import { IconAlertCircle } from "@tabler/icons-react";
-import { getBook, updateBook, type BookEditRequest } from "../api";
+import { getBook, listCollections, updateBook, type BookEditRequest } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
 
 interface BookEditFormProps {
@@ -34,6 +35,7 @@ interface FormState {
   seriesName: string;
   seriesIndex: string;
   tags: string;
+  collectionIds: string[];
 }
 
 const EMPTY_FORM: FormState = {
@@ -47,6 +49,7 @@ const EMPTY_FORM: FormState = {
   seriesName: "",
   seriesIndex: "",
   tags: "",
+  collectionIds: [],
 };
 
 const STAR_RATING_OPTIONS = [
@@ -68,6 +71,9 @@ export function BookEditForm({ bookId, onClose, onSaved }: BookEditFormProps) {
     queryFn: () => getBook(bookId),
   });
 
+  const collectionsQuery = useQuery({ queryKey: ["collections"], queryFn: listCollections });
+  const collectionOptions = (collectionsQuery.data ?? []).map((c) => ({ value: c.id, label: c.name }));
+
   useEffect(() => {
     if (!book) return;
     setForm({
@@ -81,6 +87,7 @@ export function BookEditForm({ bookId, onClose, onSaved }: BookEditFormProps) {
       seriesName: book.seriesName ?? "",
       seriesIndex: book.seriesIndex != null ? String(book.seriesIndex) : "",
       tags: book.tags.join(", "),
+      collectionIds: book.collections.map((c) => c.id),
     });
   }, [book]);
 
@@ -92,6 +99,7 @@ export function BookEditForm({ bookId, onClose, onSaved }: BookEditFormProps) {
       void queryClient.invalidateQueries({ queryKey: ["authors"] });
       void queryClient.invalidateQueries({ queryKey: ["series"] });
       void queryClient.invalidateQueries({ queryKey: ["tags"] });
+      void queryClient.invalidateQueries({ queryKey: ["collections"] });
       onSaved();
     },
   });
@@ -115,6 +123,7 @@ export function BookEditForm({ bookId, onClose, onSaved }: BookEditFormProps) {
       seriesName: form.seriesName.trim() || null,
       seriesIndex: form.seriesIndex ? Number(form.seriesIndex) : null,
       tags: splitList(form.tags),
+      collectionIds: form.collectionIds,
     });
   };
 
@@ -162,6 +171,15 @@ export function BookEditForm({ bookId, onClose, onSaved }: BookEditFormProps) {
               description={t("bookEdit.commaSeparated")}
               value={form.tags}
               onChange={(e) => setForm({ ...form, tags: e.currentTarget.value })}
+            />
+
+            <MultiSelect
+              label={t("bookEdit.collections")}
+              data={collectionOptions}
+              value={form.collectionIds}
+              onChange={(value) => setForm({ ...form, collectionIds: value })}
+              searchable
+              clearable
             />
 
             <Group grow align="flex-start">

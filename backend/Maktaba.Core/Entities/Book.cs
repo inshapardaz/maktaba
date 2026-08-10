@@ -1,5 +1,12 @@
 namespace Maktaba.Core.Entities;
 
+public enum ReadingStatus
+{
+    Unread,
+    Reading,
+    Finished,
+}
+
 public class Book
 {
     public int Id { get; set; }
@@ -11,6 +18,7 @@ public class Book
     public DateOnly? DatePublished { get; set; }
     public DateTime DateAdded { get; set; } = DateTime.UtcNow;
     public int Rating { get; set; }
+    public ReadingStatus ReadingStatus { get; set; } = ReadingStatus.Unread;
 
     /// <summary>Path to this book's folder, relative to the library root.</summary>
     public string FolderPath { get; set; } = string.Empty;
@@ -18,6 +26,7 @@ public class Book
     public List<BookAuthor> BookAuthors { get; set; } = [];
     public List<BookSeries> BookSeries { get; set; } = [];
     public List<BookTag> BookTags { get; set; } = [];
+    public List<BookCollection> BookCollections { get; set; } = [];
     public List<BookFile> Files { get; set; } = [];
     public List<Identifier> Identifiers { get; set; } = [];
 }

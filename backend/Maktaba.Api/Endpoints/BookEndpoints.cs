@@ -20,6 +20,8 @@ public static class BookEndpoints
             string? authorId,
             string? seriesId,
             string? tagId,
+            string? collectionId,
+            string? readingStatus,
             string? format,
             int? minRating) =>
         {
@@ -52,6 +54,17 @@ public static class BookEndpoints
             {
                 var tId = IdCodec.TryDecode(tagId, out var decoded) ? decoded : -1;
                 query = query.Where(b => b.BookTags.Any(bt => bt.TagId == tId));
+            }
+
+            if (collectionId is not null)
+            {
+                var cId = IdCodec.TryDecode(collectionId, out var decoded) ? decoded : -1;
+                query = query.Where(b => b.BookCollections.Any(bc => bc.CollectionId == cId));
+            }
+
+            if (Enum.TryParse<ReadingStatus>(readingStatus, ignoreCase: true, out var parsedStatus))
+            {
+                query = query.Where(b => b.ReadingStatus == parsedStatus);
             }
 
             if (minRating is { } rating)
@@ -89,7 +102,8 @@ public static class BookEndpoints
                     b.BookAuthors.OrderBy(ba => ba.Order).Select(ba => ba.Author.Name).ToArray(),
                     b.Rating,
                     b.DateAdded,
-                    CoverLocator.Find(root, b.FolderPath) is not null))
+                    CoverLocator.Find(root, b.FolderPath) is not null,
+                    b.ReadingStatus.ToString()))
                 .ToList();
 
             return Results.Ok(dtos);
@@ -108,6 +122,7 @@ public static class BookEndpoints
                 .Include(b => b.BookAuthors).ThenInclude(ba => ba.Author)
                 .Include(b => b.BookSeries).ThenInclude(bs => bs.Series)
                 .Include(b => b.BookTags).ThenInclude(bt => bt.Tag)
+                .Include(b => b.BookCollections).ThenInclude(bc => bc.Collection)
                 .Include(b => b.Files)
                 .Include(b => b.Identifiers)
                 .AsNoTracking()
@@ -137,7 +152,11 @@ public static class BookEndpoints
                 book.Identifiers.Select(i => new IdentifierDto(i.Scheme, i.Value)).ToArray(),
                 book.Files.Select(f => new BookFileDto(
                     f.Format.ToString(), f.FileSizeBytes, Path.Combine(root, f.FilePath))).ToArray(),
-                CoverLocator.Find(root, book.FolderPath) is not null);
+                CoverLocator.Find(root, book.FolderPath) is not null,
+                book.ReadingStatus.ToString(),
+                book.BookCollections
+                    .Select(bc => new BookCollectionDto(IdCodec.Encode(bc.CollectionId), bc.Collection.Name))
+                    .ToArray());
 
             return Results.Ok(dto);
         });
@@ -167,6 +186,40 @@ public static class BookEndpoints
                 : Results.NotFound();
         });
 
+        group.MapGet("/{id}/file", async (string id, string? format, MaktabaDbContext db, ILibraryPathProvider libraryPath) =>
+        {
+            if (!IdCodec.TryDecode(id, out var bookId))
+            {
+                return Results.NotFound();
+            }
+
+            if (!Enum.TryParse<BookFormat>(format, ignoreCase: true, out var parsedFormat))
+            {
+                return Results.BadRequest(new { error = "Invalid or missing format." });
+            }
+
+            var root = libraryPath.LibraryRootPath!;
+
+            var file = await db.Books
+                .Where(b => b.Id == bookId)
+                .SelectMany(b => b.Files)
+                .FirstOrDefaultAsync(f => f.Format == parsedFormat);
+
+            if (file is null)
+            {
+                return Results.NotFound();
+            }
+
+            var contentType = parsedFormat switch
+            {
+                BookFormat.Epub => "application/epub+zip",
+                BookFormat.Pdf => "application/pdf",
+                _ => "application/octet-stream",
+            };
+
+            return Results.File(Path.Combine(root, file.FilePath), contentType);
+        });
+
         group.MapPut("/{id}", async (
             string id, BookEditRequestDto request, IBookEditService editService, CancellationToken ct) =>
         {
@@ -180,6 +233,15 @@ public static class BookEndpoints
                 return Results.BadRequest(new { error = "Title is required." });
             }
 
+            // Ids that fail to decode are silently dropped rather than rejected - this is a save
+            // operation, not a filter, and a stale/invalid collection id shouldn't block the rest of
+            // the edit from going through.
+            var collectionIds = request.CollectionIds
+                .Select(cid => IdCodec.TryDecode(cid, out var decoded) ? decoded : (int?)null)
+                .Where(cid => cid is not null)
+                .Select(cid => cid!.Value)
+                .ToList();
+
             var editRequest = new BookEditRequest(
                 request.Title.Trim(),
                 request.Authors,
@@ -190,10 +252,69 @@ public static class BookEndpoints
                 request.Rating,
                 request.SeriesName,
                 request.SeriesIndex,
-                request.Tags);
+                request.Tags,
+                collectionIds);
 
             var book = await editService.UpdateAsync(bookId, editRequest, ct);
             return book is null ? Results.NotFound() : Results.NoContent();
+        });
+
+        group.MapPatch("/{id}/status", async (
+            string id, UpdateBookStatusRequestDto request, MaktabaDbContext db, CancellationToken ct) =>
+        {
+            if (!IdCodec.TryDecode(id, out var bookId))
+            {
+                return Results.NotFound();
+            }
+
+            if (!Enum.TryParse<ReadingStatus>(request.ReadingStatus, ignoreCase: true, out var status))
+            {
+                return Results.BadRequest(new { error = "Invalid reading status." });
+            }
+
+            var book = await db.Books.FirstOrDefaultAsync(b => b.Id == bookId, ct);
+            if (book is null)
+            {
+                return Results.NotFound();
+            }
+
+            book.ReadingStatus = status;
+            await db.SaveChangesAsync(ct);
+            return Results.NoContent();
+        });
+
+        group.MapPost("/{id}/convert", async (
+            string id,
+            ConvertBookRequestDto request,
+            IBookConversionService conversionService,
+            ILibraryPathProvider libraryPath,
+            CancellationToken ct) =>
+        {
+            if (!IdCodec.TryDecode(id, out var bookId))
+            {
+                return Results.NotFound();
+            }
+
+            if (!Enum.TryParse<BookFormat>(request.TargetFormat, ignoreCase: true, out var targetFormat))
+            {
+                return Results.BadRequest(new { error = "Invalid target format." });
+            }
+
+            var result = await conversionService.ConvertAsync(bookId, targetFormat, ct);
+            var root = libraryPath.LibraryRootPath!;
+
+            return result.Outcome switch
+            {
+                BookConversionOutcome.Converted => Results.Ok(new BookFileDto(
+                    result.File!.Format.ToString(), result.File.FileSizeBytes, Path.Combine(root, result.File.FilePath))),
+                BookConversionOutcome.BookNotFound => Results.NotFound(),
+                BookConversionOutcome.AlreadyHasFormat => Results.Conflict(
+                    new { error = $"This book already has a {targetFormat} file." }),
+                BookConversionOutcome.CalibreUnavailable => Results.Json(
+                    new { error = "Calibre's ebook-convert isn't available on this machine." },
+                    statusCode: StatusCodes.Status503ServiceUnavailable),
+                _ => Results.Problem(),
+            };
         });
 
         group.MapDelete("/{id}", async (string id, IBookRemovalService removalService, CancellationToken ct) =>

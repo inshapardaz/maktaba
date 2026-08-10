@@ -34,6 +34,8 @@ builder.Services.AddScoped<IImportService, ImportService>();
 builder.Services.AddScoped<IBookEditService, BookEditService>();
 builder.Services.AddScoped<IBookRemovalService, BookRemovalService>();
 builder.Services.AddScoped<ILibraryRescanService, LibraryRescanService>();
+builder.Services.AddSingleton<ICalibreConverter, CalibreConverter>();
+builder.Services.AddScoped<IBookConversionService, BookConversionService>();
 
 var app = builder.Build();
 
@@ -65,11 +67,20 @@ app.Use(async (context, next) =>
 });
 
 // A library must be opened (POST /api/libraries/open) before any endpoint that resolves
-// MaktabaDbContext will work; surface that as a 400 instead of an unhandled 500.
+// MaktabaDbContext will work; surface that as a 400 instead of an unhandled 500. Also transparently
+// rebuilds metadata.db (and rescans to repopulate it) if it predates a breaking schema change - see
+// LibraryService.EnsureCurrentSchemaAsync.
 app.Use(async (context, next) =>
 {
     try
     {
+        var libraryService = context.RequestServices.GetRequiredService<LibraryService>();
+        if (await libraryService.EnsureCurrentSchemaAsync(context.RequestAborted))
+        {
+            await context.RequestServices.GetRequiredService<ILibraryRescanService>()
+                .RescanAsync(context.RequestAborted);
+        }
+
         await next();
     }
     catch (LibraryNotOpenException ex)
@@ -86,5 +97,7 @@ app.MapGet("/api/hello", () => Results.Ok(new { message = "Hello from Maktaba.Ap
 app.MapLibraryEndpoints();
 app.MapBookEndpoints();
 app.MapBrowseEndpoints();
+app.MapCollectionEndpoints();
+app.MapSystemEndpoints();
 
 app.Run();

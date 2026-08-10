@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/classical-3c998ba9-b534-41b0-884e-ecd51a49c891/styles.css">
+<script src="_ds/classical-3c998ba9-b534-41b0-884e-ecd51a49c891/_ds_bundle.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400..700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:var(--color-bg);color:var(--color-text);font-family:var(--font-body);}
+a{color:var(--color-accent-700);text-decoration:none;}
+a:hover{color:var(--color-accent);text-decoration:underline;}
+*{box-sizing:border-box;}
+::-webkit-scrollbar{width:10px;height:10px;}
+::-webkit-scrollbar-thumb{background:var(--color-divider);border-radius:6px;}
+input[type="checkbox"]{accent-color:var(--color-accent-700);width:15px;height:15px;}
+</style>
+</helmet>
+
+<div dir="{{ dir }}" style="height:100vh;width:100%;display:flex;flex-direction:column;overflow:hidden;background:var(--color-bg);position:relative;font-family:{{ uiFont }};">
+
+  <!-- Top toolbar -->
+  <div style="height:60px;flex:none;display:flex;align-items:center;gap:var(--space-4);padding:0 var(--space-5);border-bottom:1px solid var(--color-divider);background:var(--color-bg);">
+    <div style="font-family:var(--font-heading);font-weight:var(--font-heading-weight);font-size:22px;letter-spacing:.01em;flex:none;">Codex</div>
+    <div style="width:1px;height:24px;background:var(--color-divider);flex:none;"></div>
+    <div style="font-size:13px;color:var(--color-text);opacity:.6;flex:none;">{{ headerLabel }}</div>
+    <div style="flex:1;"></div>
+    <div style="display:flex;align-items:center;gap:var(--space-2);background:var(--color-surface);border:1px solid var(--color-divider);border-radius:var(--radius-sm);padding:0 var(--space-3);height:36px;width:280px;">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:.5;flex:none;"><circle cx="11" cy="11" r="7"></circle><path d="m21 21-4.3-4.3"></path></svg>
+      <input class="input" placeholder="{{ L_searchPlaceholder }}" value="{{ search }}" onChange="{{ onSearch }}" style="border:none;background:transparent;padding:0;height:auto;width:100%;font-family:inherit;">
+    </div>
+    <div class="seg" role="radiogroup" aria-label="View mode" style="flex:none;">
+      <label class="seg-opt"><input type="radio" name="viewmode" checked="{{ isGrid }}" onChange="{{ setGrid }}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect></svg>{{ L_gridLabel }}</label>
+      <label class="seg-opt"><input type="radio" name="viewmode" checked="{{ isList }}" onChange="{{ setList }}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"></line><line x1="4" y1="12" x2="20" y2="12"></line><line x1="4" y1="18" x2="20" y2="18"></line></svg>{{ L_listLabel }}</label>
+    </div>
+    <div class="seg" role="radiogroup" aria-label="Language" style="flex:none;">
+      <label class="seg-opt"><input type="radio" name="applang" checked="{{ isEn }}" onChange="{{ setEn }}">EN</label>
+      <label class="seg-opt"><input type="radio" name="applang" checked="{{ isUr }}" onChange="{{ setUr }}"><span style="font-family:'Noto Nastaliq Urdu',serif;">اردو</span></label>
+    </div>
+    <button type="button" class="btn btn-primary" onClick="{{ openImport }}">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"></path><path d="m7 10 5 5 5-5"></path><path d="M5 21h14"></path></svg>
+      {{ L_importBooks }}
+    </button>
+  </div>
+
+  <div style="flex:1;display:flex;overflow:hidden;position:relative;">
+
+    <!-- Sidebar -->
+    <div style="width:232px;flex:none;overflow-y:auto;padding:var(--space-5) var(--space-4);display:flex;flex-direction:column;gap:var(--space-5);{{ sidebarBorder }}">
+
+      <div>
+        <div style="font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;opacity:.5;margin-bottom:var(--space-2);">{{ L_sectionLibrary }}</div>
+        <sc-for list="{{ navLibraries }}" as="item" hint-placeholder-count="2">
+          <div onClick="{{ item.onClick }}" style="display:flex;align-items:center;gap:var(--space-2);padding:6px var(--space-2);border-radius:var(--radius-sm);cursor:pointer;font-size:13.5px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;opacity:{{ item.iconOpacity }};color:{{ item.color }};"><rect x="6" y="2" width="12" height="20" rx="2"></rect><line x1="10" y1="19" x2="14" y2="19"></line></svg>
+            <span style="flex:1;color:{{ item.color }};font-weight:{{ item.weight }};">{{ item.label }}</span>
+            <span style="font-size:11px;opacity:.45;font-family:var(--font-body);font-variant-numeric:tabular-nums;">{{ item.count }}</span>
+          </div>
+        </sc-for>
+      </div>
+
+      <div class="hr"></div>
+
+      <div>
+        <div style="font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;opacity:.5;margin-bottom:var(--space-2);">{{ L_sectionAuthors }}</div>
+        <sc-for list="{{ navAuthors }}" as="item" hint-placeholder-count="4">
+          <div onClick="{{ item.onClick }}" style="display:flex;align-items:center;gap:var(--space-2);padding:5px var(--space-2);border-radius:var(--radius-sm);cursor:pointer;font-size:13px;background:{{ item.bg }};">
+            <span style="flex:1;color:{{ item.color }};font-weight:{{ item.weight }};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ item.label }}</span>
+            <span style="font-size:11px;opacity:.45;font-variant-numeric:tabular-nums;">{{ item.count }}</span>
+          </div>
+        </sc-for>
+      </div>
+
+      <div>
+        <div style="font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;opacity:.5;margin-bottom:var(--space-2);">{{ L_sectionSeries }}</div>
+        <sc-for list="{{ navSeries }}" as="item" hint-placeholder-count="1">
+          <div onClick="{{ item.onClick }}" style="display:flex;align-items:center;gap:var(--space-2);padding:5px var(--space-2);border-radius:var(--radius-sm);cursor:pointer;font-size:13px;background:{{ item.bg }};">
+            <span style="flex:1;color:{{ item.color }};font-weight:{{ item.weight }};">{{ item.label }}</span>
+            <span style="font-size:11px;opacity:.45;font-variant-numeric:tabular-nums;">{{ item.count }}</span>
+          </div>
+        </sc-for>
+      </div>
+
+      <div>
+        <div style="font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;opacity:.5;margin-bottom:var(--space-2);">{{ L_sectionTags }}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;">
+          <sc-for list="{{ navTags }}" as="item" hint-placeholder-count="6">
+            <span onClick="{{ item.onClick }}" class="{{ item.tagClass }}" style="cursor:pointer;">{{ item.label }}</span>
+          </sc-for>
+        </div>
+      </div>
+
+      <div>
+        <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:var(--space-2);">
+          <div style="font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;opacity:.5;">{{ L_sectionCollections }}</div>
+          <span onClick="{{ openCollections }}" style="font-size:11px;cursor:pointer;color:var(--color-accent-700);">{{ L_manage }}</span>
+        </div>
+        <sc-for list="{{ navCollections }}" as="item" hint-placeholder-count="3">
+          <div onClick="{{ item.onClick }}" style="display:flex;align-items:center;gap:var(--space-2);padding:5px var(--space-2);border-radius:var(--radius-sm);cursor:pointer;font-size:13px;background:{{ item.bg }};">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;opacity:.5;"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+            <span style="flex:1;color:{{ item.color }};font-weight:{{ item.weight }};">{{ item.label }}</span>
+            <span style="font-size:11px;opacity:.45;font-variant-numeric:tabular-nums;">{{ item.count }}</span>
+          </div>
+        </sc-for>
+      </div>
+
+      <div>
+        <div style="font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;opacity:.5;margin-bottom:var(--space-2);">{{ L_sectionStatus }}</div>
+        <sc-for list="{{ navStatuses }}" as="item" hint-placeholder-count="3">
+          <div onClick="{{ item.onClick }}" style="display:flex;align-items:center;gap:var(--space-2);padding:5px var(--space-2);border-radius:var(--radius-sm);cursor:pointer;font-size:13px;background:{{ item.bg }};">
+            <span style="flex:1;color:{{ item.color }};font-weight:{{ item.weight }};">{{ item.label }}</span>
+            <span style="font-size:11px;opacity:.45;font-variant-numeric:tabular-nums;">{{ item.count }}</span>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="flex:1;"></div>
+      <div class="hr"></div>
+      <div onClick="{{ openSettings }}" style="display:flex;align-items:center;gap:var(--space-2);padding:6px var(--space-2);border-radius:var(--radius-sm);cursor:pointer;font-size:13.5px;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:.6;"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+        <span style="opacity:.75;">{{ L_settings }}</span>
+      </div>
+    </div>
+
+    <!-- Main -->
+    <sc-if value="{{ isSettings }}" hint-placeholder-val="{{ false }}">
+      <div style="flex:1;overflow-y:auto;padding:var(--space-8) var(--space-8);max-width:760px;">
+        <h1 style="margin:0 0 var(--space-1);">{{ L_preferences }}</h1>
+        <p style="opacity:.6;margin:0 0 var(--space-6);">{{ L_prefSubtitle }}</p>
+
+        <div class="hr" style="margin-bottom:var(--space-5);"></div>
+        <div class="card-kicker" style="margin-bottom:var(--space-3);">{{ L_libLocation }}</div>
+        <div style="display:flex;gap:var(--space-2);align-items:flex-end;margin-bottom:var(--space-6);">
+          <div class="field" style="flex:1;margin:0;"><label>{{ L_folder }}</label><input class="input" value="{{ libraryPath }}" onChange="{{ onLibraryPath }}"></div>
+          <button type="button" class="btn btn-secondary">{{ L_browseEllip }}</button>
+        </div>
+
+        <div class="hr" style="margin-bottom:var(--space-5);"></div>
+        <div class="card-kicker" style="margin-bottom:var(--space-3);">{{ L_importDefaults }}</div>
+        <div class="field" style="margin-bottom:var(--space-4);">
+          <label>{{ L_defaultFormat }}</label>
+          <div class="seg" role="radiogroup" aria-label="Default format">
+            <sc-for list="{{ formatOptions }}" as="opt" hint-placeholder-count="4">
+              <label class="seg-opt"><input type="radio" name="defaultformat" checked="{{ opt.active }}" onChange="{{ opt.onClick }}">{{ opt.label }}</label>
+            </sc-for>
+          </div>
+        </div>
+        <div class="field" style="margin-bottom:var(--space-6);">
+          <label>{{ L_fetchMeta }}</label>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <sc-for list="{{ metadataSources }}" as="src" hint-placeholder-count="3">
+              <label style="display:flex;align-items:center;gap:8px;font-size:13.5px;"><input type="checkbox" checked="{{ src.checked }}" onChange="{{ src.onClick }}">{{ src.label }}</label>
+            </sc-for>
+          </div>
+        </div>
+
+        <div class="hr" style="margin-bottom:var(--space-5);"></div>
+        <div class="card-kicker" style="margin-bottom:var(--space-3);">{{ L_connectedDevices }}</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;border:1px solid var(--color-divider);border-radius:var(--radius-md);padding:var(--space-3) var(--space-4);margin-bottom:var(--space-6);">
+          <div style="display:flex;align-items:center;gap:var(--space-3);">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="2"></rect><line x1="10" y1="19" x2="14" y2="19"></line></svg>
+            <div><div style="font-size:13.5px;">{{ L_kindleDevice }}</div><div style="font-size:11.5px;opacity:.5;">{{ deviceInfoLabel }}</div></div>
+          </div>
+          <button type="button" class="btn btn-ghost">{{ L_forgetDevice }}</button>
+        </div>
+
+        <button type="button" class="btn btn-primary" onClick="{{ closeSettings }}">{{ L_saveChanges }}</button>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isGrid }}" hint-placeholder-val="{{ true }}">
+      <div style="flex:1;overflow-y:auto;position:relative;">
+        <div style="padding:var(--space-5) var(--space-6) 0;font-size:12.5px;opacity:.5;">{{ bookCountLabel }}</div>
+        <sc-if value="{{ hasBooks }}" hint-placeholder-val="{{ true }}">
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:var(--space-5);padding:var(--space-4) var(--space-6) var(--space-8);">
+            <sc-for list="{{ books }}" as="book" hint-placeholder-count="8">
+              <div onClick="{{ book.onClick }}" style="cursor:pointer;display:flex;flex-direction:column;gap:8px;">
+                <div style="aspect-ratio:2/3;position:relative;border:1px solid var(--color-divider);border-radius:var(--radius-sm);overflow:hidden;box-shadow:var(--shadow-sm);">
+                  <div style="background:{{ book.spineColor }};height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:12px;">
+                    <div style="font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:#fff;opacity:.75;">{{ book.tag0 }}</div>
+                    <div style="font-family:var(--font-heading);font-size:18px;line-height:1.18;color:#fff;">{{ book.title }}</div>
+                    <div style="font-size:10.5px;color:#fff;opacity:.85;">{{ book.author }}</div>
+                  </div>
+                  <sc-if value="{{ book.showStatusTag }}" hint-placeholder-val="{{ false }}">
+                    <span style="position:absolute;top:8px;{{ statusTagSide }}:8px;font-size:10px;background:var(--color-bg);color:var(--color-text);border:1px solid var(--color-divider);border-radius:var(--radius-sm);box-shadow:var(--shadow-sm);padding:2px 7px;">{{ book.status }}</span>
+                  </sc-if>
+                </div>
+                <div>
+                  <div style="font-size:13px;font-weight:600;line-height:1.3;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">{{ book.title }}</div>
+                  <div style="font-size:12px;opacity:.55;">{{ book.author }}</div>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+        <sc-if value="{{ noBooks }}" hint-placeholder-val="{{ false }}">
+          <div style="padding:var(--space-8);text-align:center;opacity:.5;font-size:14px;">{{ L_noMatch }}</div>
+        </sc-if>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isListView }}" hint-placeholder-val="{{ false }}">
+      <div style="flex:1;overflow-y:auto;padding:var(--space-5) var(--space-6) var(--space-8);">
+        <div style="font-size:12.5px;opacity:.5;margin-bottom:var(--space-3);">{{ bookCountLabel }}</div>
+        <table class="table">
+          <thead><tr><th>{{ L_colTitle }}</th><th>{{ L_colAuthor }}</th><th>{{ L_colSeries }}</th><th>{{ L_colTags }}</th><th>{{ L_colFormat }}</th><th>{{ L_colStatus }}</th></tr></thead>
+          <tbody>
+            <sc-for list="{{ books }}" as="book" hint-placeholder-count="8">
+              <tr onClick="{{ book.onClick }}" style="cursor:pointer;">
+                <td style="font-weight:600;">{{ book.title }}</td>
+                <td>{{ book.author }}</td>
+                <td class="text-muted">{{ book.seriesLabel }}</td>
+                <td class="text-muted">{{ book.tagsLabel }}</td>
+                <td class="text-muted">{{ book.format }}</td>
+                <td><span class="{{ book.statusTagClass }}">{{ book.status }}</span></td>
+              </tr>
+            </sc-for>
+          </tbody>
+        </table>
+        <sc-if value="{{ noBooks }}" hint-placeholder-val="{{ false }}">
+          <div style="padding:var(--space-8);text-align:center;opacity:.5;font-size:14px;">{{ L_noMatch }}</div>
+        </sc-if>
+      </div>
+    </sc-if>
+
+    <!-- Details drawer -->
+    <sc-if value="{{ drawerOpen }}" hint-placeholder-val="{{ false }}">
+      <div onClick="{{ closeDrawer }}" style="position:absolute;inset:0;background:var(--color-neutral-900);opacity:.15;"></div>
+      <div style="position:absolute;top:0;{{ drawerSide }}:0;bottom:0;width:392px;background:var(--color-bg);{{ drawerBorder }}box-shadow:var(--shadow-lg);overflow-y:auto;padding:var(--space-5);display:flex;flex-direction:column;gap:var(--space-4);">
+        <div style="display:flex;justify-content:flex-end;">
+          <button type="button" class="btn btn-ghost btn-icon" aria-label="Close" onClick="{{ closeDrawer }}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></button>
+        </div>
+        <div style="display:flex;gap:var(--space-4);">
+          <div style="width:112px;aspect-ratio:2/3;flex:none;border:1px solid var(--color-divider);border-radius:var(--radius-sm);overflow:hidden;box-shadow:var(--shadow-sm);">
+            <div style="background:{{ selected.spineColor }};height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:10px;">
+              <div style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:#fff;opacity:.75;">{{ selected.tag0 }}</div>
+              <div style="font-family:var(--font-heading);font-size:14px;line-height:1.15;color:#fff;">{{ selected.title }}</div>
+              <div style="font-size:9px;color:#fff;opacity:.85;">{{ selected.author }}</div>
+            </div>
+          </div>
+          <div style="flex:1;">
+            <h2 style="margin:0 0 4px;font-size:21px;">{{ selected.title }}</h2>
+            <div style="opacity:.6;font-size:13.5px;margin-bottom:8px;">{{ selected.author }}</div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;">
+              <sc-for list="{{ selectedTags }}" as="t" hint-placeholder-count="2"><span class="tag tag-outline">{{ t }}</span></sc-for>
+            </div>
+          </div>
+        </div>
+
+        <div class="field" style="margin:0;">
+          <label>{{ L_sectionStatus }}</label>
+          <div class="seg" role="radiogroup" aria-label="Reading status">
+            <sc-for list="{{ statusOptions }}" as="opt" hint-placeholder-count="3">
+              <label class="seg-opt"><input type="radio" name="drawerstatus" checked="{{ opt.active }}" onChange="{{ opt.onClick }}">{{ opt.label }}</label>
+            </sc-for>
+          </div>
+        </div>
+
+        <div class="hr"></div>
+        <p style="text-align:justify;font-size:14px;line-height:1.6;margin:0;">{{ selected.description }}</p>
+        <div class="hr"></div>
+
+        <table style="width:100%;font-size:13px;border-collapse:collapse;">
+          <tr><td style="opacity:.55;padding:4px 0;">{{ L_labelSeries }}</td><td style="text-align:{{ endAlign }};">{{ selected.seriesLabel }}</td></tr>
+          <tr><td style="opacity:.55;padding:4px 0;">{{ L_labelFormat }}</td><td style="text-align:{{ endAlign }};">{{ selected.format }}</td></tr>
+          <tr><td style="opacity:.55;padding:4px 0;">{{ L_labelPublished }}</td><td style="text-align:{{ endAlign }};">{{ selected.year }}</td></tr>
+          <tr><td style="opacity:.55;padding:4px 0;">{{ L_labelAdded }}</td><td style="text-align:{{ endAlign }};">{{ selected.added }}</td></tr>
+        </table>
+
+        <div style="display:flex;flex-direction:column;gap:8px;margin-top:auto;">
+          <button type="button" class="btn btn-primary btn-block" onClick="{{ openReader }}">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>
+            {{ L_drawerReadBtn }}
+          </button>
+          <div style="display:flex;gap:8px;">
+            <button type="button" class="btn btn-secondary" style="flex:1;" onClick="{{ openMetadata }}">{{ L_drawerEditMeta }}</button>
+            <button type="button" class="btn btn-secondary" style="flex:1;" onClick="{{ openImport }}">{{ L_drawerConvert }}</button>
+          </div>
+          <button type="button" class="btn btn-ghost btn-block" onClick="{{ removeBook }}">{{ L_drawerRemove }}</button>
+        </div>
+      </div>
+    </sc-if>
+
+  </div>
+
+  <!-- Reader overlay -->
+  <sc-if value="{{ readerOpen }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;inset:0;background:var(--color-bg);z-index:50;display:flex;flex-direction:column;">
+      <div style="height:52px;flex:none;display:flex;align-items:center;padding:0 var(--space-5);border-bottom:1px solid var(--color-divider);">
+        <button type="button" class="btn btn-ghost btn-icon" aria-label="Close reader" onClick="{{ closeReader }}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></button>
+        <div style="flex:1;text-align:center;font-size:13px;opacity:.6;">{{ readerBook.title }} · {{ readerBook.author }}</div>
+        <div style="width:32px;"></div>
+      </div>
+      <div style="flex:1;overflow-y:auto;display:flex;justify-content:center;padding:var(--space-8) var(--space-6);">
+        <div style="max-width:560px;width:100%;">
+          <div style="font-family:var(--font-heading);font-size:13px;letter-spacing:.12em;text-transform:uppercase;opacity:.5;text-align:center;margin-bottom:var(--space-2);">{{ L_chapterOne }}</div>
+          <h1 style="text-align:center;margin:0 0 var(--space-6);">{{ readerBook.title }}</h1>
+          <p style="text-align:justify;font-size:16.5px;line-height:1.75;">{{ readerBook.opening }}</p>
+        </div>
+      </div>
+      <div style="height:44px;flex:none;display:flex;align-items:center;justify-content:center;gap:var(--space-4);border-top:1px solid var(--color-divider);font-size:12px;opacity:.55;">
+        <span>{{ pageLabel }}</span>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- Metadata editor dialog -->
+  <sc-if value="{{ metadataOpen }}" hint-placeholder-val="{{ false }}">
+    <div class="dialog-backdrop" style="position:fixed;">
+      <div class="dialog" role="dialog" aria-modal="true" style="width:480px;text-align:{{ startAlign }};">
+        <div class="dialog-title">{{ L_metaTitle }}</div>
+        <div class="dialog-body" style="display:flex;flex-direction:column;gap:var(--space-3);text-align:{{ startAlign }};">
+          <div class="field" style="margin:0;"><label>{{ L_fieldTitle }}</label><input class="input" value="{{ draft.title }}" onChange="{{ onDraftTitle }}"></div>
+          <div class="field" style="margin:0;"><label>{{ L_fieldAuthor }}</label><input class="input" value="{{ draft.author }}" onChange="{{ onDraftAuthor }}"></div>
+          <div class="field" style="margin:0;"><label>{{ L_fieldSeries }}</label><input class="input" value="{{ draft.seriesLabel }}" onChange="{{ onDraftSeries }}"></div>
+          <div class="field" style="margin:0;"><label>{{ L_fieldTags }}</label><input class="input" value="{{ draft.tagsLabel }}" onChange="{{ onDraftTags }}"></div>
+          <div class="field" style="margin:0;"><label>{{ L_fieldDescription }}</label><textarea class="input" rows="4" value="{{ draft.description }}" onChange="{{ onDraftDescription }}"></textarea></div>
+        </div>
+        <div class="dialog-actions">
+          <button type="button" class="btn btn-secondary" onClick="{{ closeMetadata }}">{{ L_cancel }}</button>
+          <button type="button" class="btn btn-primary" onClick="{{ saveMetadata }}">{{ L_save }}</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- Import / conversion dialog -->
+  <sc-if value="{{ importOpen }}" hint-placeholder-val="{{ false }}">
+    <div class="dialog-backdrop" style="position:fixed;">
+      <div class="dialog" role="dialog" aria-modal="true" style="width:520px;text-align:{{ startAlign }};">
+        <div class="dialog-title">{{ L_importTitle }}</div>
+        <div class="dialog-body" style="text-align:{{ startAlign }};">
+          <div style="border:1px dashed var(--color-divider);border-radius:var(--radius-md);padding:var(--space-5);text-align:center;margin-bottom:var(--space-4);">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:.4;margin-bottom:6px;"><path d="M12 3v12"></path><path d="m7 10 5 5 5-5"></path><path d="M5 21h14"></path></svg>
+            <div style="font-size:13px;opacity:.6;">{{ L_dropText }} <span style="color:var(--color-accent-700);text-decoration:underline;cursor:pointer;">{{ L_browse }}</span></div>
+          </div>
+          <div class="field" style="margin-bottom:var(--space-4);">
+            <label>{{ L_convertTo }}</label>
+            <div class="seg" role="radiogroup" aria-label="Target format">
+              <sc-for list="{{ importFormatOptions }}" as="opt" hint-placeholder-count="4">
+                <label class="seg-opt"><input type="radio" name="importformat" checked="{{ opt.active }}" onChange="{{ opt.onClick }}">{{ opt.label }}</label>
+              </sc-for>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <sc-for list="{{ importQueue }}" as="f" hint-placeholder-count="3">
+              <div style="display:flex;align-items:center;gap:var(--space-2);border:1px solid var(--color-divider);border-radius:var(--radius-sm);padding:8px 10px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:.5;flex:none;"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5z"></path><path d="M14 2v6h6"></path></svg>
+                <span style="flex:1;font-size:13px;">{{ f.name }}</span>
+                <span style="font-size:11.5px;opacity:.5;">{{ f.size }}</span>
+                <span class="{{ f.tagClass }}">{{ f.status }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+        <div class="dialog-actions">
+          <button type="button" class="btn btn-secondary" onClick="{{ closeImport }}">{{ L_cancel }}</button>
+          <button type="button" class="btn btn-primary" onClick="{{ startImport }}">{{ L_startImport }}</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- Collections manager dialog -->
+  <sc-if value="{{ collectionsOpen }}" hint-placeholder-val="{{ false }}">
+    <div class="dialog-backdrop" style="position:fixed;">
+      <div class="dialog" role="dialog" aria-modal="true" style="width:420px;text-align:{{ startAlign }};">
+        <div class="dialog-title">{{ L_manageCollections }}</div>
+        <div class="dialog-body" style="text-align:{{ startAlign }};">
+          <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:var(--space-4);">
+            <sc-for list="{{ collectionsList }}" as="c" hint-placeholder-count="3">
+              <div style="display:flex;align-items:center;gap:var(--space-2);border-bottom:1px solid var(--color-divider);padding:8px 0;">
+                <span style="flex:1;font-size:13.5px;">{{ c.label }}</span>
+                <span style="font-size:11.5px;opacity:.5;">{{ c.countLabel }}</span>
+                <button type="button" class="btn btn-ghost btn-icon" aria-label="Delete collection" onClick="{{ c.onDelete }}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path></svg></button>
+              </div>
+            </sc-for>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <input class="input" placeholder="{{ L_newCollectionPh }}" value="{{ newCollectionName }}" onChange="{{ onNewCollectionName }}" style="flex:1;">
+            <button type="button" class="btn btn-secondary" onClick="{{ addCollection }}">{{ L_add }}</button>
+          </div>
+        </div>
+        <div class="dialog-actions">
+          <button type="button" class="btn btn-primary" onClick="{{ closeCollections }}">{{ L_done }}</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+const SPINES = ['var(--color-accent-700)','var(--color-neutral-800)','var(--color-accent-600)','var(--color-neutral-700)','var(--color-accent-800)','var(--color-neutral-900)'];
+
+const TAG_UR = { 'Classic':'کلاسیک','Romance':'رومانس','Gothic':'گوتھک','Tragedy':'المیہ','Philosophy':'فلسفہ','Modernist':'جدیدیت','Epic':'رزمیہ','Mythology':'اساطیر','History':'تاریخ','Adventure':'مہم جوئی','Coming-of-age':'بلوغت','Jazz Age':'جاز دور' };
+const STATUS_UR = { 'Unread':'ان پڑھا','Reading':'زیرِ مطالعہ','Finished':'مکمل' };
+
+const EN = { searchPlaceholder:'Search title or author', gridLabel:'Grid', listLabel:'List', importBooks:'Import books',
+  sectionLibrary:'Library', sectionAuthors:'Authors', sectionSeries:'Series', sectionTags:'Tags', sectionCollections:'Collections', manage:'Manage', sectionStatus:'Reading status', settings:'Settings',
+  myLibrary:'My Library', kindleDevice:'Kindle Paperwhite', booksSuffix:'books', gbFree:'GB free', allBooks:'All books',
+  filterAuthor:'Author', filterSeries:'Series', filterTag:'Tag', filterCollection:'Collection', filterStatus:'Status',
+  colTitle:'Title', colAuthor:'Author', colSeries:'Series', colTags:'Tags', colFormat:'Format', colStatus:'Status', noMatch:'No books match this view.',
+  drawerReadBtn:'Read', drawerEditMeta:'Edit metadata', drawerConvert:'Convert\u2026', drawerRemove:'Remove from library',
+  labelSeries:'Series', labelFormat:'Format', labelPublished:'Published', labelAdded:'Added', chapterOne:'Chapter I', page:'Page', of:'of',
+  metaTitle:'Edit metadata', fieldTitle:'Title', fieldAuthor:'Author', fieldSeries:'Series', fieldTags:'Tags (comma separated)', fieldDescription:'Description', cancel:'Cancel', save:'Save',
+  importTitle:'Import & convert', dropText:'Drop EPUB, MOBI or PDF files here, or', browse:'browse', convertTo:'Convert to', startImport:'Start import',
+  manageCollections:'Manage collections', newCollectionPh:'New collection name', add:'Add', done:'Done',
+  preferences:'Preferences', prefSubtitle:'Library location, conversion defaults and connected devices.', libLocation:'Library location', folder:'Folder', browseEllip:'Browse\u2026',
+  importDefaults:'Import & conversion defaults', defaultFormat:'Default output format', fetchMeta:'Fetch metadata automatically from',
+  connectedDevices:'Connected devices', forgetDevice:'Forget device', saveChanges:'Save changes' };
+
+const UR = { searchPlaceholder:'عنوان یا مصنف تلاش کریں', gridLabel:'گرڈ', listLabel:'فہرست', importBooks:'کتابیں درآمد کریں',
+  sectionLibrary:'لائبریری', sectionAuthors:'مصنفین', sectionSeries:'سلسلہ', sectionTags:'ٹیگز', sectionCollections:'مجموعے', manage:'ترتیب دیں', sectionStatus:'مطالعے کی حیثیت', settings:'ترتیبات',
+  myLibrary:'میری لائبریری', kindleDevice:'کنڈل پیپروائٹ', booksSuffix:'کتابیں', gbFree:'جی بی خالی', allBooks:'تمام کتابیں',
+  filterAuthor:'مصنف', filterSeries:'سلسلہ', filterTag:'ٹیگ', filterCollection:'مجموعہ', filterStatus:'حیثیت',
+  colTitle:'عنوان', colAuthor:'مصنف', colSeries:'سلسلہ', colTags:'ٹیگز', colFormat:'فارمیٹ', colStatus:'حیثیت', noMatch:'اس منظر سے کوئی کتاب مطابقت نہیں رکھتی۔',
+  drawerReadBtn:'پڑھیں', drawerEditMeta:'میٹا ڈیٹا میں ترمیم کریں', drawerConvert:'تبدیل کریں\u2026', drawerRemove:'لائبریری سے ہٹا دیں',
+  labelSeries:'سلسلہ', labelFormat:'فارمیٹ', labelPublished:'اشاعت', labelAdded:'شامل کردہ', chapterOne:'باب اول', page:'صفحہ', of:'از',
+  metaTitle:'میٹا ڈیٹا میں ترمیم کریں', fieldTitle:'عنوان', fieldAuthor:'مصنف', fieldSeries:'سلسلہ', fieldTags:'ٹیگز (کوما سے الگ)', fieldDescription:'تفصیل', cancel:'منسوخ کریں', save:'محفوظ کریں',
+  importTitle:'درآمد اور تبدیلی', dropText:'EPUB، MOBI یا PDF فائلیں یہاں ڈراپ کریں، یا', browse:'براؤز کریں', convertTo:'اس میں تبدیل کریں', startImport:'درآمد شروع کریں',
+  manageCollections:'مجموعے ترتیب دیں', newCollectionPh:'نئے مجموعے کا نام', add:'شامل کریں', done:'مکمل',
+  preferences:'ترجیحات', prefSubtitle:'لائبریری کا مقام، تبدیلی کی طے شدہ ترتیبات اور منسلک آلات۔', libLocation:'لائبریری کا مقام', folder:'فولڈر', browseEllip:'براؤز کریں\u2026',
+  importDefaults:'درآمد اور تبدیلی کی طے شدہ ترتیبات', defaultFormat:'طے شدہ آؤٹ پٹ فارمیٹ', fetchMeta:'میٹا ڈیٹا خودکار طور پر حاصل کریں از',
+  connectedDevices:'منسلک آلات', forgetDevice:'آلہ بھلا دیں', saveChanges:'تبدیلیاں محفوظ کریں' };
+
+const BOOKS = [
+  {id:1,title:'Pride and Prejudice',author:'Jane Austen',series:null,tags:['Romance','Classic'],format:'EPUB',status:'Finished',year:1813,added:'Jan 2024',onDevice:true,collections:['Book club'],description:'A comedy of manners following the Bennet sisters as they navigate marriage, class and misunderstanding in Georgian England.',opening:'It is a truth universally acknowledged, that a single man in possession of a good fortune, must be in want of a wife.',pages:328},
+  {id:2,title:'Sense and Sensibility',author:'Jane Austen',series:null,tags:['Romance','Classic'],format:'EPUB',status:'Reading',year:1811,added:'Feb 2024',onDevice:false,collections:['Currently reading'],description:'The Dashwood sisters, one guided by reason and the other by feeling, are turned out of their family home and must find their footing in society.',opening:'The family of Dashwood had long been settled in Sussex.',pages:352},
+  {id:3,title:'Moby-Dick',author:'Herman Melville',series:null,tags:['Adventure','Classic'],format:'PDF',status:'Unread',year:1851,added:'Mar 2024',onDevice:true,collections:[],description:'Ishmael joins the whaling ship Pequod, whose captain Ahab is consumed by his obsession with the white whale that maimed him.',opening:'Call me Ishmael. Some years ago—never mind how long precisely—having little or no money in my purse, and nothing particular to interest me on shore, I thought I would sail about a little and see the watery part of the world.',pages:635},
+  {id:4,title:'War and Peace',author:'Leo Tolstoy',series:null,tags:['History','Classic'],format:'EPUB',status:'Reading',year:1869,added:'Nov 2023',onDevice:false,collections:['Currently reading'],description:'The lives of several aristocratic Russian families are traced against the backdrop of Napoleon\u2019s invasion of Russia.',opening:'Well, Prince, so Genoa and Lucca are now just family estates of the Buonapartes.',pages:1225},
+  {id:5,title:'Anna Karenina',author:'Leo Tolstoy',series:null,tags:['Romance','Tragedy'],format:'EPUB',status:'Unread',year:1877,added:'Nov 2023',onDevice:false,collections:[],description:'An affair between a St. Petersburg socialite and a cavalry officer unfolds alongside the quieter, more hopeful marriage of a landowner and a young woman.',opening:'Happy families are all alike; every unhappy family is unhappy in its own way.',pages:864},
+  {id:6,title:'Crime and Punishment',author:'Fyodor Dostoevsky',series:null,tags:['Philosophy','Classic'],format:'EPUB',status:'Finished',year:1866,added:'Aug 2023',onDevice:true,collections:['Book club'],description:'A destitute former student in St. Petersburg commits a murder and is undone by the guilt that follows.',opening:'On an exceptionally hot evening early in July a young man came out of the garret in which he lodged.',pages:671},
+  {id:7,title:'The Brothers Karamazov',author:'Fyodor Dostoevsky',series:null,tags:['Philosophy','Classic'],format:'MOBI',status:'Unread',year:1880,added:'Aug 2023',onDevice:false,collections:[],description:'Three brothers and their father test questions of faith, doubt and morality after the father is murdered.',opening:'Alexey Fyodorovitch Karamazov was the third son of Fyodor Pavlovitch Karamazov.',pages:824},
+  {id:8,title:'Jane Eyre',author:'Charlotte Bront\u00eb',series:null,tags:['Gothic','Romance'],format:'EPUB',status:'Finished',year:1847,added:'May 2023',onDevice:true,collections:[],description:'An orphaned governess finds work at Thornfield Hall, where a hidden secret threatens her growing bond with its master.',opening:'There was no possibility of taking a walk that day.',pages:507},
+  {id:9,title:'Wuthering Heights',author:'Emily Bront\u00eb',series:null,tags:['Gothic','Tragedy'],format:'EPUB',status:'Reading',year:1847,added:'May 2023',onDevice:false,collections:['Currently reading'],description:'A tenant on the Yorkshire moors pieces together the destructive love between Heathcliff and Catherine Earnshaw.',opening:'1801.\u2014I have just returned from a visit to my landlord\u2014the solitary neighbour that I shall be troubled with.',pages:416},
+  {id:10,title:'Great Expectations',author:'Charles Dickens',series:null,tags:['Coming-of-age','Classic'],format:'EPUB',status:'Unread',year:1861,added:'Jun 2023',onDevice:false,collections:[],description:'An orphan named Pip is given a mysterious fortune that reshapes his sense of who he is meant to become.',opening:'My father\u2019s family name being Pirrip, and my Christian name Philip, my infant tongue could make of both names nothing longer or more explicit than Pip.',pages:544},
+  {id:11,title:'A Tale of Two Cities',author:'Charles Dickens',series:null,tags:['History','Classic'],format:'PDF',status:'Finished',year:1859,added:'Jun 2023',onDevice:false,collections:['Book club'],description:'The lives of a French aristocrat and an English lawyer intertwine across London and Paris during the French Revolution.',opening:'It was the best of times, it was the worst of times.',pages:489},
+  {id:12,title:'Tess of the d\u2019Urbervilles',author:'Thomas Hardy',series:null,tags:['Tragedy','Classic'],format:'EPUB',status:'Unread',year:1891,added:'Oct 2023',onDevice:false,collections:[],description:'A young woman\u2019s life is shaped, and repeatedly undone, by the rigid moral judgments of the society around her.',opening:'On an evening in the latter part of May a middle-aged man was walking homeward from Shaston to the village of Marlott.',pages:461},
+  {id:13,title:'Mrs Dalloway',author:'Virginia Woolf',series:null,tags:['Modernist','Classic'],format:'EPUB',status:'Reading',year:1925,added:'Jan 2024',onDevice:true,collections:['Currently reading'],description:'A single day in London follows Clarissa Dalloway as she prepares for a party, her thoughts drifting across past and present.',opening:'Mrs Dalloway said she would buy the flowers herself.',pages:194},
+  {id:14,title:'To the Lighthouse',author:'Virginia Woolf',series:null,tags:['Modernist','Classic'],format:'AZW3',status:'Unread',year:1927,added:'Jan 2024',onDevice:false,collections:[],description:'Over a decade, the Ramsay family and their guests return to a summer house on the Isle of Skye and to an unmade promise.',opening:'Yes, of course, if it\u2019s fine tomorrow, said Mrs Ramsay.',pages:209},
+  {id:15,title:'The Great Gatsby',author:'F. Scott Fitzgerald',series:null,tags:['Jazz Age','Classic'],format:'EPUB',status:'Finished',year:1925,added:'Apr 2023',onDevice:true,collections:['Book club'],description:'Nick Carraway becomes entangled with his enigmatic neighbor Jay Gatsby and Gatsby\u2019s obsessive love for Daisy Buchanan.',opening:'In my younger and more vulnerable years my father gave me some advice that I\u2019ve been turning over in my mind ever since.',pages:180},
+  {id:16,title:'The Picture of Dorian Gray',author:'Oscar Wilde',series:null,tags:['Gothic','Philosophy'],format:'EPUB',status:'Reading',year:1890,added:'Sep 2023',onDevice:false,collections:['Currently reading'],description:'A portrait ages and corrupts in place of its subject, who pursues beauty and pleasure without consequence.',opening:'The studio was filled with the rich odour of roses.',pages:254},
+  {id:17,title:'The Odyssey',author:'Homer',series:'Homeric Epics',tags:['Epic','Mythology'],format:'PDF',status:'Unread',year:-700,added:'Dec 2023',onDevice:false,collections:[],description:'Odysseus makes his ten-year journey home from the Trojan War, contending with gods, monsters and his own household.',opening:'Sing to me of the man, Muse, the man of twists and turns, driven time and again off course.',pages:541},
+  {id:18,title:'The Iliad',author:'Homer',series:'Homeric Epics',tags:['Epic','Mythology'],format:'PDF',status:'Unread',year:-750,added:'Dec 2023',onDevice:false,collections:[],description:'The wrath of Achilles unfolds during the final weeks of the decade-long siege of Troy.',opening:'Rage\u2014Goddess, sing the rage of Peleus\u2019 son Achilles.',pages:589}
+];
+
+function spineFor(id){ return SPINES[id % SPINES.length]; }
+function statusTagClass(s){ return s==='Finished' ? 'tag tag-accent' : s==='Reading' ? 'tag tag-outline' : 'tag tag-neutral'; }
+
+class Component extends DCLogic {
+  state = {
+    lang: 'en',
+    mainView: 'library',
+    viewMode: 'grid',
+    search: '',
+    filterType: null, filterValue: null,
+    device: 'library',
+    selectedId: null,
+    readerId: null,
+    metadataOpen: false, draft: null,
+    importOpen: false, importFormat: 'EPUB', importQueue: [], importedOnce: false,
+    collectionsOpen: false, collections: ['Currently reading','Book club','To review'], newCollectionName: '',
+    statusOverrides: {},
+    libraryPath: '/Users/reader/Library/Books',
+    defaultFormat: 'EPUB',
+    metadataSources: {'Open Library': true, 'Google Books': true, 'Goodreads': false}
+  };
+
+  getStatus(book){ return this.state.statusOverrides[book.id] || book.status; }
+
+  filteredBooks(){
+    const { filterType, filterValue, search, device } = this.state;
+    let list = BOOKS;
+    if (device === 'kindle') list = list.filter(b => b.onDevice);
+    if (filterType === 'author') list = list.filter(b => b.author === filterValue);
+    if (filterType === 'series') list = list.filter(b => b.series === filterValue);
+    if (filterType === 'tag') list = list.filter(b => b.tags.includes(filterValue));
+    if (filterType === 'collection') list = list.filter(b => b.collections.includes(filterValue));
+    if (filterType === 'status') list = list.filter(b => this.getStatus(b) === filterValue);
+    if (search) { const q = search.toLowerCase(); list = list.filter(b => b.title.toLowerCase().includes(q) || b.author.toLowerCase().includes(q)); }
+    return list;
+  }
+
+  setFilter(type, value){ this.setState({ filterType: type, filterValue: value, mainView: 'library' }); }
+  clearFilter(){ this.setState({ filterType: null, filterValue: null, device: 'library', mainView: 'library' }); }
+
+  renderVals() {
+    const s = this.state;
+    const L = s.lang === 'ur' ? UR : EN;
+    const isUr = s.lang === 'ur';
+    const dir = isUr ? 'rtl' : 'ltr';
+    const startAlign = isUr ? 'right' : 'left';
+    const endAlign = isUr ? 'left' : 'right';
+    const uiFont = isUr ? "'Noto Nastaliq Urdu', var(--font-body)" : 'var(--font-body)';
+    const translateStatus = (v) => isUr ? (STATUS_UR[v] || v) : v;
+    const translateTag = (v) => isUr ? (TAG_UR[v] || v) : v;
+
+    const filtered = this.filteredBooks();
+
+    const countsBy = (fn) => { const m = new Map(); BOOKS.forEach(b => { const v = fn(b); if (v == null) return; (Array.isArray(v)?v:[v]).forEach(x => m.set(x, (m.get(x)||0)+1)); }); return m; };
+    const authorCounts = countsBy(b=>b.author);
+    const seriesCounts = countsBy(b=>b.series);
+    const tagCounts = countsBy(b=>b.tags);
+    const statusCounts = countsBy(b=>this.getStatus(b));
+    const collCounts = countsBy(b=>b.collections);
+
+    const navAuthors = [...authorCounts.entries()].sort((a,b)=>b[1]-a[1]).map(([label,count]) => ({
+      label, count, onClick: () => this.setFilter('author', label),
+      color: s.filterType==='author'&&s.filterValue===label ? 'var(--color-accent-700)' : 'inherit',
+      weight: s.filterType==='author'&&s.filterValue===label ? 600 : 400,
+      bg: s.filterType==='author'&&s.filterValue===label ? 'var(--color-accent-100)' : 'transparent'
+    }));
+    const navSeries = [...seriesCounts.entries()].sort((a,b)=>b[1]-a[1]).map(([label,count]) => ({
+      label, count, onClick: () => this.setFilter('series', label),
+      color: s.filterType==='series'&&s.filterValue===label ? 'var(--color-accent-700)' : 'inherit',
+      weight: s.filterType==='series'&&s.filterValue===label ? 600 : 400,
+      bg: s.filterType==='series'&&s.filterValue===label ? 'var(--color-accent-100)' : 'transparent'
+    }));
+    const navTags = [...tagCounts.entries()].sort((a,b)=>b[1]-a[1]).map(([label]) => ({
+      label: translateTag(label), onClick: () => this.setFilter('tag', label),
+      tagClass: s.filterType==='tag'&&s.filterValue===label ? 'tag tag-accent' : 'tag tag-neutral'
+    }));
+    const navStatuses = ['Unread','Reading','Finished'].map(label => ({
+      label: translateStatus(label), count: statusCounts.get(label)||0, onClick: () => this.setFilter('status', label),
+      color: s.filterType==='status'&&s.filterValue===label ? 'var(--color-accent-700)' : 'inherit',
+      weight: s.filterType==='status'&&s.filterValue===label ? 600 : 400,
+      bg: s.filterType==='status'&&s.filterValue===label ? 'var(--color-accent-100)' : 'transparent'
+    }));
+    const navCollections = s.collections.map(label => ({
+      label, count: collCounts.get(label)||0, onClick: () => this.setFilter('collection', label),
+      color: s.filterType==='collection'&&s.filterValue===label ? 'var(--color-accent-700)' : 'inherit',
+      weight: s.filterType==='collection'&&s.filterValue===label ? 600 : 400,
+      bg: s.filterType==='collection'&&s.filterValue===label ? 'var(--color-accent-100)' : 'transparent'
+    }));
+    const deviceCount = BOOKS.filter(b=>b.onDevice).length;
+    const navLibraries = [
+      { label: L.myLibrary, count: BOOKS.length, onClick: () => this.clearFilter(), color: s.device==='library' ? 'var(--color-accent-700)' : 'inherit', weight: s.device==='library'?600:400, iconOpacity: s.device==='library'?1:.5 },
+      { label: L.kindleDevice, count: deviceCount, onClick: () => this.setState({device:'kindle', filterType:null, filterValue:null, mainView:'library'}), color: s.device==='kindle' ? 'var(--color-accent-700)' : 'inherit', weight: s.device==='kindle'?600:400, iconOpacity: s.device==='kindle'?1:.5 }
+    ];
+
+    const decorate = (book) => ({
+      ...book,
+      spineColor: spineFor(book.id),
+      tag0: translateTag(book.tags[0]),
+      status: translateStatus(this.getStatus(book)),
+      statusTagClass: statusTagClass(this.getStatus(book)),
+      showStatusTag: this.getStatus(book) !== 'Unread',
+      seriesLabel: book.series || '\u2014',
+      tagsLabel: book.tags.map(translateTag).join(isUr ? '\u060c ' : ', '),
+      onClick: () => this.setState({ selectedId: book.id })
+    });
+    const books = filtered.map(decorate);
+    const selectedRaw = BOOKS.find(b => b.id === s.selectedId) || null;
+    const selected = selectedRaw ? decorate(selectedRaw) : null;
+    const readerRaw = BOOKS.find(b => b.id === s.readerId) || null;
+
+    const filterPrefix = { author: L.filterAuthor, series: L.filterSeries, tag: L.filterTag, collection: L.filterCollection, status: L.filterStatus };
+    const headerParts = [];
+    if (s.device === 'kindle') headerParts.push(L.kindleDevice);
+    if (s.filterType) headerParts.push(`${filterPrefix[s.filterType]}: ${s.filterType==='tag'?translateTag(s.filterValue):s.filterType==='status'?translateStatus(s.filterValue):s.filterValue}`);
+    const headerLabel = headerParts.length ? headerParts.join(' \u00b7 ') : L.allBooks;
+
+    const formats = ['EPUB','MOBI','AZW3','PDF'];
+    const formatOptions = formats.map(f => ({ label: f, active: s.defaultFormat === f, onClick: () => this.setState({ defaultFormat: f }) }));
+    const importFormatOptions = formats.map(f => ({ label: f, active: s.importFormat === f, onClick: () => this.setState({ importFormat: f }) }));
+    const metadataSources = Object.keys(s.metadataSources).map(label => ({ label, checked: s.metadataSources[label], onClick: () => this.setState({ metadataSources: { ...s.metadataSources, [label]: !s.metadataSources[label] } }) }));
+
+    const statusOptions = selected ? ['Unread','Reading','Finished'].map(label => ({
+      label: translateStatus(label), active: selected.status === translateStatus(label),
+      onClick: () => this.setState({ statusOverrides: { ...s.statusOverrides, [selectedRaw.id]: label } })
+    })) : [];
+
+    const collectionsList = s.collections.map(label => ({ label, countLabel: `${collCounts.get(label)||0} ${L.booksSuffix}`, onDelete: () => this.setState({ collections: s.collections.filter(c => c !== label) }) }));
+
+    const out = {};
+    Object.keys(EN).forEach(k => { out['L_' + k] = L[k]; });
+
+    return {
+      ...out,
+      dir, uiFont, startAlign, endAlign,
+      sidebarBorder: isUr ? `border-left:1px solid var(--color-divider);` : `border-right:1px solid var(--color-divider);`,
+      drawerSide: isUr ? 'left' : 'right',
+      drawerBorder: isUr ? `border-right:1px solid var(--color-divider);` : `border-left:1px solid var(--color-divider);`,
+      statusTagSide: isUr ? 'left' : 'right',
+      isEn: !isUr, isUr, setEn: () => this.setState({ lang: 'en' }), setUr: () => this.setState({ lang: 'ur' }),
+      search: s.search, onSearch: e => this.setState({ search: e.target.value }),
+      headerLabel,
+      isGrid: s.mainView==='library' && s.viewMode==='grid', isListView: s.mainView==='library' && s.viewMode==='list', isList: s.viewMode==='list',
+      setGrid: () => this.setState({ viewMode: 'grid' }), setList: () => this.setState({ viewMode: 'list' }),
+      isSettings: s.mainView==='settings',
+      openSettings: () => this.setState({ mainView: 'settings' }), closeSettings: () => this.setState({ mainView: 'library' }),
+      libraryPath: s.libraryPath, onLibraryPath: e => this.setState({ libraryPath: e.target.value }),
+      formatOptions, metadataSources, deviceInfoLabel: `${deviceCount} ${L.booksSuffix} \u00b7 6.2 ${L.gbFree}`,
+      navLibraries, navAuthors, navSeries, navTags, navStatuses, navCollections,
+      books, bookCountLabel: `${books.length} ${L.booksSuffix}`, hasBooks: books.length > 0, noBooks: books.length === 0,
+      drawerOpen: !!selected, selected, selectedTags: selected ? selected.tags.map(translateTag) : [],
+      closeDrawer: () => this.setState({ selectedId: null }),
+      statusOptions,
+      openReader: () => this.setState({ readerId: s.selectedId, selectedId: null }),
+      removeBook: () => this.setState({ selectedId: null }),
+      openMetadata: () => this.setState({ metadataOpen: true, draft: { ...selected } }),
+      readerOpen: !!readerRaw, readerBook: readerRaw || { title:'', author:'', opening:'', pages:0 },
+      pageLabel: readerRaw ? `${L.page} 1 ${L.of} ${readerRaw.pages}` : '',
+      closeReader: () => this.setState({ readerId: null }),
+      metadataOpen: s.metadataOpen, draft: s.draft || { title:'', author:'', seriesLabel:'', tagsLabel:'', description:'' },
+      onDraftTitle: e => this.setState({ draft: { ...s.draft, title: e.target.value } }),
+      onDraftAuthor: e => this.setState({ draft: { ...s.draft, author: e.target.value } }),
+      onDraftSeries: e => this.setState({ draft: { ...s.draft, seriesLabel: e.target.value } }),
+      onDraftTags: e => this.setState({ draft: { ...s.draft, tagsLabel: e.target.value } }),
+      onDraftDescription: e => this.setState({ draft: { ...s.draft, description: e.target.value } }),
+      closeMetadata: () => this.setState({ metadataOpen: false }),
+      saveMetadata: () => {
+        const d = s.draft; const target = BOOKS.find(b => b.id === d.id);
+        if (target) { target.title = d.title; target.author = d.author; target.series = d.seriesLabel === '\u2014' ? null : d.seriesLabel; target.tags = d.tagsLabel.split(',').map(t=>t.trim()).filter(Boolean); target.description = d.description; }
+        this.setState({ metadataOpen: false });
+      },
+      importOpen: s.importOpen,
+      openImport: () => this.setState({ importOpen: true, importedOnce: false, importQueue: [
+        { name: 'the-voyage-out.mobi', size: '1.2 MB', status: 'Queued', tagClass: 'tag tag-neutral' },
+        { name: 'dubliners.pdf', size: '3.4 MB', status: 'Queued', tagClass: 'tag tag-neutral' },
+        { name: 'walden.epub', size: '0.8 MB', status: 'Queued', tagClass: 'tag tag-neutral' }
+      ] }),
+      closeImport: () => this.setState({ importOpen: false }),
+      importFormatOptions,
+      importQueue: s.importedOnce ? s.importQueue.map(f => ({ ...f, status: 'Converted', tagClass: 'tag tag-accent' })) : s.importQueue,
+      startImport: () => this.setState({ importedOnce: true }),
+      collectionsOpen: s.collectionsOpen,
+      openCollections: () => this.setState({ collectionsOpen: true }),
+      closeCollections: () => this.setState({ collectionsOpen: false }),
+      collectionsList,
+      newCollectionName: s.newCollectionName,
+      onNewCollectionName: e => this.setState({ newCollectionName: e.target.value }),
+      addCollection: () => { if (s.newCollectionName.trim()) this.setState({ collections: [...s.collections, s.newCollectionName.trim()], newCollectionName: '' }); }
+    };
+  }
+}
+</script>
+</body>
+</html>

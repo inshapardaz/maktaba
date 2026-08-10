@@ -16,6 +16,7 @@ public class BookEditService(MaktabaDbContext db, ILibraryPathProvider libraryPa
             .Include(b => b.BookAuthors)
             .Include(b => b.BookSeries)
             .Include(b => b.BookTags)
+            .Include(b => b.BookCollections)
             .Include(b => b.Files)
             .FirstOrDefaultAsync(b => b.Id == bookId, ct);
 
@@ -61,6 +62,21 @@ public class BookEditService(MaktabaDbContext db, ILibraryPathProvider libraryPa
         foreach (var tag in tags)
         {
             book.BookTags.Add(new BookTag { BookId = book.Id, Tag = tag });
+        }
+
+        db.BookCollections.RemoveRange(book.BookCollections);
+        book.BookCollections.Clear();
+        if (request.CollectionIds.Count > 0)
+        {
+            // Membership is set from *existing* collections only - Collections are user-created via
+            // the manager dialog, unlike Authors/Series/Tags which are find-or-created from free text.
+            var collections = await db.Collections
+                .Where(c => request.CollectionIds.Contains(c.Id))
+                .ToListAsync(ct);
+            foreach (var collection in collections)
+            {
+                book.BookCollections.Add(new BookCollection { BookId = book.Id, Collection = collection });
+            }
         }
 
         var move = RelocateOnDiskIfNeeded(book, oldFolderRelative);
