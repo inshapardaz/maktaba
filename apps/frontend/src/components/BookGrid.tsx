@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Box, Center, Image, Text, UnstyledButton } from "@mantine/core";
+import { Box, Image, Text, UnstyledButton } from "@mantine/core";
 import type { BookSummary } from "../api";
 import { coverUrl } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
+import { SpineCover } from "./SpineCover";
 
 interface BookGridProps {
   books: BookSummary[];
@@ -11,9 +12,9 @@ interface BookGridProps {
 }
 
 const CARD_WIDTH = 160;
-const COVER_HEIGHT = 220;
-const CARD_HEIGHT = 270;
-const GAP = 16;
+const COVER_HEIGHT = 240; // 2:3 aspect ratio, per design/README.md §3
+const CARD_HEIGHT = 290;
+const GAP = 20;
 
 export function BookGrid({ books, onSelect }: BookGridProps) {
   const { t } = useLanguage();
@@ -67,27 +68,27 @@ export function BookGrid({ books, onSelect }: BookGridProps) {
             >
               {rowBooks.map((book) => (
                 <UnstyledButton key={book.id} w={CARD_WIDTH} onClick={() => onSelect(book.id)}>
-                  <Box
-                    w={CARD_WIDTH}
-                    h={COVER_HEIGHT}
-                    style={{
-                      borderRadius: "var(--mantine-radius-sm)",
-                      overflow: "hidden",
-                      border: "1px solid var(--mantine-color-default-border)",
-                      background: "var(--mantine-color-default-hover)",
-                    }}
-                  >
-                    {book.hasCover ? (
-                      <Image src={coverUrl(book.id)} alt="" loading="lazy" w={CARD_WIDTH} h={COVER_HEIGHT} fit="cover" />
-                    ) : (
-                      <Center h="100%" p="xs">
-                        <Text size="xs" c="dimmed" ta="center" lineClamp={4}>
-                          {book.title}
-                        </Text>
-                      </Center>
-                    )}
-                  </Box>
-                  <Text size="sm" fw={600} mt={6} truncate="end" title={book.title}>
+                  {book.hasCover ? (
+                    <Image
+                      src={coverUrl(book.id)}
+                      alt=""
+                      loading="lazy"
+                      w={CARD_WIDTH}
+                      h={COVER_HEIGHT}
+                      fit="cover"
+                      radius="sm"
+                      style={{ border: "1px solid var(--mantine-color-default-border)", boxShadow: "var(--mantine-shadow-sm)" }}
+                    />
+                  ) : (
+                    <SpineCover
+                      id={book.id}
+                      title={book.title}
+                      author={book.authors.join(", ") || t("common.unknownAuthor")}
+                      width={CARD_WIDTH}
+                      height={COVER_HEIGHT}
+                    />
+                  )}
+                  <Text size="sm" fw={600} mt={8} lineClamp={2} title={book.title}>
                     {book.title}
                   </Text>
                   <Text size="xs" c="dimmed" truncate="end" title={book.authors.join(", ")}>

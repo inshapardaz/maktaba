@@ -31,12 +31,18 @@ const en = {
   "toolbar.sortRating": "Rating",
   "toolbar.colorSchemeToggle": "Toggle color scheme",
   "toolbar.language": "Language",
+  "toolbar.searchPlaceholder": "Search title, author, series, tag…",
+  "toolbar.gridLabel": "Grid",
+  "toolbar.listLabel": "List",
+  "toolbar.allBooks": "All books",
+  "toolbar.filterAuthor": "Author",
+  "toolbar.filterSeries": "Series",
+  "toolbar.filterTag": "Tag",
 
   "sidebar.authors": "Authors",
   "sidebar.series": "Series",
   "sidebar.tags": "Tags",
 
-  "filterBar.searchPlaceholder": "Search title, author, series, tag…",
   "filterBar.allFormats": "All formats",
   "filterBar.anyRating": "Any rating",
 
@@ -119,12 +125,18 @@ const ur: TranslationDict = {
   "toolbar.sortRating": "درجہ بندی",
   "toolbar.colorSchemeToggle": "رنگ سکیم تبدیل کریں",
   "toolbar.language": "زبان",
+  "toolbar.searchPlaceholder": "عنوان، مصنف، سیریز یا ٹیگ تلاش کریں…",
+  "toolbar.gridLabel": "گرڈ",
+  "toolbar.listLabel": "فہرست",
+  "toolbar.allBooks": "تمام کتابیں",
+  "toolbar.filterAuthor": "مصنف",
+  "toolbar.filterSeries": "سیریز",
+  "toolbar.filterTag": "ٹیگ",
 
   "sidebar.authors": "مصنفین",
   "sidebar.series": "سیریز",
   "sidebar.tags": "ٹیگز",
 
-  "filterBar.searchPlaceholder": "عنوان، مصنف، سیریز یا ٹیگ تلاش کریں…",
   "filterBar.allFormats": "تمام فارمیٹس",
   "filterBar.anyRating": "کوئی بھی درجہ بندی",
 

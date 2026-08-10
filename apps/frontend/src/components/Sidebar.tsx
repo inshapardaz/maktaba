@@ -34,8 +34,16 @@ function GroupSection({
   }
 
   return (
-    <Box mb="sm">
-      <Text size="xs" fw={700} c="dimmed" tt="uppercase" px="md" py={4}>
+    <Box mb="var(--mantine-spacing-lg)">
+      <Text
+        fz={10.5}
+        fw={600}
+        c="dimmed"
+        tt="uppercase"
+        px="md"
+        py={4}
+        style={{ letterSpacing: "0.1em" }}
+      >
         {title}
       </Text>
       {groups.map((group) => {
@@ -53,6 +61,18 @@ function GroupSection({
             }
             px="md"
             py={5}
+            styles={{
+              root: {
+                borderRadius: "var(--mantine-radius-sm)",
+                ...(isActive
+                  ? {
+                      backgroundColor: "var(--mantine-color-accent-1)",
+                      color: "var(--mantine-color-accent-7)",
+                    }
+                  : {}),
+              },
+              label: { fontWeight: isActive ? 600 : 400 },
+            }}
           />
         );
       })}
@@ -67,7 +87,13 @@ export function Sidebar({ activeFilter, onSelect }: SidebarProps) {
   const tagsQuery = useQuery({ queryKey: ["tags"], queryFn: listTags });
 
   return (
-    <ScrollArea component="nav" w={220} py="sm">
+    <ScrollArea
+      component="nav"
+      w={232}
+      py="var(--mantine-spacing-lg)"
+      px={4}
+      style={{ borderInlineEnd: "1px solid var(--mantine-color-default-border)" }}
+    >
       <GroupSection
         title={t("sidebar.authors")}
         kind="authorId"

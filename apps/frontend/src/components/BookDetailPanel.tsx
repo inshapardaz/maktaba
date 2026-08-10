@@ -7,11 +7,11 @@ import {
   Button,
   Center,
   Divider,
+  Drawer,
   Group,
   Image,
   List,
   Loader,
-  Modal,
   Stack,
   Text,
   Title,
@@ -20,6 +20,7 @@ import { IconAlertCircle, IconFolder, IconExternalLink, IconTrash } from "@table
 import { getBook, deleteBook, coverUrl } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
 import { BookEditForm } from "./BookEditForm";
+import { SpineCover } from "./SpineCover";
 
 interface BookDetailPanelProps {
   bookId: string;
@@ -28,7 +29,7 @@ interface BookDetailPanelProps {
 }
 
 export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelProps) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const [isEditing, setEditing] = useState(false);
   const [isRemoving, setRemoving] = useState(false);
   const [removeError, setRemoveError] = useState<string | null>(null);
@@ -65,7 +66,14 @@ export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelP
   };
 
   return (
-    <Modal opened onClose={onClose} title={book?.title ?? t("bookDetail.defaultTitle")} size="lg">
+    <Drawer
+      opened
+      onClose={onClose}
+      title={book?.title ?? t("bookDetail.defaultTitle")}
+      position={language === "ur" ? "left" : "right"}
+      size={392}
+      padding="lg"
+    >
       {isLoading && (
         <Center py="xl">
           <Loader />
@@ -82,21 +90,33 @@ export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelP
         <Stack gap="md">
           <Group align="flex-start" gap="md">
             {book.hasCover ? (
-              <Image src={coverUrl(book.id)} alt="" w={120} h={170} fit="cover" radius="sm" style={{ flexShrink: 0 }} />
+              <Image
+                src={coverUrl(book.id)}
+                alt=""
+                w={110}
+                h={165}
+                fit="cover"
+                radius="sm"
+                style={{
+                  flexShrink: 0,
+                  border: "1px solid var(--mantine-color-default-border)",
+                  boxShadow: "var(--mantine-shadow-sm)",
+                }}
+              />
             ) : (
-              <Center
-                w={120}
-                h={170}
-                bg="var(--mantine-color-default-hover)"
-                style={{ borderRadius: "var(--mantine-radius-sm)", flexShrink: 0 }}
-              >
-                <Text size="xs" c="dimmed" ta="center" p={4}>
-                  {book.title}
-                </Text>
-              </Center>
+              <SpineCover
+                id={book.id}
+                title={book.title}
+                author={book.authors.join(", ") || t("common.unknownAuthor")}
+                width={110}
+                height={165}
+                titleSize={14}
+                metaSize={9}
+                padding={8}
+              />
             )}
 
-            <Stack gap={4} style={{ flex: 1 }}>
+            <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
               <Title order={3}>{book.title}</Title>
               <Text c="dimmed">{book.authors.join(", ") || t("common.unknownAuthor")}</Text>
               {book.seriesName && (
@@ -226,6 +246,6 @@ export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelP
           </List>
         </Stack>
       )}
-    </Modal>
+    </Drawer>
   );
 }

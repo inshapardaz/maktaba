@@ -12,19 +12,20 @@ export function BookList({ books, onSelect }: BookListProps) {
 
   return (
     <Box style={{ flex: 1, overflow: "auto" }} p="md">
-      <Table highlightOnHover verticalSpacing="xs">
+      <Table highlightOnHover verticalSpacing="sm">
         <Table.Thead>
           <Table.Tr>
-            <Table.Th>{t("bookList.title")}</Table.Th>
-            <Table.Th>{t("bookList.author")}</Table.Th>
-            <Table.Th>{t("bookList.rating")}</Table.Th>
-            <Table.Th>{t("bookList.dateAdded")}</Table.Th>
+            {[t("bookList.title"), t("bookList.author"), t("bookList.rating"), t("bookList.dateAdded")].map((label) => (
+              <Table.Th key={label} fz={11} fw={400} c="dimmed" tt="uppercase" style={{ letterSpacing: "0.08em" }}>
+                {label}
+              </Table.Th>
+            ))}
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
           {books.map((book) => (
             <Table.Tr key={book.id} onClick={() => onSelect(book.id)} style={{ cursor: "pointer" }}>
-              <Table.Td>{book.title}</Table.Td>
+              <Table.Td fw={600}>{book.title}</Table.Td>
               <Table.Td>{book.authors.join(", ") || t("common.unknownAuthor")}</Table.Td>
               <Table.Td>
                 {"★".repeat(book.rating)}

@@ -25,6 +25,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setDirection(language === "ur" ? "rtl" : "ltr");
+    document.body.classList.toggle("lang-ur", language === "ur");
   }, [language, setDirection]);
 
   const value = useMemo<LanguageContextValue>(

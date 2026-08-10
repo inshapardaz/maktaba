@@ -124,6 +124,17 @@ function App() {
     [booksQuery.data, sortKey],
   );
 
+  const contextLabel = useMemo(() => {
+    if (!groupFilter) return t("toolbar.allBooks");
+    const kindLabel =
+      groupFilter.kind === "authorId"
+        ? t("toolbar.filterAuthor")
+        : groupFilter.kind === "seriesId"
+          ? t("toolbar.filterSeries")
+          : t("toolbar.filterTag");
+    return `${kindLabel}: ${groupFilter.name}`;
+  }, [groupFilter, t]);
+
   function askUserForDuplicateAction(filePath: string, info: DuplicateBookInfo): Promise<DuplicateAction | "cancel"> {
     return new Promise((resolve) => {
       duplicateResolverRef.current = resolve;
@@ -226,10 +237,13 @@ function App() {
       onDragLeave={() => setDragActive(false)}
       onDrop={handleDrop}
     >
-      <AppShell header={{ height: 56 }} navbar={{ width: 220, breakpoint: 0 }} padding={0}>
+      <AppShell header={{ height: 60 }} navbar={{ width: 232, breakpoint: 0 }} padding={0}>
         <AppShell.Header>
           <Toolbar
             libraryPath={libraryQuery.data.path}
+            contextLabel={contextLabel}
+            search={search}
+            onSearchChange={setSearch}
             sortKey={sortKey}
             onSortKeyChange={setSortKey}
             viewMode={viewMode}
@@ -248,8 +262,6 @@ function App() {
 
         <AppShell.Main style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
           <FilterBar
-            search={search}
-            onSearchChange={setSearch}
             format={format}
             onFormatChange={setFormat}
             minRating={minRating}
@@ -315,9 +327,9 @@ function App() {
       </Modal>
 
       {isDragActive && (
-        <Overlay color="var(--mantine-color-brand-6)" backgroundOpacity={0.15} zIndex={1000}>
+        <Overlay color="var(--mantine-color-accent-7)" backgroundOpacity={0.15} zIndex={1000}>
           <Center h="100%">
-            <Group gap="xs" c="var(--mantine-color-brand-6)">
+            <Group gap="xs" c="var(--mantine-color-accent-7)">
               <IconUpload size={24} />
               <Text fw={600} size="lg">
                 {t("app.dropToImport")}

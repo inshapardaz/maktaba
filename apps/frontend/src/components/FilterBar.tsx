@@ -1,10 +1,7 @@
-import { Group, Select, TextInput, Pill } from "@mantine/core";
-import { IconSearch } from "@tabler/icons-react";
+import { Group, Select, Pill } from "@mantine/core";
 import { useLanguage } from "../i18n/LanguageContext";
 
 interface FilterBarProps {
-  search: string;
-  onSearchChange: (value: string) => void;
   format: string;
   onFormatChange: (value: string) => void;
   minRating: number;
@@ -23,8 +20,6 @@ const RATING_OPTIONS = [
 ];
 
 export function FilterBar({
-  search,
-  onSearchChange,
   format,
   onFormatChange,
   minRating,
@@ -52,14 +47,6 @@ export function FilterBar({
       wrap="wrap"
       style={{ borderBottom: "1px solid var(--mantine-color-default-border)" }}
     >
-      <TextInput
-        flex="0 1 360px"
-        placeholder={t("filterBar.searchPlaceholder")}
-        leftSection={<IconSearch size={16} />}
-        value={search}
-        onChange={(e) => onSearchChange(e.currentTarget.value)}
-      />
-
       <Select
         w={140}
         data={formatOptions}
