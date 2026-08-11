@@ -245,9 +245,9 @@ export function ImportDialog({ initialFiles, onClose, onImported }: ImportDialog
             onDrop={handleDrop}
             p="xl"
             style={{
-              border: `1px dashed var(--mantine-color-${isDragOver ? "accent-6" : "default-border"})`,
+              border: `1px dashed ${isDragOver ? "var(--mantine-primary-color-6)" : "var(--mantine-color-default-border)"}`,
               borderRadius: "var(--mantine-radius-md)",
-              backgroundColor: isDragOver ? "var(--mantine-color-accent-0)" : "transparent",
+              backgroundColor: isDragOver ? "var(--mantine-primary-color-0)" : "transparent",
               textAlign: "center",
             }}
           >

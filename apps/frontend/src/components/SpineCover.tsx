@@ -16,11 +16,11 @@ interface SpineCoverProps {
 // cycled by book id) — used as the book-cover placeholder when no real cover
 // art was extracted from the file.
 const SPINE_PALETTE = [
-  "var(--mantine-color-accent-7)",
+  "var(--mantine-primary-color-7)",
   "var(--mantine-color-gray-8)",
-  "var(--mantine-color-accent-6)",
+  "var(--mantine-primary-color-6)",
   "var(--mantine-color-gray-7)",
-  "var(--mantine-color-accent-8)",
+  "var(--mantine-primary-color-8)",
   "var(--mantine-color-gray-9)",
 ];
 

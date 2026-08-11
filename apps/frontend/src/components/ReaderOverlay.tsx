@@ -70,7 +70,10 @@ export function ReaderOverlay({ bookId, format, onClose }: ReaderOverlayProps) {
         <Reader
           source={format === "Epub" ? { type: "epub", data: fileQuery.data } : { type: "pdf", data: fileQuery.data }}
           theme={colorScheme === "dark" ? "dark" : "light"}
-          direction={language === "ur" ? "rtl" : "ltr"}
+          // "auto" lets Qari's own DirectionDetector read the book's language and pick RTL/LTR
+          // per book - forcing it to Maktaba's own UI language here previously meant an Urdu book
+          // would render LTR whenever the app's UI language happened to be English, and vice versa.
+          direction="auto"
           fontFamily={language === "ur" ? "nastaliq" : "serif"}
           translations={LOCALES[language]}
           onError={(event) => setReaderError(event)}

@@ -1,11 +1,28 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Alert, Box, Button, Divider, Group, SegmentedControl, Stack, Text, Title, Tooltip } from "@mantine/core";
-import { IconAlertCircle, IconFolderOpen, IconRefresh } from "@tabler/icons-react";
+import {
+  Alert,
+  Box,
+  Button,
+  ColorSwatch,
+  Divider,
+  Group,
+  Select,
+  SegmentedControl,
+  Stack,
+  Text,
+  Title,
+  Tooltip,
+  UnstyledButton,
+} from "@mantine/core";
+import { IconAlertCircle, IconCheck, IconFolderOpen, IconRefresh } from "@tabler/icons-react";
 import { getSystemCapabilities, openLibrary, rescanLibrary } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
 import { invalidateLibraryQueries } from "../queries";
 import { getStoredDefaultFormat, setStoredDefaultFormat, type ConvertFormat } from "../convertFormat";
+import { useThemeColor } from "../ThemeColorContext";
+import { THEME_COLOR_OPTIONS } from "../theme";
+import { URDU_FONT_OPTIONS, type UrduFontName } from "../urduFont";
 import { ColorSchemeToggle } from "./ColorSchemeToggle";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 
@@ -31,7 +48,8 @@ function FieldLabel({ children }: { children: string }) {
 }
 
 export function SettingsScreen({ libraryPath, onLibraryChanged }: SettingsScreenProps) {
-  const { t } = useLanguage();
+  const { t, urduFont, setUrduFont } = useLanguage();
+  const { themeColor, setThemeColor } = useThemeColor();
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -121,6 +139,42 @@ export function SettingsScreen({ libraryPath, onLibraryChanged }: SettingsScreen
         <Group justify="space-between">
           <FieldLabel>{t("settings.colorScheme")}</FieldLabel>
           <ColorSchemeToggle />
+        </Group>
+        <Group justify="space-between">
+          <FieldLabel>{t("settings.themeColor")}</FieldLabel>
+          <Group gap="xs">
+            {THEME_COLOR_OPTIONS.map((option) => (
+              <UnstyledButton
+                key={option.value}
+                onClick={() => setThemeColor(option.value)}
+                aria-label={option.label}
+                title={option.label}
+              >
+                <ColorSwatch
+                  color={option.swatch}
+                  size={26}
+                  style={{
+                    cursor: "pointer",
+                    outline: themeColor === option.value ? "2px solid var(--mantine-color-text)" : "none",
+                    outlineOffset: 2,
+                  }}
+                >
+                  {themeColor === option.value && <IconCheck size={13} color="white" />}
+                </ColorSwatch>
+              </UnstyledButton>
+            ))}
+          </Group>
+        </Group>
+        <Group justify="space-between">
+          <FieldLabel>{t("settings.urduFont")}</FieldLabel>
+          <Select
+            size="sm"
+            w={220}
+            data={URDU_FONT_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
+            value={urduFont}
+            onChange={(value) => value && setUrduFont(value as UrduFontName)}
+            allowDeselect={false}
+          />
         </Group>
       </Stack>
 

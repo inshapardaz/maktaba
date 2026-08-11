@@ -1,7 +1,6 @@
-import { useState } from "react";
 import { Box, Group, NavLink, ScrollArea, Text, UnstyledButton } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
-import { IconSettings } from "@tabler/icons-react";
+import { IconBooks, IconSettings } from "@tabler/icons-react";
 import {
   listAuthors,
   listCollections,
@@ -12,7 +11,6 @@ import {
   type ReadingStatus,
 } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
-import { CollectionsManagerDialog } from "./CollectionsManagerDialog";
 
 export type GroupFilterKind = "authorId" | "seriesId" | "tagId" | "collectionId" | "readingStatus";
 
@@ -22,11 +20,27 @@ export interface GroupFilter {
   name: string;
 }
 
+export type MainView = "library" | "settings" | "authors" | "collections" | "tags";
+
+// Sidebar rows for these two groups are capped so a library with hundreds of authors or
+// collections doesn't turn the navbar into an unusable scroll — the full list lives in
+// AuthorsView/CollectionsView, opened via "See all".
+const SIDEBAR_GROUP_LIMIT = 5;
+
+function topByBookCount(groups: BrowseGroup[] | undefined): BrowseGroup[] {
+  if (!groups) return [];
+  return [...groups].sort((a, b) => b.bookCount - a.bookCount).slice(0, SIDEBAR_GROUP_LIMIT);
+}
+
 interface SidebarProps {
   activeFilter: GroupFilter | null;
   onSelect: (filter: GroupFilter | null) => void;
-  settingsActive: boolean;
+  mainView: MainView;
+  onShowAllBooks: () => void;
   onOpenSettings: () => void;
+  onOpenAuthors: () => void;
+  onOpenCollections: () => void;
+  onOpenTags: () => void;
 }
 
 function sectionRowStyles(isActive: boolean) {
@@ -35,8 +49,8 @@ function sectionRowStyles(isActive: boolean) {
       borderRadius: "var(--mantine-radius-sm)",
       ...(isActive
         ? {
-            backgroundColor: "var(--mantine-color-accent-1)",
-            color: "var(--mantine-color-accent-7)",
+            backgroundColor: "var(--mantine-primary-color-1)",
+            color: "var(--mantine-primary-color-7)",
           }
         : {}),
     },
@@ -146,68 +160,92 @@ function ReadingStatusSection({
   );
 }
 
-export function Sidebar({ activeFilter, onSelect, settingsActive, onOpenSettings }: SidebarProps) {
+export function Sidebar({
+  activeFilter,
+  onSelect,
+  mainView,
+  onShowAllBooks,
+  onOpenSettings,
+  onOpenAuthors,
+  onOpenCollections,
+  onOpenTags,
+}: SidebarProps) {
   const { t } = useLanguage();
   const authorsQuery = useQuery({ queryKey: ["authors"], queryFn: listAuthors });
   const seriesQuery = useQuery({ queryKey: ["series"], queryFn: listSeries });
   const tagsQuery = useQuery({ queryKey: ["tags"], queryFn: listTags });
   const collectionsQuery = useQuery({ queryKey: ["collections"], queryFn: listCollections });
-  const [managerOpen, setManagerOpen] = useState(false);
+
+  const seeAllAction = (onClick: () => void) => (
+    <UnstyledButton onClick={onClick} fz={10.5} fw={600} c="var(--mantine-primary-color-7)">
+      {t("sidebar.seeAll")}
+    </UnstyledButton>
+  );
 
   return (
-    <>
-      <Box w={232} h="100%" display="flex" style={{ flexDirection: "column", borderInlineEnd: "1px solid var(--mantine-color-default-border)" }}>
-        <ScrollArea component="nav" py="var(--mantine-spacing-lg)" px={4} style={{ flex: 1 }}>
-          <GroupSection
-            title={t("sidebar.collections")}
-            kind="collectionId"
-            activeFilter={activeFilter}
-            onSelect={onSelect}
-            groups={collectionsQuery.data}
-            action={
-              <UnstyledButton onClick={() => setManagerOpen(true)} fz={10.5} fw={600} c="accent.7">
-                {t("sidebar.manage")}
-              </UnstyledButton>
-            }
-          />
-          <ReadingStatusSection activeFilter={activeFilter} onSelect={onSelect} />
-          <GroupSection
-            title={t("sidebar.authors")}
-            kind="authorId"
-            activeFilter={activeFilter}
-            onSelect={onSelect}
-            groups={authorsQuery.data}
-          />
-          <GroupSection
-            title={t("sidebar.series")}
-            kind="seriesId"
-            activeFilter={activeFilter}
-            onSelect={onSelect}
-            groups={seriesQuery.data}
-          />
-          <GroupSection
-            title={t("sidebar.tags")}
-            kind="tagId"
-            activeFilter={activeFilter}
-            onSelect={onSelect}
-            groups={tagsQuery.data}
-          />
-        </ScrollArea>
-
-        <Box style={{ borderTop: "1px solid var(--mantine-color-default-border)" }} p={4}>
-          <NavLink
-            label={t("settings.title")}
-            leftSection={<IconSettings size={16} />}
-            active={settingsActive}
-            onClick={onOpenSettings}
-            px="md"
-            py={7}
-            styles={sectionRowStyles(settingsActive)}
-          />
-        </Box>
+    <Box
+      h="100%"
+      display="flex"
+      style={{ flexDirection: "column", borderInlineEnd: "1px solid var(--mantine-color-default-border)" }}
+    >
+      <Box p={4}>
+        <NavLink
+          label={t("toolbar.allBooks")}
+          leftSection={<IconBooks size={16} />}
+          active={mainView === "library" && !activeFilter}
+          onClick={onShowAllBooks}
+          px="md"
+          py={7}
+          styles={sectionRowStyles(mainView === "library" && !activeFilter)}
+        />
       </Box>
 
-      {managerOpen && <CollectionsManagerDialog onClose={() => setManagerOpen(false)} />}
-    </>
+      <ScrollArea component="nav" py="var(--mantine-spacing-lg)" px={4} style={{ flex: 1 }}>
+        <GroupSection
+          title={t("sidebar.collections")}
+          kind="collectionId"
+          activeFilter={activeFilter}
+          onSelect={onSelect}
+          groups={topByBookCount(collectionsQuery.data)}
+          action={seeAllAction(onOpenCollections)}
+        />
+        <ReadingStatusSection activeFilter={activeFilter} onSelect={onSelect} />
+        <GroupSection
+          title={t("sidebar.authors")}
+          kind="authorId"
+          activeFilter={activeFilter}
+          onSelect={onSelect}
+          groups={topByBookCount(authorsQuery.data)}
+          action={seeAllAction(onOpenAuthors)}
+        />
+        <GroupSection
+          title={t("sidebar.series")}
+          kind="seriesId"
+          activeFilter={activeFilter}
+          onSelect={onSelect}
+          groups={seriesQuery.data}
+        />
+        <GroupSection
+          title={t("sidebar.tags")}
+          kind="tagId"
+          activeFilter={activeFilter}
+          onSelect={onSelect}
+          groups={topByBookCount(tagsQuery.data)}
+          action={seeAllAction(onOpenTags)}
+        />
+      </ScrollArea>
+
+      <Box style={{ borderTop: "1px solid var(--mantine-color-default-border)" }} p={4}>
+        <NavLink
+          label={t("settings.title")}
+          leftSection={<IconSettings size={16} />}
+          active={mainView === "settings"}
+          onClick={onOpenSettings}
+          px="md"
+          py={7}
+          styles={sectionRowStyles(mainView === "settings")}
+        />
+      </Box>
+    </Box>
   );
 }

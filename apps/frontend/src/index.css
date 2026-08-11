@@ -8,11 +8,13 @@ body,
   margin: 0;
 }
 
-/* Toggled by LanguageContext when the Urdu UI is active — Lora/Cormorant
-   Garamond don't cover the Urdu script, so swap the whole document to
-   Noto Nastaliq Urdu rather than falling back to the OS default. */
+/* Toggled by LanguageContext when the Urdu UI is active — Mantine's default (Latin-only) font
+   stack doesn't cover the Urdu script, so swap the whole document to the user's chosen Urdu font
+   (Settings -> Appearance -> Urdu font) rather than falling back to the OS default. The
+   --urdu-font-family value itself is set on :root by LanguageContext, from src/urduFont.ts's
+   options, so this rule doesn't need to know the actual font names. */
 body.lang-ur,
 body.lang-ur .mantine-Modal-title,
 body.lang-ur .mantine-Drawer-title {
-  font-family: "Noto Nastaliq Urdu", system-ui, sans-serif;
+  font-family: var(--urdu-font-family);
 }

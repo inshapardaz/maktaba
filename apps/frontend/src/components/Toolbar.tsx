@@ -1,41 +1,32 @@
-import { Group, Select, SegmentedControl, Text, TextInput, Button, Divider } from "@mantine/core";
-import { IconLayoutGrid, IconList, IconSearch, IconUpload } from "@tabler/icons-react";
+import { ActionIcon, Group, Text, TextInput, Divider, Tooltip } from "@mantine/core";
+import {
+  IconLayoutSidebarLeftCollapse,
+  IconLayoutSidebarLeftExpand,
+  IconPlus,
+  IconSearch,
+} from "@tabler/icons-react";
 import { useLanguage } from "../i18n/LanguageContext";
-
-export type SortKey = "title" | "author" | "dateAdded" | "rating";
-export type ViewMode = "grid" | "list";
 
 interface ToolbarProps {
   contextLabel: string;
   search: string;
   onSearchChange: (value: string) => void;
-  sortKey: SortKey;
-  onSortKeyChange: (key: SortKey) => void;
-  viewMode: ViewMode;
-  onViewModeChange: (mode: ViewMode) => void;
   onImport: () => void;
   bookCount: number;
+  navbarOpen: boolean;
+  onToggleNavbar: () => void;
 }
 
 export function Toolbar({
   contextLabel,
   search,
   onSearchChange,
-  sortKey,
-  onSortKeyChange,
-  viewMode,
-  onViewModeChange,
   onImport,
   bookCount,
+  navbarOpen,
+  onToggleNavbar,
 }: ToolbarProps) {
   const { t } = useLanguage();
-
-  const sortOptions: { value: SortKey; label: string }[] = [
-    { value: "title", label: t("toolbar.sortTitle") },
-    { value: "author", label: t("toolbar.sortAuthor") },
-    { value: "dateAdded", label: t("toolbar.sortDateAdded") },
-    { value: "rating", label: t("toolbar.sortRating") },
-  ];
 
   return (
     <Group
@@ -45,6 +36,17 @@ export function Toolbar({
       px="lg"
       style={{ borderBottom: "1px solid var(--mantine-color-default-border)", overflowX: "auto" }}
     >
+      <ActionIcon
+        variant="subtle"
+        color="gray"
+        size="lg"
+        onClick={onToggleNavbar}
+        aria-label={t("sidebar.toggleNavbar")}
+        style={{ flexShrink: 0 }}
+      >
+        {navbarOpen ? <IconLayoutSidebarLeftCollapse size={18} /> : <IconLayoutSidebarLeftExpand size={18} />}
+      </ActionIcon>
+
       <Text ff="var(--mantine-font-family-headings)" fw={600} fz={22} style={{ flexShrink: 0 }}>
         مکتبہ
       </Text>
@@ -64,51 +66,23 @@ export function Toolbar({
         onChange={(e) => onSearchChange(e.currentTarget.value)}
       />
 
-      <SegmentedControl
-        size="sm"
-        style={{ flexShrink: 0 }}
-        value={viewMode}
-        onChange={(value) => onViewModeChange(value as ViewMode)}
-        data={[
-          {
-            value: "grid",
-            label: (
-              <Group gap={6} wrap="nowrap">
-                <IconLayoutGrid size={13} />
-                <span>{t("toolbar.gridLabel")}</span>
-              </Group>
-            ),
-          },
-          {
-            value: "list",
-            label: (
-              <Group gap={6} wrap="nowrap">
-                <IconList size={13} />
-                <span>{t("toolbar.listLabel")}</span>
-              </Group>
-            ),
-          },
-        ]}
-      />
-
-      <Select
-        size="sm"
-        w={130}
-        style={{ flexShrink: 0 }}
-        aria-label={t("toolbar.sortBy")}
-        value={sortKey}
-        onChange={(value) => value && onSortKeyChange(value as SortKey)}
-        data={sortOptions}
-        allowDeselect={false}
-      />
-
       <Text size="sm" c="dimmed" style={{ flexShrink: 0 }}>
         {t(bookCount === 1 ? "toolbar.bookCount_one" : "toolbar.bookCount_other", { count: bookCount })}
       </Text>
 
-      <Button leftSection={<IconUpload size={14} />} onClick={onImport} style={{ flexShrink: 0 }}>
-        {t("toolbar.import")}
-      </Button>
+      <Divider orientation="vertical" style={{ height: 24, alignSelf: "center", flexShrink: 0 }} />
+
+      <Tooltip label={t("toolbar.addBooks")}>
+        <ActionIcon
+          variant="filled"
+          size="lg"
+          onClick={onImport}
+          aria-label={t("toolbar.addBooks")}
+          style={{ flexShrink: 0 }}
+        >
+          <IconPlus size={18} />
+        </ActionIcon>
+      </Tooltip>
     </Group>
   );
 }

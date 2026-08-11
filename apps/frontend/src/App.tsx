@@ -4,12 +4,15 @@ import { AppShell, Box, Center, Loader, Overlay, Text, Group } from "@mantine/co
 import { IconUpload } from "@tabler/icons-react";
 import { getCurrentLibrary, listBooks, type BookFilters, type BookSummary } from "./api";
 import { LibraryPicker } from "./components/LibraryPicker";
-import { Toolbar, type SortKey, type ViewMode } from "./components/Toolbar";
+import { Toolbar } from "./components/Toolbar";
 import { BookGrid } from "./components/BookGrid";
 import { BookList } from "./components/BookList";
 import { BookDetailPanel } from "./components/BookDetailPanel";
-import { Sidebar, type GroupFilter } from "./components/Sidebar";
-import { FilterBar } from "./components/FilterBar";
+import { Sidebar, type GroupFilter, type MainView } from "./components/Sidebar";
+import { AuthorsView } from "./components/AuthorsView";
+import { CollectionsView } from "./components/CollectionsView";
+import { TagsView } from "./components/TagsView";
+import { FilterBar, type SortKey, type ViewMode } from "./components/FilterBar";
 import { ImportDialog } from "./components/ImportDialog";
 import { SettingsScreen } from "./components/SettingsScreen";
 import { invalidateLibraryQueries } from "./queries";
@@ -48,7 +51,8 @@ function useDebounced<T>(value: T, delayMs: number): T {
 function App() {
   const { t } = useLanguage();
   const queryClient = useQueryClient();
-  const [mainView, setMainView] = useState<"library" | "settings">("library");
+  const [mainView, setMainView] = useState<MainView>("library");
+  const [navbarOpen, setNavbarOpen] = useState(true);
   const [sortKey, setSortKey] = useState<SortKey>("title");
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null);
@@ -102,6 +106,20 @@ function App() {
               : t("toolbar.filterStatus");
     return `${kindLabel}: ${groupFilter.name}`;
   }, [groupFilter, t]);
+
+  // Selecting a filter (from the sidebar or the Authors/Collections views) should always land
+  // back on the library grid/list — without this, picking a filter while Settings/Authors/
+  // Collections was open would silently update groupFilter behind whatever view was showing,
+  // with no way back to the library short of changing libraries.
+  const handleSelectFilter = (filter: GroupFilter | null) => {
+    setGroupFilter(filter);
+    setMainView("library");
+  };
+
+  const handleShowAllBooks = () => {
+    setGroupFilter(null);
+    setMainView("library");
+  };
 
   const handleImportClick = async () => {
     const files = await window.maktaba.pickEbookFiles();
@@ -157,33 +175,45 @@ function App() {
       onDragLeave={() => setDragActive(false)}
       onDrop={handleDrop}
     >
-      <AppShell header={{ height: 60 }} navbar={{ width: 232, breakpoint: 0 }} padding={0}>
+      <AppShell
+        header={{ height: 60 }}
+        navbar={{ width: 232, breakpoint: 0, collapsed: { desktop: !navbarOpen, mobile: !navbarOpen } }}
+        padding={0}
+      >
         <AppShell.Header>
           <Toolbar
             contextLabel={contextLabel}
             search={search}
             onSearchChange={setSearch}
-            sortKey={sortKey}
-            onSortKeyChange={setSortKey}
-            viewMode={viewMode}
-            onViewModeChange={setViewMode}
             onImport={handleImportClick}
             bookCount={sortedBooks.length}
+            navbarOpen={navbarOpen}
+            onToggleNavbar={() => setNavbarOpen((open) => !open)}
           />
         </AppShell.Header>
 
         <AppShell.Navbar>
           <Sidebar
             activeFilter={groupFilter}
-            onSelect={setGroupFilter}
-            settingsActive={mainView === "settings"}
+            onSelect={handleSelectFilter}
+            mainView={mainView}
+            onShowAllBooks={handleShowAllBooks}
             onOpenSettings={() => setMainView("settings")}
+            onOpenAuthors={() => setMainView("authors")}
+            onOpenCollections={() => setMainView("collections")}
+            onOpenTags={() => setMainView("tags")}
           />
         </AppShell.Navbar>
 
         <AppShell.Main style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
           {mainView === "settings" ? (
             <SettingsScreen libraryPath={libraryQuery.data.path} onLibraryChanged={handleLibraryChanged} />
+          ) : mainView === "authors" ? (
+            <AuthorsView onSelect={handleSelectFilter} onBack={() => setMainView("library")} />
+          ) : mainView === "collections" ? (
+            <CollectionsView onSelect={handleSelectFilter} onBack={() => setMainView("library")} />
+          ) : mainView === "tags" ? (
+            <TagsView onSelect={handleSelectFilter} onBack={() => setMainView("library")} />
           ) : (
             <>
               <FilterBar
@@ -191,6 +221,10 @@ function App() {
                 onFormatChange={setFormat}
                 minRating={minRating}
                 onMinRatingChange={setMinRating}
+                sortKey={sortKey}
+                onSortKeyChange={setSortKey}
+                viewMode={viewMode}
+                onViewModeChange={setViewMode}
                 activeGroupLabel={groupFilter?.name ?? null}
                 onClearGroup={() => setGroupFilter(null)}
               />
@@ -240,9 +274,9 @@ function App() {
       )}
 
       {isDragActive && (
-        <Overlay color="var(--mantine-color-accent-7)" backgroundOpacity={0.15} zIndex={1000}>
+        <Overlay color="var(--mantine-primary-color-7)" backgroundOpacity={0.15} zIndex={1000}>
           <Center h="100%">
-            <Group gap="xs" c="var(--mantine-color-accent-7)">
+            <Group gap="xs" c="var(--mantine-primary-color-7)">
               <IconUpload size={24} />
               <Text fw={600} size="lg">
                 {t("app.dropToImport")}

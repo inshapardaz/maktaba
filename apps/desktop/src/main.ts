@@ -1,14 +1,29 @@
-import { app, BrowserWindow } from "electron";
+import { app, BrowserWindow, ipcMain } from "electron";
 import * as path from "node:path";
 import { startSidecar, stopSidecar, SidecarHandle } from "./sidecar";
 import { registerNativeHandlers } from "./native";
 
 let sidecar: SidecarHandle | null = null;
 let mainWindow: BrowserWindow | null = null;
+// Keyed by "<bookId>:<format>" so re-opening the same book/format focuses its existing
+// window instead of stacking duplicates; different books (or the same book in a different
+// format) each get their own independent window.
+const readerWindows = new Map<string, BrowserWindow>();
 
 const isDev = !app.isPackaged;
 
 registerNativeHandlers(() => mainWindow);
+
+function webPreferencesFor(handle: SidecarHandle) {
+  return {
+    preload: path.join(__dirname, "preload.js"),
+    contextIsolation: true,
+    nodeIntegration: false,
+    // The only channel used to hand the sidecar's port/token to the
+    // renderer — read by preload.ts, never exposed via URL or globals.
+    additionalArguments: [`--maktaba-port=${handle.port}`, `--maktaba-token=${handle.token}`],
+  };
+}
 
 async function createWindow(): Promise<void> {
   sidecar = await startSidecar({ isPackaged: app.isPackaged, resourcesPath: process.resourcesPath });
@@ -16,17 +31,7 @@ async function createWindow(): Promise<void> {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
-    webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
-      contextIsolation: true,
-      nodeIntegration: false,
-      // The only channel used to hand the sidecar's port/token to the
-      // renderer — read by preload.ts, never exposed via URL or globals.
-      additionalArguments: [
-        `--maktaba-port=${sidecar.port}`,
-        `--maktaba-token=${sidecar.token}`,
-      ],
-    },
+    webPreferences: webPreferencesFor(sidecar),
   });
 
   if (isDev) {
@@ -37,6 +42,41 @@ async function createWindow(): Promise<void> {
     );
   }
 }
+
+async function openReaderWindow(bookId: string, format: string, title?: string): Promise<void> {
+  if (!sidecar) return;
+
+  const key = `${bookId}:${format}`;
+  const existing = readerWindows.get(key);
+  if (existing && !existing.isDestroyed()) {
+    existing.focus();
+    return;
+  }
+
+  const win = new BrowserWindow({
+    width: 960,
+    height: 900,
+    title: title || "Maktaba",
+    webPreferences: webPreferencesFor(sidecar),
+  });
+
+  readerWindows.set(key, win);
+  win.on("closed", () => readerWindows.delete(key));
+
+  const query: Record<string, string> = { view: "reader", bookId, format };
+  if (title) query.title = title;
+  if (isDev) {
+    await win.loadURL(`http://localhost:5173/?${new URLSearchParams(query).toString()}`);
+  } else {
+    await win.loadFile(path.join(__dirname, "..", "..", "frontend", "dist", "index.html"), { query });
+  }
+}
+
+ipcMain.handle(
+  "maktaba:open-reader-window",
+  (_event, { bookId, format, title }: { bookId: string; format: string; title?: string }) =>
+    openReaderWindow(bookId, format, title),
+);
 
 app.whenReady().then(createWindow);
 

@@ -1,31 +1,40 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  ActionIcon,
   Alert,
   Anchor,
   Badge,
   Button,
   Center,
   Divider,
-  Drawer,
   Group,
   Image,
   List,
   Loader,
+  Modal,
   SegmentedControl,
   Stack,
   Text,
   Title,
+  Tooltip,
 } from "@mantine/core";
 import { IconAlertCircle, IconBook2, IconFolder, IconExternalLink, IconTrash } from "@tabler/icons-react";
-import { getBook, deleteBook, coverUrl, updateBookStatus, type ReadingStatus } from "../api";
+import { getBook, deleteBook, coverUrl, updateBookStatus, type BookFileInfo, type ReadingStatus } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
 import { BookEditForm } from "./BookEditForm";
-import { ReaderOverlay } from "./ReaderOverlay";
 import { SpineCover } from "./SpineCover";
 
 function isReadableFormat(format: string): format is "Epub" | "Pdf" {
   return format === "Epub" || format === "Pdf";
+}
+
+function FieldLabel({ children }: { children: string }) {
+  return (
+    <Text fz={10.5} fw={600} c="dimmed" tt="uppercase" style={{ letterSpacing: "0.1em" }}>
+      {children}
+    </Text>
+  );
 }
 
 interface BookDetailPanelProps {
@@ -35,13 +44,12 @@ interface BookDetailPanelProps {
 }
 
 export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelProps) {
-  const { t, language } = useLanguage();
+  const { t } = useLanguage();
   const queryClient = useQueryClient();
   const [isEditing, setEditing] = useState(false);
   const [isRemoving, setRemoving] = useState(false);
   const [removeError, setRemoveError] = useState<string | null>(null);
   const [confirmingRemove, setConfirmingRemove] = useState(false);
-  const [readerFormat, setReaderFormat] = useState<"Epub" | "Pdf" | null>(null);
 
   const {
     data: book,
@@ -88,15 +96,20 @@ export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelP
     }
   };
 
+  // Opens in its own Electron BrowserWindow (see apps/desktop/src/main.ts's openReaderWindow)
+  // rather than in-app, so several books can be read side by side instead of one at a time.
+  const openReader = (format: "Epub" | "Pdf") => {
+    void window.maktaba.openReaderWindow(bookId, format, book?.title);
+  };
+
+  const readableFiles: (BookFileInfo & { format: "Epub" | "Pdf" })[] =
+    book?.files.filter((f): f is BookFileInfo & { format: "Epub" | "Pdf" } => isReadableFormat(f.format)) ?? [];
+  // Epub is the fuller in-app reading experience (reflowable, chapters) - preferred when a book
+  // has both formats, e.g. after an M8 conversion.
+  const preferredReadFile = readableFiles.find((f) => f.format === "Epub") ?? readableFiles[0];
+
   return (
-    <Drawer
-      opened
-      onClose={onClose}
-      title={book?.title ?? t("bookDetail.defaultTitle")}
-      position={language === "ur" ? "left" : "right"}
-      size={392}
-      padding="lg"
-    >
+    <Modal opened onClose={onClose} centered size={560} padding="lg">
       {isLoading && (
         <Center py="xl">
           <Loader />
@@ -152,49 +165,32 @@ export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelP
                 {"★".repeat(book.rating)}
                 {"☆".repeat(5 - book.rating)}
               </Text>
-              <SegmentedControl
-                size="xs"
-                fullWidth
-                data={statusOptions}
-                value={book.readingStatus}
-                onChange={(value) => statusMutation.mutate(value as ReadingStatus)}
-                disabled={statusMutation.isPending}
-              />
-              <Group gap="xs" mt="xs">
-                <Button size="xs" variant="default" onClick={() => setEditing(true)}>
-                  {t("bookDetail.edit")}
-                </Button>
-                {confirmingRemove ? (
-                  <Group gap={6}>
-                    <Text size="xs" c="dimmed">
-                      {t("bookDetail.confirmRemove")}
-                    </Text>
-                    <Button size="xs" color="red" loading={isRemoving} onClick={() => void handleRemove()}>
-                      {t("common.confirm")}
-                    </Button>
-                    <Button size="xs" variant="subtle" onClick={() => setConfirmingRemove(false)} disabled={isRemoving}>
-                      {t("common.cancel")}
-                    </Button>
-                  </Group>
-                ) : (
-                  <Button
-                    size="xs"
-                    variant="default"
-                    color="red"
-                    leftSection={<IconTrash size={14} />}
-                    onClick={() => setConfirmingRemove(true)}
-                  >
-                    {t("bookDetail.remove")}
-                  </Button>
-                )}
-              </Group>
-              {removeError && (
-                <Text size="xs" c="red">
-                  {removeError}
-                </Text>
-              )}
             </Stack>
           </Group>
+
+          {preferredReadFile && (
+            <Button
+              size="md"
+              variant="filled"
+              fullWidth
+              leftSection={<IconBook2 size={18} />}
+              onClick={() => openReader(preferredReadFile.format)}
+            >
+              {t("bookDetail.read")}
+            </Button>
+          )}
+
+          <Stack gap={6}>
+            <FieldLabel>{t("bookDetail.readingStatus")}</FieldLabel>
+            <SegmentedControl
+              size="xs"
+              fullWidth
+              data={statusOptions}
+              value={book.readingStatus}
+              onChange={(value) => statusMutation.mutate(value as ReadingStatus)}
+              disabled={statusMutation.isPending}
+            />
+          </Stack>
 
           {book.description && <Text size="sm">{book.description}</Text>}
 
@@ -203,25 +199,19 @@ export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelP
           <Group gap="lg">
             {book.publisher && (
               <div>
-                <Text size="xs" c="dimmed">
-                  {t("bookDetail.publisher")}
-                </Text>
+                <FieldLabel>{t("bookDetail.publisher")}</FieldLabel>
                 <Text size="sm">{book.publisher}</Text>
               </div>
             )}
             {book.datePublished && (
               <div>
-                <Text size="xs" c="dimmed">
-                  {t("bookDetail.published")}
-                </Text>
+                <FieldLabel>{t("bookDetail.published")}</FieldLabel>
                 <Text size="sm">{book.datePublished}</Text>
               </div>
             )}
             {book.language && (
               <div>
-                <Text size="xs" c="dimmed">
-                  {t("bookDetail.language")}
-                </Text>
+                <FieldLabel>{t("bookDetail.language")}</FieldLabel>
                 <Text size="sm">{book.language}</Text>
               </div>
             )}
@@ -239,10 +229,8 @@ export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelP
 
           {book.collections.length > 0 && (
             <div>
-              <Text size="xs" c="dimmed" mb={4}>
-                {t("bookDetail.collections")}
-              </Text>
-              <Group gap={6}>
+              <FieldLabel>{t("bookDetail.collections")}</FieldLabel>
+              <Group gap={6} mt={4}>
                 {book.collections.map((collection) => (
                   <Badge key={collection.id} variant="outline">
                     {collection.name}
@@ -250,12 +238,6 @@ export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelP
                 ))}
               </Group>
             </div>
-          )}
-
-          {book.identifiers.length > 0 && (
-            <Text size="xs" c="dimmed">
-              {book.identifiers.map((i) => `${i.scheme.toUpperCase()}: ${i.value}`).join(" · ")}
-            </Text>
           )}
 
           <Divider label={t("bookDetail.files")} labelPosition="left" />
@@ -268,42 +250,82 @@ export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelP
                     {f.format} — {(f.fileSizeBytes / 1024).toFixed(0)} KB
                   </Text>
                   <Group gap={4}>
-                    {isReadableFormat(f.format) && (
-                      <Anchor size="sm" component="button" type="button" onClick={() => setReaderFormat(f.format as "Epub" | "Pdf")}>
+                    {/* Only shown when there's an actual choice to make (e.g. both Epub and
+                          Pdf) - the single-format case is already covered by the prominent Read
+                          button above, so a duplicate link here would just be clutter. */}
+                    {readableFiles.length > 1 && isReadableFormat(f.format) && (
+                      <Anchor size="sm" component="button" type="button" onClick={() => openReader(f.format as "Epub" | "Pdf")}>
                         <Group gap={4}>
                           <IconBook2 size={14} />
                           {t("bookDetail.read")}
                         </Group>
                       </Anchor>
                     )}
-                    <Anchor size="sm" component="button" type="button" onClick={() => window.maktaba.openPath(f.absolutePath)}>
-                      <Group gap={4}>
+                    <Tooltip label={t("bookDetail.open")}>
+                      <ActionIcon
+                        size="sm"
+                        variant="subtle"
+                        color="gray"
+                        aria-label={t("bookDetail.open")}
+                        onClick={() => window.maktaba.openPath(f.absolutePath)}
+                      >
                         <IconExternalLink size={14} />
-                        {t("bookDetail.open")}
-                      </Group>
-                    </Anchor>
-                    <Anchor
-                      size="sm"
-                      component="button"
-                      type="button"
-                      onClick={() => window.maktaba.revealInFolder(f.absolutePath)}
-                    >
-                      <Group gap={4}>
+                      </ActionIcon>
+                    </Tooltip>
+                    <Tooltip label={t("bookDetail.showInFolder")}>
+                      <ActionIcon
+                        size="sm"
+                        variant="subtle"
+                        color="gray"
+                        aria-label={t("bookDetail.showInFolder")}
+                        onClick={() => window.maktaba.revealInFolder(f.absolutePath)}
+                      >
                         <IconFolder size={14} />
-                        {t("bookDetail.showInFolder")}
-                      </Group>
-                    </Anchor>
+                      </ActionIcon>
+                    </Tooltip>
                   </Group>
                 </Group>
               </List.Item>
             ))}
           </List>
+
+          <Divider />
+
+          <Group gap="xs">
+            <Button size="sm" variant="default" onClick={() => setEditing(true)}>
+              {t("bookDetail.edit")}
+            </Button>
+            {confirmingRemove ? (
+              <Group gap={6}>
+                <Text size="xs" c="dimmed">
+                  {t("bookDetail.confirmRemove")}
+                </Text>
+                <Button size="sm" color="red" loading={isRemoving} onClick={() => void handleRemove()}>
+                  {t("common.confirm")}
+                </Button>
+                <Button size="sm" variant="subtle" onClick={() => setConfirmingRemove(false)} disabled={isRemoving}>
+                  {t("common.cancel")}
+                </Button>
+              </Group>
+            ) : (
+              <Button
+                size="sm"
+                variant="default"
+                color="red"
+                leftSection={<IconTrash size={14} />}
+                onClick={() => setConfirmingRemove(true)}
+              >
+                {t("bookDetail.remove")}
+              </Button>
+            )}
+          </Group>
+          {removeError && (
+            <Text size="xs" c="red">
+              {removeError}
+            </Text>
+          )}
         </Stack>
       )}
-
-      {readerFormat && (
-        <ReaderOverlay bookId={bookId} format={readerFormat} onClose={() => setReaderFormat(null)} />
-      )}
-    </Drawer>
+    </Modal>
   );
 }
