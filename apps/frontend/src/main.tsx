@@ -24,10 +24,10 @@ const readerParams = new URLSearchParams(window.location.search);
 const readerRequest =
   readerParams.get("view") === "reader"
     ? {
-        bookId: readerParams.get("bookId") ?? "",
-        format: readerParams.get("format") === "Pdf" ? ("Pdf" as const) : ("Epub" as const),
-        title: readerParams.get("title"),
-      }
+      bookId: readerParams.get("bookId") ?? "",
+      format: readerParams.get("format") === "Pdf" ? ("Pdf" as const) : ("Epub" as const),
+      title: readerParams.get("title"),
+    }
     : null;
 
 function ReaderWindow({ bookId, format, title }: { bookId: string; format: "Epub" | "Pdf"; title: string | null }) {
@@ -35,7 +35,7 @@ function ReaderWindow({ bookId, format, title }: { bookId: string; format: "Epub
     if (title) document.title = title;
   }, [title]);
 
-  return <ReaderOverlay bookId={bookId} format={format} onClose={() => window.close()} />;
+  return <ReaderOverlay bookId={bookId} format={format} />;
 }
 
 // Reads the persisted theme color (see ThemeColorProvider, mounted just outside this component)
