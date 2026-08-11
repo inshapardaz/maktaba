@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Alert, Box, Center, Loader, useComputedColorScheme } from "@mantine/core";
 import { IconAlertCircle } from "@tabler/icons-react";
