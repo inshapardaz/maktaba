@@ -1,6 +1,7 @@
-import { Box, Group, NavLink, ScrollArea, Text, UnstyledButton } from "@mantine/core";
+import { Badge, Box, Divider, Group, Kbd, NavLink, ScrollArea, Text, Tooltip, UnstyledButton } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
-import { IconBooks, IconSettings } from "@tabler/icons-react";
+import { spotlight } from "@mantine/spotlight";
+import { IconBooks, IconChevronRight, IconSearch, IconSettings } from "@tabler/icons-react";
 import {
   listAuthors,
   listCollections,
@@ -20,11 +21,11 @@ export interface GroupFilter {
   name: string;
 }
 
-export type MainView = "library" | "settings" | "authors" | "collections" | "tags";
+export type MainView = "library" | "authors" | "collections" | "tags";
 
-// Sidebar rows for these two groups are capped so a library with hundreds of authors or
-// collections doesn't turn the navbar into an unusable scroll — the full list lives in
-// AuthorsView/CollectionsView, opened via "See all".
+// Sidebar rows for these groups are capped so a library with hundreds of authors or collections
+// doesn't turn the navbar into an unusable scroll — the full list lives in AuthorsView/
+// CollectionsView/TagsView, opened via the chevron.
 const SIDEBAR_GROUP_LIMIT = 5;
 
 function topByBookCount(groups: BrowseGroup[] | undefined): BrowseGroup[] {
@@ -36,6 +37,7 @@ interface SidebarProps {
   activeFilter: GroupFilter | null;
   onSelect: (filter: GroupFilter | null) => void;
   mainView: MainView;
+  settingsOpen: boolean;
   onShowAllBooks: () => void;
   onOpenSettings: () => void;
   onOpenAuthors: () => void;
@@ -49,18 +51,18 @@ function sectionRowStyles(isActive: boolean) {
       borderRadius: "var(--mantine-radius-sm)",
       ...(isActive
         ? {
-            backgroundColor: "var(--mantine-primary-color-1)",
+            backgroundColor: "var(--mantine-primary-color-0)",
             color: "var(--mantine-primary-color-7)",
           }
         : {}),
     },
-    label: { fontWeight: isActive ? 600 : 400 },
+    label: { fontWeight: isActive ? 600 : 500, fontSize: "var(--mantine-font-size-xs)" },
   };
 }
 
 function SectionTitle({ children, action }: { children: string; action?: React.ReactNode }) {
   return (
-    <Group justify="space-between" px="md" py={4} wrap="nowrap">
+    <Group justify="space-between" px="md" mb={5} wrap="nowrap">
       <Text fz={10.5} fw={600} c="dimmed" tt="uppercase" style={{ letterSpacing: "0.1em" }}>
         {children}
       </Text>
@@ -89,7 +91,7 @@ function GroupSection({
   }
 
   return (
-    <Box mb="var(--mantine-spacing-lg)">
+    <Box py="sm" px={4} style={{ borderBottom: "1px solid var(--mantine-color-default-border)" }}>
       <SectionTitle action={action}>{title}</SectionTitle>
       {groups.map((group) => {
         const isActive = activeFilter?.kind === kind && activeFilter.id === group.id;
@@ -114,12 +116,16 @@ function GroupSection({
   );
 }
 
-function ReadingStatusSection({
+function MainLinksSection({
+  mainView,
   activeFilter,
   onSelect,
+  onShowAllBooks,
 }: {
+  mainView: MainView;
   activeFilter: GroupFilter | null;
   onSelect: (filter: GroupFilter | null) => void;
+  onShowAllBooks: () => void;
 }) {
   const { t } = useLanguage();
   const statusQuery = useQuery({ queryKey: ["readingStatusCounts"], queryFn: listReadingStatusCounts });
@@ -130,14 +136,29 @@ function ReadingStatusSection({
     Finished: t("readingStatus.finished"),
   };
 
-  if (!statusQuery.data) {
-    return null;
-  }
+  const totalBooks = statusQuery.data?.reduce((sum, s) => sum + s.count, 0);
+  const allBooksActive = mainView === "library" && !activeFilter;
 
   return (
-    <Box mb="var(--mantine-spacing-lg)">
-      <SectionTitle>{t("sidebar.readingStatus")}</SectionTitle>
-      {statusQuery.data.map(({ status, count }) => {
+    <Box py="sm" px={4} style={{ borderBottom: "1px solid var(--mantine-color-default-border)" }}>
+      <NavLink
+        label={t("toolbar.allBooks")}
+        leftSection={<IconBooks size={16} stroke={1.5} />}
+        active={allBooksActive}
+        onClick={onShowAllBooks}
+        rightSection={
+          totalBooks !== undefined && (
+            <Badge size="sm" variant={allBooksActive ? "filled" : "light"} circle>
+              {totalBooks}
+            </Badge>
+          )
+        }
+        px="md"
+        py={7}
+        styles={sectionRowStyles(allBooksActive)}
+      />
+
+      {statusQuery.data?.map(({ status, count }) => {
         const isActive = activeFilter?.kind === "readingStatus" && activeFilter.id === status;
         return (
           <NavLink
@@ -146,12 +167,12 @@ function ReadingStatusSection({
             active={isActive}
             onClick={() => onSelect(isActive ? null : { kind: "readingStatus", id: status, name: labels[status] })}
             rightSection={
-              <Text size="xs" c="dimmed">
+              <Badge size="sm" variant={isActive ? "filled" : "light"} circle>
                 {count}
-              </Text>
+              </Badge>
             }
             px="md"
-            py={5}
+            py={7}
             styles={sectionRowStyles(isActive)}
           />
         );
@@ -164,6 +185,7 @@ export function Sidebar({
   activeFilter,
   onSelect,
   mainView,
+  settingsOpen,
   onShowAllBooks,
   onOpenSettings,
   onOpenAuthors,
@@ -177,9 +199,11 @@ export function Sidebar({
   const collectionsQuery = useQuery({ queryKey: ["collections"], queryFn: listCollections });
 
   const seeAllAction = (onClick: () => void) => (
-    <UnstyledButton onClick={onClick} fz={10.5} fw={600} c="var(--mantine-primary-color-7)">
-      {t("sidebar.seeAll")}
-    </UnstyledButton>
+    <Tooltip label={t("sidebar.seeAll")}>
+      <UnstyledButton onClick={onClick} c="dimmed" style={{ display: "flex" }} aria-label={t("sidebar.seeAll")}>
+        <IconChevronRight size={14} stroke={1.5} />
+      </UnstyledButton>
+    </Tooltip>
   );
 
   return (
@@ -188,19 +212,40 @@ export function Sidebar({
       display="flex"
       style={{ flexDirection: "column", borderInlineEnd: "1px solid var(--mantine-color-default-border)" }}
     >
-      <Box p={4}>
-        <NavLink
-          label={t("toolbar.allBooks")}
-          leftSection={<IconBooks size={16} />}
-          active={mainView === "library" && !activeFilter}
-          onClick={onShowAllBooks}
-          px="md"
-          py={7}
-          styles={sectionRowStyles(mainView === "library" && !activeFilter)}
-        />
+      {/* Same trigger as the header used to have (see Toolbar) - opens the global Spotlight
+          (Ctrl/Cmd+K works from anywhere regardless of where this visible trigger lives). */}
+      <Box px="md" pt="md" pb="sm">
+        <UnstyledButton
+          onClick={() => spotlight.open()}
+          w="100%"
+          px="sm"
+          py={6}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            border: "1px solid var(--mantine-color-default-border)",
+            borderRadius: "var(--mantine-radius-sm)",
+            backgroundColor: "var(--mantine-color-body)",
+          }}
+        >
+          <IconSearch size={14} style={{ flexShrink: 0, opacity: 0.6 }} />
+          <Text size="xs" c="dimmed" style={{ flex: 1 }} truncate="end">
+            {t("toolbar.searchPlaceholder")}
+          </Text>
+          <Kbd size="xs" style={{ flexShrink: 0 }}>
+            Ctrl K
+          </Kbd>
+        </UnstyledButton>
       </Box>
 
-      <ScrollArea component="nav" py="var(--mantine-spacing-lg)" px={4} style={{ flex: 1 }}>
+      <ScrollArea component="nav" style={{ flex: 1 }}>
+        <MainLinksSection
+          mainView={mainView}
+          activeFilter={activeFilter}
+          onSelect={onSelect}
+          onShowAllBooks={onShowAllBooks}
+        />
         <GroupSection
           title={t("sidebar.collections")}
           kind="collectionId"
@@ -209,7 +254,6 @@ export function Sidebar({
           groups={topByBookCount(collectionsQuery.data)}
           action={seeAllAction(onOpenCollections)}
         />
-        <ReadingStatusSection activeFilter={activeFilter} onSelect={onSelect} />
         <GroupSection
           title={t("sidebar.authors")}
           kind="authorId"
@@ -235,15 +279,16 @@ export function Sidebar({
         />
       </ScrollArea>
 
-      <Box style={{ borderTop: "1px solid var(--mantine-color-default-border)" }} p={4}>
+      <Divider />
+      <Box p={4}>
         <NavLink
           label={t("settings.title")}
-          leftSection={<IconSettings size={16} />}
-          active={mainView === "settings"}
+          leftSection={<IconSettings size={16} stroke={1.5} />}
+          active={settingsOpen}
           onClick={onOpenSettings}
           px="md"
           py={7}
-          styles={sectionRowStyles(mainView === "settings")}
+          styles={sectionRowStyles(settingsOpen)}
         />
       </Box>
     </Box>

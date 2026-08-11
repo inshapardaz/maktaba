@@ -71,6 +71,14 @@ public record OpenLibraryRequest(string Path);
 
 public record LibraryDto(string Path);
 
+public record LibraryEntryDto(string Id, string Name, string Path, bool IsActive);
+
+public record RenameLibraryRequestDto(string Name);
+
+public record RelocateLibraryRequestDto(string Path);
+
+public record RescanProgressDto(bool IsRunning, int Processed, int Total, string? CurrentBook);
+
 public record BrowseGroupDto(string Id, string Name, int BookCount);
 
 public record CreateCollectionRequestDto(string Name);

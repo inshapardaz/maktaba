@@ -1,31 +1,20 @@
-import { ActionIcon, Group, Text, TextInput, Divider, Tooltip } from "@mantine/core";
+import { ActionIcon, Divider, Group, Text, Tooltip } from "@mantine/core";
 import {
   IconLayoutSidebarLeftCollapse,
   IconLayoutSidebarLeftExpand,
   IconPlus,
-  IconSearch,
 } from "@tabler/icons-react";
 import { useLanguage } from "../i18n/LanguageContext";
 
 interface ToolbarProps {
   contextLabel: string;
-  search: string;
-  onSearchChange: (value: string) => void;
   onImport: () => void;
   bookCount: number;
   navbarOpen: boolean;
   onToggleNavbar: () => void;
 }
 
-export function Toolbar({
-  contextLabel,
-  search,
-  onSearchChange,
-  onImport,
-  bookCount,
-  navbarOpen,
-  onToggleNavbar,
-}: ToolbarProps) {
+export function Toolbar({ contextLabel, onImport, bookCount, navbarOpen, onToggleNavbar }: ToolbarProps) {
   const { t } = useLanguage();
 
   return (
@@ -34,7 +23,7 @@ export function Toolbar({
       wrap="nowrap"
       gap="md"
       px="lg"
-      style={{ borderBottom: "1px solid var(--mantine-color-default-border)", overflowX: "auto" }}
+      style={{ borderBottom: "1px solid var(--mantine-color-default-border)" }}
     >
       <ActionIcon
         variant="subtle"
@@ -51,20 +40,11 @@ export function Toolbar({
         مکتبہ
       </Text>
       <Divider orientation="vertical" style={{ height: 24, alignSelf: "center", flexShrink: 0 }} />
-      <Text fz={13} c="dimmed" style={{ flexShrink: 0 }} truncate="end" maw={220}>
+      <Text fz={13} c="dimmed" style={{ flexShrink: 0 }} truncate="end" maw={320}>
         {contextLabel}
       </Text>
 
       <div style={{ flex: 1 }} />
-
-      <TextInput
-        w={280}
-        style={{ flexShrink: 0 }}
-        placeholder={t("toolbar.searchPlaceholder")}
-        leftSection={<IconSearch size={15} />}
-        value={search}
-        onChange={(e) => onSearchChange(e.currentTarget.value)}
-      />
 
       <Text size="sm" c="dimmed" style={{ flexShrink: 0 }}>
         {t(bookCount === 1 ? "toolbar.bookCount_one" : "toolbar.bookCount_other", { count: bookCount })}

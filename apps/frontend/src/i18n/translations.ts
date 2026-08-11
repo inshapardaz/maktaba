@@ -19,7 +19,6 @@ const en = {
   "libraryPicker.errorTitle": "Couldn't open library",
 
   "toolbar.addBooks": "Add Books",
-  "toolbar.rescan": "Rescan Library",
   "toolbar.bookCount_one": "{count} book",
   "toolbar.bookCount_other": "{count} books",
   "toolbar.sortBy": "Sort by",
@@ -70,6 +69,12 @@ const en = {
 
   "filterBar.allFormats": "All formats",
   "filterBar.anyRating": "Any rating",
+  "filterBar.searchTerm": 'Search: "{query}"',
+
+  "spotlight.books": "Books",
+  "spotlight.searchFor": 'Search for "{query}"',
+  "spotlight.prompt": "Search books, authors, tags, and collections…",
+  "spotlight.noResults": "No matches found.",
 
   "bookList.title": "Title",
   "bookList.author": "Author",
@@ -116,16 +121,10 @@ const en = {
 
   "app.noResults": "No books match these filters.",
   "app.emptyLibrary": 'No books yet. Click "Import Book(s)" or drag EPUB/PDF files onto this window.',
-  "app.rescanFailedTitle": "Rescan failed",
-  "app.rescanBody":
-    "Rebuild the library index from the files on disk? Ratings, tags, series, reading status, and collection assignments will be reset, and any manual corrections not reflected in the files themselves will be lost and re-derived from each file's embedded metadata.",
-  "app.rescanConfirm": "Rescan",
   "app.dropToImport": "Drop EPUB/PDF files to import",
 
   "settings.title": "Settings",
-  "settings.library": "Library",
-  "settings.libraryPath": "Library folder",
-  "settings.changeLibrary": "Change library…",
+  "settings.libraries": "Libraries",
   "settings.changeLibraryErrorTitle": "Couldn't open library",
   "settings.appearance": "Appearance",
   "settings.language": "Language",
@@ -134,7 +133,18 @@ const en = {
   "settings.urduFont": "Urdu font",
   "settings.import": "Import",
   "settings.defaultConvertFormat": "Default \"convert to\" format for new imports",
-  "settings.maintenance": "Library maintenance",
+  "settings.rescanStarting": "Starting…",
+  "settings.rescanProgress": "{processed} / {total} books scanned",
+
+  "librariesSettings.description": "Only one library is open at a time. Switch, rename, relocate, resync, or remove any of the libraries you've opened before.",
+  "librariesSettings.addLibrary": "Add library…",
+  "librariesSettings.active": "Active",
+  "librariesSettings.open": "Open",
+  "librariesSettings.rename": "Rename",
+  "librariesSettings.changeFolder": "Change folder",
+  "librariesSettings.resync": "Resync",
+  "librariesSettings.remove": "Remove",
+  "librariesSettings.empty": "No libraries yet.",
 
   "importDialog.title": "Import books",
   "importDialog.dropzoneTitle": "Drag EPUB/PDF files here",
@@ -173,7 +183,6 @@ const ur: TranslationDict = {
   "libraryPicker.errorTitle": "لائبریری نہیں کھل سکی",
 
   "toolbar.addBooks": "کتابیں شامل کریں",
-  "toolbar.rescan": "لائبریری دوبارہ اسکین کریں",
   "toolbar.bookCount_one": "{count} کتاب",
   "toolbar.bookCount_other": "{count} کتابیں",
   "toolbar.sortBy": "ترتیب",
@@ -224,6 +233,12 @@ const ur: TranslationDict = {
 
   "filterBar.allFormats": "تمام فارمیٹس",
   "filterBar.anyRating": "کوئی بھی درجہ بندی",
+  "filterBar.searchTerm": 'تلاش: "{query}"',
+
+  "spotlight.books": "کتابیں",
+  "spotlight.searchFor": 'تلاش کریں "{query}"',
+  "spotlight.prompt": "کتابیں، مصنفین، ٹیگز اور مجموعے تلاش کریں…",
+  "spotlight.noResults": "کوئی نتیجہ نہیں ملا۔",
 
   "bookList.title": "عنوان",
   "bookList.author": "مصنف",
@@ -270,16 +285,10 @@ const ur: TranslationDict = {
 
   "app.noResults": "کوئی کتاب ان فلٹرز سے مطابقت نہیں رکھتی۔",
   "app.emptyLibrary": '"کتاب درآمد کریں" پر کلک کریں یا EPUB/PDF فائلیں اس ونڈو پر گھسیٹ لائیں۔ ابھی کوئی کتاب موجود نہیں۔',
-  "app.rescanFailedTitle": "دوبارہ اسکین ناکام ہوا",
-  "app.rescanBody":
-    "ڈسک پر موجود فائلوں سے لائبریری انڈیکس دوبارہ تشکیل دیں؟ درجہ بندی، ٹیگز، سیریز، مطالعے کی حیثیت، اور مجموعوں کی رکنیت ری سیٹ ہو جائیں گی، اور کوئی بھی دستی تصحیح جو فائلوں میں شامل نہیں، ضائع ہو جائے گی اور ہر فائل کے اندرونی میٹا ڈیٹا سے دوبارہ اخذ کی جائے گی۔",
-  "app.rescanConfirm": "دوبارہ اسکین کریں",
   "app.dropToImport": "درآمد کرنے کے لیے EPUB/PDF فائلیں یہاں چھوڑیں",
 
   "settings.title": "ترتیبات",
-  "settings.library": "لائبریری",
-  "settings.libraryPath": "لائبریری فولڈر",
-  "settings.changeLibrary": "لائبریری تبدیل کریں…",
+  "settings.libraries": "لائبریریاں",
   "settings.changeLibraryErrorTitle": "لائبریری نہیں کھل سکی",
   "settings.appearance": "ظاہری شکل",
   "settings.language": "زبان",
@@ -288,7 +297,18 @@ const ur: TranslationDict = {
   "settings.urduFont": "اردو فونٹ",
   "settings.import": "درآمد",
   "settings.defaultConvertFormat": "نئی درآمدات کے لیے پہلے سے طے شدہ \"تبدیل کریں\" فارمیٹ",
-  "settings.maintenance": "لائبریری کی دیکھ بھال",
+  "settings.rescanStarting": "شروع ہو رہا ہے…",
+  "settings.rescanProgress": "{processed} / {total} کتابیں اسکین ہوئیں",
+
+  "librariesSettings.description": "ایک وقت میں صرف ایک لائبریری کھلی ہوتی ہے۔ اپنی پہلے کھولی گئی کسی بھی لائبریری کو تبدیل، نام تبدیل، مقام تبدیل، دوبارہ ہم آہنگ یا ہٹائیں۔",
+  "librariesSettings.addLibrary": "لائبریری شامل کریں…",
+  "librariesSettings.active": "فعال",
+  "librariesSettings.open": "کھولیں",
+  "librariesSettings.rename": "نام تبدیل کریں",
+  "librariesSettings.changeFolder": "فولڈر تبدیل کریں",
+  "librariesSettings.resync": "دوبارہ ہم آہنگ کریں",
+  "librariesSettings.remove": "ہٹا دیں",
+  "librariesSettings.empty": "ابھی کوئی لائبریری موجود نہیں۔",
 
   "importDialog.title": "کتابیں درآمد کریں",
   "importDialog.dropzoneTitle": "EPUB/PDF فائلیں یہاں گھسیٹ لائیں",

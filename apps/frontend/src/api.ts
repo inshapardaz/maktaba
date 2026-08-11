@@ -140,6 +140,47 @@ export function openLibrary(path: string): Promise<LibraryInfo> {
   });
 }
 
+export interface LibraryEntry {
+  id: string;
+  name: string;
+  path: string;
+  isActive: boolean;
+}
+
+// Every library the user has ever opened - only one (isActive) is the one every other request
+// actually reads/writes through at a time; see Settings -> Libraries.
+export function listLibraries(): Promise<LibraryEntry[]> {
+  return request<LibraryEntry[]>("/api/libraries");
+}
+
+export function openLibraryById(id: string): Promise<LibraryInfo> {
+  return request<LibraryInfo>(`/api/libraries/${id}/open`, { method: "POST" });
+}
+
+export function renameLibrary(id: string, name: string): Promise<LibraryEntry> {
+  return request<LibraryEntry>(`/api/libraries/${id}/name`, {
+    method: "PUT",
+    body: JSON.stringify({ name }),
+  });
+}
+
+export function relocateLibrary(id: string, path: string): Promise<LibraryEntry> {
+  return request<LibraryEntry>(`/api/libraries/${id}/path`, {
+    method: "PUT",
+    body: JSON.stringify({ path }),
+  });
+}
+
+export function removeLibrary(id: string): Promise<void> {
+  return request<void>(`/api/libraries/${id}`, { method: "DELETE" });
+}
+
+// Switches to this library first (if it isn't already active) and rescans it - works from any row
+// in the Libraries list, not just the currently active one.
+export function resyncLibrary(id: string): Promise<{ bookCount: number }> {
+  return request<{ bookCount: number }>(`/api/libraries/${id}/resync`, { method: "POST" });
+}
+
 export function listBooks(filters: BookFilters = {}): Promise<BookSummary[]> {
   const params = new URLSearchParams();
   if (filters.search) params.set("search", filters.search);
@@ -177,8 +218,17 @@ export function deleteBook(id: string): Promise<{ folderPath: string }> {
   return request<{ folderPath: string }>(`/api/books/${id}`, { method: "DELETE" });
 }
 
-export function rescanLibrary(): Promise<{ bookCount: number }> {
-  return request<{ bookCount: number }>("/api/libraries/rescan", { method: "POST" });
+export interface RescanProgress {
+  isRunning: boolean;
+  processed: number;
+  total: number;
+  currentBook: string | null;
+}
+
+// Polled while resyncLibrary()'s request is in flight - a separate HTTP request the backend
+// answers from an in-memory tracker, independent of (and concurrent with) the long-running rescan.
+export function getRescanProgress(): Promise<RescanProgress> {
+  return request<RescanProgress>("/api/libraries/rescan/progress");
 }
 
 export function listAuthors(): Promise<BrowseGroup[]> {

@@ -16,6 +16,8 @@ interface FilterBarProps {
   onViewModeChange: (mode: ViewMode) => void;
   activeGroupLabel: string | null;
   onClearGroup: () => void;
+  searchTerm: string;
+  onClearSearch: () => void;
 }
 
 const RATING_OPTIONS = [
@@ -38,6 +40,8 @@ export function FilterBar({
   onViewModeChange,
   activeGroupLabel,
   onClearGroup,
+  searchTerm,
+  onClearSearch,
 }: FilterBarProps) {
   const { t } = useLanguage();
 
@@ -98,6 +102,14 @@ export function FilterBar({
         {activeGroupLabel && (
           <Pill withRemoveButton onRemove={onClearGroup}>
             {activeGroupLabel}
+          </Pill>
+        )}
+
+        {/* Free-text search is set via the Spotlight's "Search for '…'" action rather than typed
+            live here - this pill is what makes an active search term visible/clearable afterward. */}
+        {searchTerm && (
+          <Pill withRemoveButton onRemove={onClearSearch}>
+            {t("filterBar.searchTerm", { query: searchTerm })}
           </Pill>
         )}
       </Group>

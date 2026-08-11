@@ -10,9 +10,14 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
     private const string DatabaseFileName = "metadata.db";
 
     private readonly string _configFilePath;
+    private readonly List<LibraryRegistryEntry> _libraries = [];
     private bool _schemaVerified;
 
     public string? LibraryRootPath { get; private set; }
+
+    public string? CurrentLibraryId { get; private set; }
+
+    public IReadOnlyList<LibraryRegistryEntry> Libraries => _libraries;
 
     public string? DatabasePath =>
         LibraryRootPath is null ? null : Path.Combine(LibraryRootPath, DatabaseFileName);
@@ -25,10 +30,10 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
         Directory.CreateDirectory(appDataDir);
         _configFilePath = Path.Combine(appDataDir, "config.json");
 
-        TryLoadLastOpenedLibrary();
+        LoadConfig();
     }
 
-    private void TryLoadLastOpenedLibrary()
+    private void LoadConfig()
     {
         if (!File.Exists(_configFilePath))
         {
@@ -39,11 +44,35 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
         {
             var json = File.ReadAllText(_configFilePath);
             var config = JsonSerializer.Deserialize<AppConfig>(json);
-            if (config?.LastLibraryPath is { Length: > 0 } path &&
-                Directory.Exists(path) &&
-                File.Exists(Path.Combine(path, DatabaseFileName)))
+            if (config is null)
             {
-                LibraryRootPath = path;
+                return;
+            }
+
+            _libraries.Clear();
+            if (config.Libraries is { Count: > 0 } libraries)
+            {
+                _libraries.AddRange(libraries);
+            }
+
+            // Migrates a pre-multi-library config.json (which only ever recorded a single
+            // LastLibraryPath) into a one-entry registry the first time it's loaded under the new
+            // format - existing installs shouldn't lose their library just because this shipped.
+            var lastLibraryId = config.LastLibraryId;
+            if (_libraries.Count == 0 && config.LastLibraryPath is { Length: > 0 } legacyPath && Directory.Exists(legacyPath))
+            {
+                var migrated = new LibraryRegistryEntry(Guid.NewGuid().ToString("N"), new DirectoryInfo(legacyPath).Name, legacyPath);
+                _libraries.Add(migrated);
+                lastLibraryId = migrated.Id;
+            }
+
+            var entryToOpen = _libraries.FirstOrDefault(l => l.Id == lastLibraryId) ?? _libraries.FirstOrDefault();
+            if (entryToOpen is not null &&
+                Directory.Exists(entryToOpen.Path) &&
+                File.Exists(Path.Combine(entryToOpen.Path, DatabaseFileName)))
+            {
+                LibraryRootPath = entryToOpen.Path;
+                CurrentLibraryId = entryToOpen.Id;
             }
         }
         catch (Exception ex) when (ex is IOException or JsonException)
@@ -56,17 +85,111 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
     public async Task<LibraryInfo> OpenAsync(string path, CancellationToken ct = default)
     {
         var fullPath = Path.GetFullPath(path);
-        Directory.CreateDirectory(fullPath);
 
-        LibraryRootPath = fullPath;
+        var existing = _libraries.FirstOrDefault(l =>
+            string.Equals(Path.GetFullPath(l.Path), fullPath, StringComparison.OrdinalIgnoreCase));
+        var entry = existing ?? new LibraryRegistryEntry(Guid.NewGuid().ToString("N"), new DirectoryInfo(fullPath).Name, fullPath);
+        if (existing is null)
+        {
+            _libraries.Add(entry);
+        }
+
+        await ActivateAsync(entry, ct);
+        return new LibraryInfo(fullPath);
+    }
+
+    public async Task<LibraryInfo?> OpenLibraryByIdAsync(string id, CancellationToken ct = default)
+    {
+        var entry = _libraries.FirstOrDefault(l => l.Id == id);
+        if (entry is null)
+        {
+            return null;
+        }
+
+        await ActivateAsync(entry, ct);
+        return new LibraryInfo(entry.Path);
+    }
+
+    public Task<LibraryRegistryEntry?> RenameAsync(string id, string name, CancellationToken ct = default)
+    {
+        var index = _libraries.FindIndex(l => l.Id == id);
+        if (index < 0)
+        {
+            return Task.FromResult<LibraryRegistryEntry?>(null);
+        }
+
+        var updated = _libraries[index] with { Name = name };
+        _libraries[index] = updated;
+        SaveConfig();
+        return Task.FromResult<LibraryRegistryEntry?>(updated);
+    }
+
+    public async Task<LibraryRegistryEntry?> RelocateAsync(string id, string newPath, CancellationToken ct = default)
+    {
+        var index = _libraries.FindIndex(l => l.Id == id);
+        if (index < 0)
+        {
+            return null;
+        }
+
+        var fullPath = Path.GetFullPath(newPath);
+        var updated = _libraries[index] with { Path = fullPath };
+        _libraries[index] = updated;
+
+        if (CurrentLibraryId == id)
+        {
+            // The active library just moved out from under itself - re-activate in place so
+            // LibraryRootPath/DatabasePath (and the schema-verified flag) track the new location.
+            await ActivateAsync(updated, ct);
+        }
+        else
+        {
+            SaveConfig();
+        }
+
+        return updated;
+    }
+
+    public async Task<bool> RemoveAsync(string id, CancellationToken ct = default)
+    {
+        var index = _libraries.FindIndex(l => l.Id == id);
+        if (index < 0)
+        {
+            return false;
+        }
+
+        _libraries.RemoveAt(index);
+
+        if (CurrentLibraryId == id)
+        {
+            LibraryRootPath = null;
+            CurrentLibraryId = null;
+            _schemaVerified = false;
+
+            var next = _libraries.FirstOrDefault();
+            if (next is not null)
+            {
+                await ActivateAsync(next, ct);
+                return true;
+            }
+        }
+
+        SaveConfig();
+        return true;
+    }
+
+    private async Task ActivateAsync(LibraryRegistryEntry entry, CancellationToken ct)
+    {
+        Directory.CreateDirectory(entry.Path);
+
+        LibraryRootPath = entry.Path;
+        CurrentLibraryId = entry.Id;
         _schemaVerified = false;
 
         using var db = MaktabaDbContextFactory.Create(this);
         await db.Database.EnsureCreatedAsync(ct);
 
-        SaveLastOpenedLibrary(fullPath);
-
-        return new LibraryInfo(fullPath);
+        SaveConfig();
     }
 
     /// <summary>
@@ -122,11 +245,11 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
         }
     }
 
-    private void SaveLastOpenedLibrary(string path)
+    private void SaveConfig()
     {
-        var json = JsonSerializer.Serialize(new AppConfig(path));
+        var json = JsonSerializer.Serialize(new AppConfig(_libraries, CurrentLibraryId, null));
         File.WriteAllText(_configFilePath, json);
     }
 
-    private record AppConfig(string? LastLibraryPath);
+    private record AppConfig(List<LibraryRegistryEntry>? Libraries, string? LastLibraryId, string? LastLibraryPath);
 }

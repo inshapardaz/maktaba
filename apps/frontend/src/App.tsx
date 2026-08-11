@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppShell, Box, Center, Loader, Overlay, Text, Group } from "@mantine/core";
 import { IconUpload } from "@tabler/icons-react";
 import { getCurrentLibrary, listBooks, type BookFilters, type BookSummary } from "./api";
 import { LibraryPicker } from "./components/LibraryPicker";
 import { Toolbar } from "./components/Toolbar";
+import { LibrarySpotlight } from "./components/LibrarySpotlight";
 import { BookGrid } from "./components/BookGrid";
 import { BookList } from "./components/BookList";
 import { BookDetailPanel } from "./components/BookDetailPanel";
@@ -16,6 +17,7 @@ import { FilterBar, type SortKey, type ViewMode } from "./components/FilterBar";
 import { ImportDialog } from "./components/ImportDialog";
 import { SettingsScreen } from "./components/SettingsScreen";
 import { invalidateLibraryQueries } from "./queries";
+import { useDebounced } from "./useDebounced";
 import { useLanguage } from "./i18n/LanguageContext";
 
 const EBOOK_EXTENSIONS = [".epub", ".pdf"];
@@ -39,19 +41,11 @@ function sortBooks(books: BookSummary[], sortKey: SortKey): BookSummary[] {
   }
 }
 
-function useDebounced<T>(value: T, delayMs: number): T {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const timer = setTimeout(() => setDebounced(value), delayMs);
-    return () => clearTimeout(timer);
-  }, [value, delayMs]);
-  return debounced;
-}
-
 function App() {
   const { t } = useLanguage();
   const queryClient = useQueryClient();
   const [mainView, setMainView] = useState<MainView>("library");
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [navbarOpen, setNavbarOpen] = useState(true);
   const [sortKey, setSortKey] = useState<SortKey>("title");
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
@@ -121,6 +115,14 @@ function App() {
     setMainView("library");
   };
 
+  // The Spotlight's "Search for '…'" action - a full-text search is a fresh start, so it clears
+  // whatever group filter was active rather than combining with it.
+  const handleDetailedSearch = (query: string) => {
+    setSearch(query);
+    setGroupFilter(null);
+    setMainView("library");
+  };
+
   const handleImportClick = async () => {
     const files = await window.maktaba.pickEbookFiles();
     if (files.length > 0) {
@@ -150,6 +152,7 @@ function App() {
     void queryClient.invalidateQueries({ queryKey: ["library"] });
     invalidateLibraryQueries(queryClient);
     setMainView("library");
+    setSettingsOpen(false);
   };
 
   if (libraryQuery.isLoading) {
@@ -183,8 +186,6 @@ function App() {
         <AppShell.Header>
           <Toolbar
             contextLabel={contextLabel}
-            search={search}
-            onSearchChange={setSearch}
             onImport={handleImportClick}
             bookCount={sortedBooks.length}
             navbarOpen={navbarOpen}
@@ -197,8 +198,9 @@ function App() {
             activeFilter={groupFilter}
             onSelect={handleSelectFilter}
             mainView={mainView}
+            settingsOpen={settingsOpen}
             onShowAllBooks={handleShowAllBooks}
-            onOpenSettings={() => setMainView("settings")}
+            onOpenSettings={() => setSettingsOpen(true)}
             onOpenAuthors={() => setMainView("authors")}
             onOpenCollections={() => setMainView("collections")}
             onOpenTags={() => setMainView("tags")}
@@ -206,9 +208,7 @@ function App() {
         </AppShell.Navbar>
 
         <AppShell.Main style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
-          {mainView === "settings" ? (
-            <SettingsScreen libraryPath={libraryQuery.data.path} onLibraryChanged={handleLibraryChanged} />
-          ) : mainView === "authors" ? (
+          {mainView === "authors" ? (
             <AuthorsView onSelect={handleSelectFilter} onBack={() => setMainView("library")} />
           ) : mainView === "collections" ? (
             <CollectionsView onSelect={handleSelectFilter} onBack={() => setMainView("library")} />
@@ -227,6 +227,8 @@ function App() {
                 onViewModeChange={setViewMode}
                 activeGroupLabel={groupFilter?.name ?? null}
                 onClearGroup={() => setGroupFilter(null)}
+                searchTerm={search}
+                onClearSearch={() => setSearch("")}
               />
 
               {booksQuery.isLoading && (
@@ -253,6 +255,18 @@ function App() {
           )}
         </AppShell.Main>
       </AppShell>
+
+      <LibrarySpotlight
+        onSelectBook={setSelectedBookId}
+        onSelectFilter={handleSelectFilter}
+        onSearch={handleDetailedSearch}
+      />
+
+      <SettingsScreen
+        opened={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        onLibraryChanged={handleLibraryChanged}
+      />
 
       {selectedBookId && (
         <BookDetailPanel
