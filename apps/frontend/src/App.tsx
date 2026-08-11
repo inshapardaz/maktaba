@@ -4,7 +4,6 @@ import { AppShell, Box, Center, Loader, Overlay, Text, Group } from "@mantine/co
 import { IconUpload } from "@tabler/icons-react";
 import { getCurrentLibrary, listBooks, type BookFilters, type BookSummary } from "./api";
 import { LibraryPicker } from "./components/LibraryPicker";
-import { Toolbar } from "./components/Toolbar";
 import { LibrarySpotlight } from "./components/LibrarySpotlight";
 import { BookGrid } from "./components/BookGrid";
 import { BookList } from "./components/BookList";
@@ -46,7 +45,6 @@ function App() {
   const queryClient = useQueryClient();
   const [mainView, setMainView] = useState<MainView>("library");
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [navbarOpen, setNavbarOpen] = useState(true);
   const [sortKey, setSortKey] = useState<SortKey>("title");
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null);
@@ -85,21 +83,6 @@ function App() {
     () => sortBooks(booksQuery.data ?? [], sortKey),
     [booksQuery.data, sortKey],
   );
-
-  const contextLabel = useMemo(() => {
-    if (!groupFilter) return t("toolbar.allBooks");
-    const kindLabel =
-      groupFilter.kind === "authorId"
-        ? t("toolbar.filterAuthor")
-        : groupFilter.kind === "seriesId"
-          ? t("toolbar.filterSeries")
-          : groupFilter.kind === "tagId"
-            ? t("toolbar.filterTag")
-            : groupFilter.kind === "collectionId"
-              ? t("toolbar.filterCollection")
-              : t("toolbar.filterStatus");
-    return `${kindLabel}: ${groupFilter.name}`;
-  }, [groupFilter, t]);
 
   // Selecting a filter (from the sidebar or the Authors/Collections views) should always land
   // back on the library grid/list — without this, picking a filter while Settings/Authors/
@@ -178,21 +161,7 @@ function App() {
       onDragLeave={() => setDragActive(false)}
       onDrop={handleDrop}
     >
-      <AppShell
-        header={{ height: 60 }}
-        navbar={{ width: 232, breakpoint: 0, collapsed: { desktop: !navbarOpen, mobile: !navbarOpen } }}
-        padding={0}
-      >
-        <AppShell.Header>
-          <Toolbar
-            contextLabel={contextLabel}
-            onImport={handleImportClick}
-            bookCount={sortedBooks.length}
-            navbarOpen={navbarOpen}
-            onToggleNavbar={() => setNavbarOpen((open) => !open)}
-          />
-        </AppShell.Header>
-
+      <AppShell navbar={{ width: 232, breakpoint: 0 }} padding={0}>
         <AppShell.Navbar>
           <Sidebar
             activeFilter={groupFilter}
@@ -204,6 +173,7 @@ function App() {
             onOpenAuthors={() => setMainView("authors")}
             onOpenCollections={() => setMainView("collections")}
             onOpenTags={() => setMainView("tags")}
+            onImport={handleImportClick}
           />
         </AppShell.Navbar>
 
@@ -225,7 +195,7 @@ function App() {
                 onSortKeyChange={setSortKey}
                 viewMode={viewMode}
                 onViewModeChange={setViewMode}
-                activeGroupLabel={groupFilter?.name ?? null}
+                groupFilter={groupFilter}
                 onClearGroup={() => setGroupFilter(null)}
                 searchTerm={search}
                 onClearSearch={() => setSearch("")}

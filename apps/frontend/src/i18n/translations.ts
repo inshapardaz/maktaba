@@ -19,8 +19,6 @@ const en = {
   "libraryPicker.errorTitle": "Couldn't open library",
 
   "toolbar.addBooks": "Add Books",
-  "toolbar.bookCount_one": "{count} book",
-  "toolbar.bookCount_other": "{count} books",
   "toolbar.sortBy": "Sort by",
   "toolbar.sortTitle": "Title",
   "toolbar.sortAuthor": "Author",
@@ -32,11 +30,6 @@ const en = {
   "toolbar.gridLabel": "Grid",
   "toolbar.listLabel": "List",
   "toolbar.allBooks": "All books",
-  "toolbar.filterAuthor": "Author",
-  "toolbar.filterSeries": "Series",
-  "toolbar.filterTag": "Tag",
-  "toolbar.filterCollection": "Collection",
-  "toolbar.filterStatus": "Status",
 
   "sidebar.authors": "Authors",
   "sidebar.series": "Series",
@@ -44,7 +37,6 @@ const en = {
   "sidebar.collections": "Collections",
   "sidebar.seeAll": "See all",
   "sidebar.readingStatus": "Reading status",
-  "sidebar.toggleNavbar": "Toggle sidebar",
 
   "readingStatus.unread": "Unread",
   "readingStatus.reading": "Reading",
@@ -183,8 +175,6 @@ const ur: TranslationDict = {
   "libraryPicker.errorTitle": "لائبریری نہیں کھل سکی",
 
   "toolbar.addBooks": "کتابیں شامل کریں",
-  "toolbar.bookCount_one": "{count} کتاب",
-  "toolbar.bookCount_other": "{count} کتابیں",
   "toolbar.sortBy": "ترتیب",
   "toolbar.sortTitle": "عنوان",
   "toolbar.sortAuthor": "مصنف",
@@ -196,11 +186,6 @@ const ur: TranslationDict = {
   "toolbar.gridLabel": "گرڈ",
   "toolbar.listLabel": "فہرست",
   "toolbar.allBooks": "تمام کتابیں",
-  "toolbar.filterAuthor": "مصنف",
-  "toolbar.filterSeries": "سیریز",
-  "toolbar.filterTag": "ٹیگ",
-  "toolbar.filterCollection": "مجموعہ",
-  "toolbar.filterStatus": "حیثیت",
 
   "sidebar.authors": "مصنفین",
   "sidebar.series": "سیریز",
@@ -208,7 +193,6 @@ const ur: TranslationDict = {
   "sidebar.collections": "مجموعے",
   "sidebar.seeAll": "سب دیکھیں",
   "sidebar.readingStatus": "مطالعے کی حیثیت",
-  "sidebar.toggleNavbar": "سائیڈ بار دکھائیں/چھپائیں",
 
   "readingStatus.unread": "نامطالعہ شدہ",
   "readingStatus.reading": "زیرِ مطالعہ",

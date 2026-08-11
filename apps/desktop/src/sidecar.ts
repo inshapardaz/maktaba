@@ -28,7 +28,7 @@ function getFreePort(): Promise<number> {
   });
 }
 
-function waitForHealth(port: number, timeoutMs = 15000): Promise<void> {
+function waitForHealth(port: number, timeoutMs = 30000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
 
   return new Promise((resolve, reject) => {
@@ -92,21 +92,21 @@ export async function startSidecar(options: SidecarOptions): Promise<SidecarHand
 
   const child = options.isPackaged
     ? spawn(packagedExecutablePath(options.resourcesPath), [`--port=${port}`, `--token=${token}`], {
-        stdio: "inherit",
-      })
+      stdio: "inherit",
+    })
     : spawn(
-        "dotnet",
-        [
-          "run",
-          "--no-launch-profile",
-          "--project",
-          path.join(__dirname, "..", "..", "..", "backend", "Maktaba.Api"),
-          "--",
-          `--port=${port}`,
-          `--token=${token}`,
-        ],
-        { stdio: "inherit" },
-      );
+      "dotnet",
+      [
+        "run",
+        "--no-launch-profile",
+        "--project",
+        path.join(__dirname, "..", "..", "..", "backend", "Maktaba.Api"),
+        "--",
+        `--port=${port}`,
+        `--token=${token}`,
+      ],
+      { stdio: "inherit" },
+    );
 
   child.on("error", (err) => {
     console.error("Failed to start Maktaba.Api sidecar:", err);

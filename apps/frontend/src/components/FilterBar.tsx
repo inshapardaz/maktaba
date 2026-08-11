@@ -1,6 +1,7 @@
-import { Group, Select, Pill, SegmentedControl, Tooltip } from "@mantine/core";
+import { Anchor, Breadcrumbs, Group, Select, Pill, SegmentedControl, Text, Tooltip } from "@mantine/core";
 import { IconLayoutGrid, IconList } from "@tabler/icons-react";
 import { useLanguage } from "../i18n/LanguageContext";
+import type { GroupFilter } from "./Sidebar";
 
 export type SortKey = "title" | "author" | "dateAdded" | "rating";
 export type ViewMode = "grid" | "list";
@@ -14,7 +15,7 @@ interface FilterBarProps {
   onSortKeyChange: (key: SortKey) => void;
   viewMode: ViewMode;
   onViewModeChange: (mode: ViewMode) => void;
-  activeGroupLabel: string | null;
+  groupFilter: GroupFilter | null;
   onClearGroup: () => void;
   searchTerm: string;
   onClearSearch: () => void;
@@ -38,12 +39,24 @@ export function FilterBar({
   onSortKeyChange,
   viewMode,
   onViewModeChange,
-  activeGroupLabel,
+  groupFilter,
   onClearGroup,
   searchTerm,
   onClearSearch,
 }: FilterBarProps) {
   const { t } = useLanguage();
+
+  const groupCategoryLabel =
+    groupFilter &&
+    (groupFilter.kind === "authorId"
+      ? t("sidebar.authors")
+      : groupFilter.kind === "seriesId"
+        ? t("sidebar.series")
+        : groupFilter.kind === "tagId"
+          ? t("sidebar.tags")
+          : groupFilter.kind === "collectionId"
+            ? t("sidebar.collections")
+            : t("sidebar.readingStatus"));
 
   const formatOptions = [
     { value: "", label: t("filterBar.allFormats") },
@@ -71,39 +84,59 @@ export function FilterBar({
       justify="space-between"
       style={{ borderBottom: "1px solid var(--mantine-color-default-border)" }}
     >
-      <Group gap="sm" wrap="wrap">
-        <Select
-          w={140}
-          data={formatOptions}
-          value={format}
-          onChange={(value) => onFormatChange(value ?? "")}
-          allowDeselect={false}
-        />
+      <Group gap="lg" wrap="wrap">
+        {/* Replaces the header's old plain-text view title - the root crumb doubles as the
+            "clear group filter" action the removed Pill used to provide. */}
+        <Breadcrumbs separator="/">
+          {groupFilter ? (
+            <Anchor component="button" type="button" onClick={onClearGroup} size="sm" fw={600}>
+              {t("toolbar.allBooks")}
+            </Anchor>
+          ) : (
+            <Text size="sm" fw={600}>
+              {t("toolbar.allBooks")}
+            </Text>
+          )}
+          {groupFilter && (
+            <Text size="sm" c="dimmed">
+              {groupCategoryLabel}
+            </Text>
+          )}
+          {groupFilter && (
+            <Text size="sm" fw={600}>
+              {groupFilter.name}
+            </Text>
+          )}
+        </Breadcrumbs>
 
-        <Select
-          w={140}
-          data={ratingOptions}
-          value={String(minRating)}
-          onChange={(value) => onMinRatingChange(Number(value ?? 0))}
-          allowDeselect={false}
-        />
+        <Group gap="sm" wrap="wrap">
+          <Select
+            w={140}
+            data={formatOptions}
+            value={format}
+            onChange={(value) => onFormatChange(value ?? "")}
+            allowDeselect={false}
+          />
 
-        {/* Sort sits right next to the rating filter it's most related to (both refine how the
-            list is narrowed/ordered), rather than living apart in the header's action bar. */}
-        <Select
-          w={140}
-          aria-label={t("toolbar.sortBy")}
-          data={sortOptions}
-          value={sortKey}
-          onChange={(value) => value && onSortKeyChange(value as SortKey)}
-          allowDeselect={false}
-        />
+          <Select
+            w={140}
+            data={ratingOptions}
+            value={String(minRating)}
+            onChange={(value) => onMinRatingChange(Number(value ?? 0))}
+            allowDeselect={false}
+          />
 
-        {activeGroupLabel && (
-          <Pill withRemoveButton onRemove={onClearGroup}>
-            {activeGroupLabel}
-          </Pill>
-        )}
+          {/* Sort sits right next to the rating filter it's most related to (both refine how the
+              list is narrowed/ordered). */}
+          <Select
+            w={140}
+            aria-label={t("toolbar.sortBy")}
+            data={sortOptions}
+            value={sortKey}
+            onChange={(value) => value && onSortKeyChange(value as SortKey)}
+            allowDeselect={false}
+          />
+        </Group>
 
         {/* Free-text search is set via the Spotlight's "Search for '…'" action rather than typed
             live here - this pill is what makes an active search term visible/clearable afterward. */}

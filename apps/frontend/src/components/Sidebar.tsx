@@ -1,7 +1,21 @@
-import { Badge, Box, Divider, Group, Kbd, NavLink, ScrollArea, Text, Tooltip, UnstyledButton } from "@mantine/core";
+import { Badge, Box, Button, Divider, Group, Kbd, NavLink, ScrollArea, Text, Tooltip, UnstyledButton } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { spotlight } from "@mantine/spotlight";
-import { IconBooks, IconChevronRight, IconSearch, IconSettings } from "@tabler/icons-react";
+import {
+  IconBookmark,
+  IconBooks,
+  IconChevronRight,
+  IconCircleCheck,
+  IconCircleDashed,
+  IconFolder,
+  IconPlus,
+  IconSearch,
+  IconSettings,
+  IconStack2,
+  IconTag,
+  IconUser,
+} from "@tabler/icons-react";
+import type { Icon } from "@tabler/icons-react";
 import {
   listAuthors,
   listCollections,
@@ -43,6 +57,7 @@ interface SidebarProps {
   onOpenAuthors: () => void;
   onOpenCollections: () => void;
   onOpenTags: () => void;
+  onImport: () => void;
 }
 
 function sectionRowStyles(isActive: boolean) {
@@ -74,6 +89,7 @@ function SectionTitle({ children, action }: { children: string; action?: React.R
 function GroupSection({
   title,
   kind,
+  icon: RowIcon,
   activeFilter,
   onSelect,
   groups,
@@ -81,6 +97,7 @@ function GroupSection({
 }: {
   title: string;
   kind: GroupFilterKind;
+  icon: Icon;
   activeFilter: GroupFilter | null;
   onSelect: (filter: GroupFilter | null) => void;
   groups: BrowseGroup[] | undefined;
@@ -99,6 +116,7 @@ function GroupSection({
           <NavLink
             key={group.id}
             label={group.name}
+            leftSection={<RowIcon size={16} stroke={1.5} />}
             active={isActive}
             onClick={() => onSelect(isActive ? null : { kind, id: group.id, name: group.name })}
             rightSection={
@@ -136,6 +154,12 @@ function MainLinksSection({
     Finished: t("readingStatus.finished"),
   };
 
+  const icons: Record<ReadingStatus, Icon> = {
+    Unread: IconCircleDashed,
+    Reading: IconBookmark,
+    Finished: IconCircleCheck,
+  };
+
   const totalBooks = statusQuery.data?.reduce((sum, s) => sum + s.count, 0);
   const allBooksActive = mainView === "library" && !activeFilter;
 
@@ -160,10 +184,12 @@ function MainLinksSection({
 
       {statusQuery.data?.map(({ status, count }) => {
         const isActive = activeFilter?.kind === "readingStatus" && activeFilter.id === status;
+        const StatusIcon = icons[status];
         return (
           <NavLink
             key={status}
             label={labels[status]}
+            leftSection={<StatusIcon size={16} stroke={1.5} />}
             active={isActive}
             onClick={() => onSelect(isActive ? null : { kind: "readingStatus", id: status, name: labels[status] })}
             rightSection={
@@ -191,6 +217,7 @@ export function Sidebar({
   onOpenAuthors,
   onOpenCollections,
   onOpenTags,
+  onImport,
 }: SidebarProps) {
   const { t } = useLanguage();
   const authorsQuery = useQuery({ queryKey: ["authors"], queryFn: listAuthors });
@@ -212,9 +239,22 @@ export function Sidebar({
       display="flex"
       style={{ flexDirection: "column", borderInlineEnd: "1px solid var(--mantine-color-default-border)" }}
     >
-      {/* Same trigger as the header used to have (see Toolbar) - opens the global Spotlight
-          (Ctrl/Cmd+K works from anywhere regardless of where this visible trigger lives). */}
       <Box px="md" pt="md" pb="sm">
+        <Text ff="var(--mantine-font-family-headings)" fw={600} fz={22} mb="sm">
+          مکتبہ
+        </Text>
+
+        <Button
+          fullWidth
+          leftSection={<IconPlus size={16} />}
+          onClick={onImport}
+          mb="sm"
+        >
+          {t("toolbar.addBooks")}
+        </Button>
+
+        {/* Same trigger as the header used to have (see Toolbar) - opens the global Spotlight
+            (Ctrl/Cmd+K works from anywhere regardless of where this visible trigger lives). */}
         <UnstyledButton
           onClick={() => spotlight.open()}
           w="100%"
@@ -249,6 +289,7 @@ export function Sidebar({
         <GroupSection
           title={t("sidebar.collections")}
           kind="collectionId"
+          icon={IconFolder}
           activeFilter={activeFilter}
           onSelect={onSelect}
           groups={topByBookCount(collectionsQuery.data)}
@@ -257,6 +298,7 @@ export function Sidebar({
         <GroupSection
           title={t("sidebar.authors")}
           kind="authorId"
+          icon={IconUser}
           activeFilter={activeFilter}
           onSelect={onSelect}
           groups={topByBookCount(authorsQuery.data)}
@@ -265,6 +307,7 @@ export function Sidebar({
         <GroupSection
           title={t("sidebar.series")}
           kind="seriesId"
+          icon={IconStack2}
           activeFilter={activeFilter}
           onSelect={onSelect}
           groups={seriesQuery.data}
@@ -272,6 +315,7 @@ export function Sidebar({
         <GroupSection
           title={t("sidebar.tags")}
           kind="tagId"
+          icon={IconTag}
           activeFilter={activeFilter}
           onSelect={onSelect}
           groups={topByBookCount(tagsQuery.data)}
