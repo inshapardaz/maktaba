@@ -12,6 +12,10 @@ const readerWindows = new Map<string, BrowserWindow>();
 
 const isDev = !app.isPackaged;
 
+// electron-builder embeds this same icon.png into the packaged exe/app bundle;
+// setting it explicitly here too keeps the dev-mode window/taskbar icon consistent.
+const appIconPath = path.join(__dirname, "..", "build", "icon.png");
+
 registerNativeHandlers(() => mainWindow);
 
 function webPreferencesFor(handle: SidecarHandle) {
@@ -31,6 +35,7 @@ async function createWindow(): Promise<void> {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
+    icon: appIconPath,
     webPreferences: webPreferencesFor(sidecar),
   });
 
@@ -57,6 +62,7 @@ async function openReaderWindow(bookId: string, format: string, title?: string):
     width: 960,
     height: 900,
     title: title || "Maktaba",
+    icon: appIconPath,
     webPreferences: webPreferencesFor(sidecar),
   });
 
