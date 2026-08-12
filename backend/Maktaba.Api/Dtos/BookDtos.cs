@@ -84,3 +84,7 @@ public record BrowseGroupDto(string Id, string Name, int BookCount);
 public record CreateCollectionRequestDto(string Name);
 
 public record ReadingStatusCountDto(string Status, int Count);
+
+public record RenameAuthorRequestDto(string Name);
+
+public record RenameTagRequestDto(string Name);

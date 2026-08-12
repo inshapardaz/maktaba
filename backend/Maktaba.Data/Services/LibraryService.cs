@@ -229,14 +229,17 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
     }
 
     // Probes the newest columns/tables added by a schema-breaking change (currently: M6's
-    // ReadingStatus/Collections) - a cheap, representative stand-in for "is this database current"
-    // without needing full EF Core migrations, which this project deliberately doesn't use.
+    // ReadingStatus/Collections, the Bookmarks/Notes/ReadingProgress tables, and ReadingProgress's
+    // ChapterId/Position resume-anchor columns) - a cheap, representative stand-in for "is this
+    // database current" without needing full EF Core migrations, which this project deliberately
+    // doesn't use.
     private static async Task<bool> IsCurrentSchemaAsync(MaktabaDbContext db, CancellationToken ct)
     {
         try
         {
             await db.Books.Select(b => b.ReadingStatus).Take(1).ToListAsync(ct);
             await db.Collections.Select(c => c.Id).Take(1).ToListAsync(ct);
+            await db.ReadingProgress.Select(rp => new { rp.BookId, rp.ChapterId }).Take(1).ToListAsync(ct);
             return true;
         }
         catch (SqliteException)

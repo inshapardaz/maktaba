@@ -32,6 +32,7 @@ builder.Services.AddSingleton<IBookMetadataExtractor, EpubMetadataExtractor>();
 builder.Services.AddSingleton<IBookMetadataExtractor, PdfMetadataExtractor>();
 builder.Services.AddScoped<IImportService, ImportService>();
 builder.Services.AddScoped<IBookEditService, BookEditService>();
+builder.Services.AddScoped<IAuthorRenameService, AuthorRenameService>();
 builder.Services.AddScoped<IBookRemovalService, BookRemovalService>();
 builder.Services.AddScoped<ILibraryRescanService, LibraryRescanService>();
 builder.Services.AddSingleton<IRescanProgressTracker, RescanProgressTracker>();
@@ -100,5 +101,8 @@ app.MapBookEndpoints();
 app.MapBrowseEndpoints();
 app.MapCollectionEndpoints();
 app.MapSystemEndpoints();
+app.MapReaderDataEndpoints();
+app.MapAuthorEndpoints();
+app.MapTagEndpoints();
 
 app.Run();

@@ -235,6 +235,16 @@ export function listAuthors(): Promise<BrowseGroup[]> {
   return request<BrowseGroup[]>("/api/authors");
 }
 
+// Cascades to every book by this author (see IAuthorRenameService) - rejects with a 409 (surfaced
+// as a thrown Error via request()'s error handling) if another author already has this name,
+// rather than silently merging the two.
+export function renameAuthor(id: string, name: string): Promise<BrowseGroup> {
+  return request<BrowseGroup>(`/api/authors/${id}/name`, {
+    method: "PUT",
+    body: JSON.stringify({ name }),
+  });
+}
+
 export function listSeries(): Promise<BrowseGroup[]> {
   return request<BrowseGroup[]>("/api/series");
 }
@@ -243,8 +253,22 @@ export function listTags(): Promise<BrowseGroup[]> {
   return request<BrowseGroup[]>("/api/tags");
 }
 
+// Cascades to every book with this tag automatically. Same 409-on-collision behavior as renameAuthor.
+export function renameTag(id: string, name: string): Promise<BrowseGroup> {
+  return request<BrowseGroup>(`/api/tags/${id}/name`, {
+    method: "PUT",
+    body: JSON.stringify({ name }),
+  });
+}
+
 export function listCollections(): Promise<BrowseGroup[]> {
   return request<BrowseGroup[]>("/api/collections");
+}
+
+// Bare distinct publisher strings already in the library, for the edit form's autocomplete -
+// unlike Authors/Series/Tags, Publisher isn't its own entity, so there's no BrowseGroup id/count.
+export function listPublishers(): Promise<string[]> {
+  return request<string[]>("/api/publishers");
 }
 
 export function createCollection(name: string): Promise<BrowseGroup> {
@@ -293,6 +317,90 @@ export async function getBookFile(id: string, format: "Epub" | "Pdf"): Promise<A
     throw new Error(`Failed to load book file (${res.status}).`);
   }
   return res.arrayBuffer();
+}
+
+export interface BookmarkInfo {
+  id: string;
+  chapterId: string;
+  position: number;
+  name: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface NoteInfo {
+  id: string;
+  chapterId: string;
+  startOffset: number;
+  endOffset: number;
+  text: string;
+  comment?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface ReadingProgressInfo {
+  currentChapter: number;
+  totalChapters: number;
+  currentPage: number;
+  totalPages: number;
+  chapterTitle: string | null;
+  percentage: number;
+  // The reader's own resume anchor (its chapterId + a within-chapter offset), opaque to us -
+  // separate from the display fields above, written independently (see saveReadingProgress).
+  chapterId: string | null;
+  position: number | null;
+  updatedAt: string;
+}
+
+export function listBookmarks(bookId: string): Promise<BookmarkInfo[]> {
+  return request<BookmarkInfo[]>(`/api/books/${bookId}/bookmarks`);
+}
+
+// Upserts by bookmark.id (the reader's own client-generated id) - the reader calls this both to
+// create a bookmark and to rename an existing one.
+export function saveBookmark(bookId: string, bookmark: BookmarkInfo): Promise<void> {
+  return request<void>(`/api/books/${bookId}/bookmarks/${bookmark.id}`, {
+    method: "PUT",
+    body: JSON.stringify(bookmark),
+  });
+}
+
+export function deleteBookmark(bookId: string, bookmarkId: string): Promise<void> {
+  return request<void>(`/api/books/${bookId}/bookmarks/${bookmarkId}`, { method: "DELETE" });
+}
+
+export function listNotes(bookId: string): Promise<NoteInfo[]> {
+  return request<NoteInfo[]>(`/api/books/${bookId}/notes`);
+}
+
+// Upserts by note.id, same as saveBookmark - the reader also calls this to save comment edits.
+export function saveNote(bookId: string, note: NoteInfo): Promise<void> {
+  return request<void>(`/api/books/${bookId}/notes/${note.id}`, {
+    method: "PUT",
+    body: JSON.stringify(note),
+  });
+}
+
+export function deleteNote(bookId: string, noteId: string): Promise<void> {
+  return request<void>(`/api/books/${bookId}/notes/${noteId}`, { method: "DELETE" });
+}
+
+export function getReadingProgress(bookId: string): Promise<ReadingProgressInfo | null> {
+  return request<ReadingProgressInfo | null>(`/api/books/${bookId}/progress`);
+}
+
+// Partial merge on the backend, not a full overwrite - the display snapshot (currentChapter/...)
+// and the resume anchor (chapterId/position) are saved independently by two different reader
+// callbacks (see ReaderOverlay.tsx), so each call only needs to send the fields it actually knows.
+export function saveReadingProgress(
+  bookId: string,
+  progress: Partial<Omit<ReadingProgressInfo, "updatedAt">>,
+): Promise<void> {
+  return request<void>(`/api/books/${bookId}/progress`, {
+    method: "PUT",
+    body: JSON.stringify(progress),
+  });
 }
 
 export function coverUrl(id: string): string {

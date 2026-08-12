@@ -4,10 +4,10 @@ import { spotlight } from "@mantine/spotlight";
 import {
   IconBookmark,
   IconBooks,
-  IconChevronRight,
   IconCircleCheck,
   IconCircleDashed,
   IconFolder,
+  IconFolderOpen,
   IconPlus,
   IconSearch,
   IconSettings,
@@ -35,7 +35,7 @@ export interface GroupFilter {
   name: string;
 }
 
-export type MainView = "library" | "authors" | "collections" | "tags";
+export type MainView = "library" | "authors" | "collections" | "tags" | "series";
 
 // Sidebar rows for these groups are capped so a library with hundreds of authors or collections
 // doesn't turn the navbar into an unusable scroll — the full list lives in AuthorsView/
@@ -57,6 +57,7 @@ interface SidebarProps {
   onOpenAuthors: () => void;
   onOpenCollections: () => void;
   onOpenTags: () => void;
+  onOpenSeries: () => void;
   onImport: () => void;
 }
 
@@ -66,9 +67,9 @@ function sectionRowStyles(isActive: boolean) {
       borderRadius: "var(--mantine-radius-sm)",
       ...(isActive
         ? {
-            backgroundColor: "var(--mantine-primary-color-0)",
-            color: "var(--mantine-primary-color-7)",
-          }
+          backgroundColor: "var(--mantine-primary-color-0)",
+          color: "var(--mantine-primary-color-7)",
+        }
         : {}),
     },
     label: { fontWeight: isActive ? 600 : 500, fontSize: "var(--mantine-font-size-xs)" },
@@ -217,6 +218,7 @@ export function Sidebar({
   onOpenAuthors,
   onOpenCollections,
   onOpenTags,
+  onOpenSeries,
   onImport,
 }: SidebarProps) {
   const { t } = useLanguage();
@@ -228,7 +230,7 @@ export function Sidebar({
   const seeAllAction = (onClick: () => void) => (
     <Tooltip label={t("sidebar.seeAll")}>
       <UnstyledButton onClick={onClick} c="dimmed" style={{ display: "flex" }} aria-label={t("sidebar.seeAll")}>
-        <IconChevronRight size={14} stroke={1.5} />
+        <IconFolderOpen size={14} stroke={1.5} />
       </UnstyledButton>
     </Tooltip>
   );
@@ -310,7 +312,8 @@ export function Sidebar({
           icon={IconStack2}
           activeFilter={activeFilter}
           onSelect={onSelect}
-          groups={seriesQuery.data}
+          groups={topByBookCount(seriesQuery.data)}
+          action={seeAllAction(onOpenSeries)}
         />
         <GroupSection
           title={t("sidebar.tags")}

@@ -21,6 +21,17 @@ public partial class LibraryRescanService(
 
     private sealed record SeriesInfo(string Name, double Index);
 
+    private sealed record BookmarkInfo(
+        string ClientId, string ChapterId, double Position, string Name, DateTime CreatedAt, DateTime? UpdatedAt);
+
+    private sealed record NoteInfo(
+        string ClientId, string ChapterId, int StartOffset, int EndOffset, string Text, string? Comment,
+        DateTime CreatedAt, DateTime? UpdatedAt);
+
+    private sealed record ProgressInfo(
+        int CurrentChapter, int TotalChapters, int CurrentPage, int TotalPages, string? ChapterTitle,
+        double Percentage, string? ChapterId, double? Position, DateTime UpdatedAt);
+
     // Everything here is DB-only state a rescan can't re-derive from the file itself (see
     // ILibraryRescanService docs) - captured per book id before the wipe below, and reapplied to
     // the rebuilt row for any book whose folder (and therefore id) still exists, rather than
@@ -31,7 +42,10 @@ public partial class LibraryRescanService(
         DateTime DateAdded,
         List<string> TagNames,
         SeriesInfo? Series,
-        List<int> CollectionIds);
+        List<int> CollectionIds,
+        List<BookmarkInfo> Bookmarks,
+        List<NoteInfo> Notes,
+        ProgressInfo? Progress);
 
     public async Task<int> RescanAsync(CancellationToken ct = default)
     {
@@ -68,6 +82,9 @@ public partial class LibraryRescanService(
             await db.BookCollections.ExecuteDeleteAsync(ct);
             await db.Identifiers.ExecuteDeleteAsync(ct);
             await db.BookFiles.ExecuteDeleteAsync(ct);
+            await db.Bookmarks.ExecuteDeleteAsync(ct);
+            await db.Notes.ExecuteDeleteAsync(ct);
+            await db.ReadingProgress.ExecuteDeleteAsync(ct);
             await db.Books.ExecuteDeleteAsync(ct);
             await db.Authors.ExecuteDeleteAsync(ct);
             await db.Series.ExecuteDeleteAsync(ct);
@@ -125,6 +142,18 @@ public partial class LibraryRescanService(
             .Select(bc => new { bc.BookId, bc.CollectionId })
             .ToListAsync(ct);
 
+        var bookmarks = await db.Bookmarks
+            .Select(bm => new { bm.BookId, Info = new BookmarkInfo(bm.ClientId, bm.ChapterId, bm.Position, bm.Name, bm.CreatedAt, bm.UpdatedAt) })
+            .ToListAsync(ct);
+
+        var notes = await db.Notes
+            .Select(n => new { n.BookId, Info = new NoteInfo(n.ClientId, n.ChapterId, n.StartOffset, n.EndOffset, n.Text, n.Comment, n.CreatedAt, n.UpdatedAt) })
+            .ToListAsync(ct);
+
+        var progress = await db.ReadingProgress
+            .Select(rp => new { rp.BookId, Info = new ProgressInfo(rp.CurrentChapter, rp.TotalChapters, rp.CurrentPage, rp.TotalPages, rp.ChapterTitle, rp.Percentage, rp.ChapterId, rp.Position, rp.UpdatedAt) })
+            .ToListAsync(ct);
+
         return books.ToDictionary(
             b => b.Id,
             b => new PreviousBookState(
@@ -133,7 +162,10 @@ public partial class LibraryRescanService(
                 b.DateAdded,
                 tags.Where(t => t.BookId == b.Id).Select(t => t.TagName).ToList(),
                 series.Where(s => s.BookId == b.Id).Select(s => new SeriesInfo(s.SeriesName, s.SeriesIndex)).FirstOrDefault(),
-                collections.Where(c => c.BookId == b.Id).Select(c => c.CollectionId).ToList()));
+                collections.Where(c => c.BookId == b.Id).Select(c => c.CollectionId).ToList(),
+                bookmarks.Where(bm => bm.BookId == b.Id).Select(bm => bm.Info).ToList(),
+                notes.Where(n => n.BookId == b.Id).Select(n => n.Info).ToList(),
+                progress.Where(p => p.BookId == b.Id).Select(p => p.Info).FirstOrDefault()));
     }
 
     private async Task<bool> TryIndexBookFolderAsync(
@@ -219,6 +251,53 @@ public partial class LibraryRescanService(
                     foreach (var collectionId in previous.CollectionIds)
                     {
                         book.BookCollections.Add(new BookCollection { BookId = bookId, CollectionId = collectionId });
+                    }
+
+                    foreach (var bookmark in previous.Bookmarks)
+                    {
+                        db.Bookmarks.Add(new Bookmark
+                        {
+                            BookId = bookId,
+                            ClientId = bookmark.ClientId,
+                            ChapterId = bookmark.ChapterId,
+                            Position = bookmark.Position,
+                            Name = bookmark.Name,
+                            CreatedAt = bookmark.CreatedAt,
+                            UpdatedAt = bookmark.UpdatedAt,
+                        });
+                    }
+
+                    foreach (var note in previous.Notes)
+                    {
+                        db.Notes.Add(new Note
+                        {
+                            BookId = bookId,
+                            ClientId = note.ClientId,
+                            ChapterId = note.ChapterId,
+                            StartOffset = note.StartOffset,
+                            EndOffset = note.EndOffset,
+                            Text = note.Text,
+                            Comment = note.Comment,
+                            CreatedAt = note.CreatedAt,
+                            UpdatedAt = note.UpdatedAt,
+                        });
+                    }
+
+                    if (previous.Progress is { } previousProgress)
+                    {
+                        db.ReadingProgress.Add(new ReadingProgress
+                        {
+                            BookId = bookId,
+                            CurrentChapter = previousProgress.CurrentChapter,
+                            TotalChapters = previousProgress.TotalChapters,
+                            CurrentPage = previousProgress.CurrentPage,
+                            TotalPages = previousProgress.TotalPages,
+                            ChapterTitle = previousProgress.ChapterTitle,
+                            Percentage = previousProgress.Percentage,
+                            ChapterId = previousProgress.ChapterId,
+                            Position = previousProgress.Position,
+                            UpdatedAt = previousProgress.UpdatedAt,
+                        });
                     }
                 }
 

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Alert,
+  Autocomplete,
   Button,
   Center,
   Group,
@@ -15,8 +16,18 @@ import {
   TextInput,
 } from "@mantine/core";
 import { IconAlertCircle } from "@tabler/icons-react";
-import { getBook, listCollections, updateBook, type BookEditRequest } from "../api";
+import {
+  getBook,
+  listAuthors,
+  listCollections,
+  listPublishers,
+  listSeries,
+  listTags,
+  updateBook,
+  type BookEditRequest,
+} from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
+import type { TranslationKey } from "../i18n/translations";
 
 interface BookEditFormProps {
   bookId: string;
@@ -26,7 +37,7 @@ interface BookEditFormProps {
 
 interface FormState {
   title: string;
-  authors: string;
+  authors: string[];
   language: string;
   publisher: string;
   publishedDate: string;
@@ -34,13 +45,13 @@ interface FormState {
   rating: number;
   seriesName: string;
   seriesIndex: string;
-  tags: string;
+  tags: string[];
   collectionIds: string[];
 }
 
 const EMPTY_FORM: FormState = {
   title: "",
-  authors: "",
+  authors: [],
   language: "",
   publisher: "",
   publishedDate: "",
@@ -48,7 +59,7 @@ const EMPTY_FORM: FormState = {
   rating: 0,
   seriesName: "",
   seriesIndex: "",
-  tags: "",
+  tags: [],
   collectionIds: [],
 };
 
@@ -60,10 +71,38 @@ const STAR_RATING_OPTIONS = [
   { value: "5", label: "★★★★★" },
 ];
 
+// Mantine's Select/MultiSelect have no built-in "create a new option" support (removed after v6) -
+// this is the standard replacement: the dropdown's own `data` always includes every existing name
+// plus whatever's currently selected (so already-chosen custom values keep resolving to a label
+// even once they scroll out of the current search text), and a synthetic "+ Create "X"" entry is
+// appended only while the typed search doesn't already match something. Selecting that entry just
+// selects its `value`, which is the typed text itself - no separate "was this newly created" case
+// to handle on save, since find-or-create happens server-side (EntityResolvers) exactly as it
+// already does for the free-text fields this replaces.
+function buildCreatableData(
+  existing: string[],
+  selected: string[],
+  search: string,
+  t: (key: TranslationKey, vars?: Record<string, string | number>) => string,
+): { value: string; label: string }[] {
+  const names = [...new Set([...existing, ...selected])].sort((a, b) => a.localeCompare(b));
+  const options = names.map((name) => ({ value: name, label: name }));
+
+  const trimmed = search.trim();
+  if (trimmed.length > 0 && !names.some((name) => name.toLowerCase() === trimmed.toLowerCase())) {
+    options.push({ value: trimmed, label: t("bookEdit.createOption", { name: trimmed }) });
+  }
+
+  return options;
+}
+
 export function BookEditForm({ bookId, onClose, onSaved }: BookEditFormProps) {
   const { t } = useLanguage();
   const queryClient = useQueryClient();
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const [authorSearch, setAuthorSearch] = useState("");
+  const [seriesSearch, setSeriesSearch] = useState("");
+  const [tagSearch, setTagSearch] = useState("");
   const ratingOptions = [{ value: "0", label: t("bookEdit.unrated") }, ...STAR_RATING_OPTIONS];
 
   const { data: book, isLoading } = useQuery({
@@ -71,14 +110,32 @@ export function BookEditForm({ bookId, onClose, onSaved }: BookEditFormProps) {
     queryFn: () => getBook(bookId),
   });
 
+  const authorsQuery = useQuery({ queryKey: ["authors"], queryFn: listAuthors });
+  const seriesQuery = useQuery({ queryKey: ["series"], queryFn: listSeries });
+  const tagsQuery = useQuery({ queryKey: ["tags"], queryFn: listTags });
+  const publishersQuery = useQuery({ queryKey: ["publishers"], queryFn: listPublishers });
   const collectionsQuery = useQuery({ queryKey: ["collections"], queryFn: listCollections });
   const collectionOptions = (collectionsQuery.data ?? []).map((c) => ({ value: c.id, label: c.name }));
+
+  const authorOptions = buildCreatableData(
+    (authorsQuery.data ?? []).map((a) => a.name),
+    form.authors,
+    authorSearch,
+    t,
+  );
+  const seriesOptions = buildCreatableData(
+    (seriesQuery.data ?? []).map((s) => s.name),
+    form.seriesName ? [form.seriesName] : [],
+    seriesSearch,
+    t,
+  );
+  const tagOptions = buildCreatableData((tagsQuery.data ?? []).map((tag) => tag.name), form.tags, tagSearch, t);
 
   useEffect(() => {
     if (!book) return;
     setForm({
       title: book.title,
-      authors: book.authors.join(", "),
+      authors: book.authors,
       language: book.language ?? "",
       publisher: book.publisher ?? "",
       publishedDate: book.datePublished ?? "",
@@ -86,7 +143,7 @@ export function BookEditForm({ bookId, onClose, onSaved }: BookEditFormProps) {
       rating: book.rating,
       seriesName: book.seriesName ?? "",
       seriesIndex: book.seriesIndex != null ? String(book.seriesIndex) : "",
-      tags: book.tags.join(", "),
+      tags: book.tags,
       collectionIds: book.collections.map((c) => c.id),
     });
   }, [book]);
@@ -99,22 +156,17 @@ export function BookEditForm({ bookId, onClose, onSaved }: BookEditFormProps) {
       void queryClient.invalidateQueries({ queryKey: ["authors"] });
       void queryClient.invalidateQueries({ queryKey: ["series"] });
       void queryClient.invalidateQueries({ queryKey: ["tags"] });
+      void queryClient.invalidateQueries({ queryKey: ["publishers"] });
       void queryClient.invalidateQueries({ queryKey: ["collections"] });
       onSaved();
     },
   });
 
-  const splitList = (value: string) =>
-    value
-      .split(",")
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0);
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     saveMutation.mutate({
       title: form.title.trim(),
-      authors: splitList(form.authors),
+      authors: form.authors,
       language: form.language.trim() || null,
       publisher: form.publisher.trim() || null,
       publishedDate: form.publishedDate || null,
@@ -122,7 +174,7 @@ export function BookEditForm({ bookId, onClose, onSaved }: BookEditFormProps) {
       rating: form.rating,
       seriesName: form.seriesName.trim() || null,
       seriesIndex: form.seriesIndex ? Number(form.seriesIndex) : null,
-      tags: splitList(form.tags),
+      tags: form.tags,
       collectionIds: form.collectionIds,
     });
   };
@@ -145,48 +197,12 @@ export function BookEditForm({ bookId, onClose, onSaved }: BookEditFormProps) {
               onChange={(e) => setForm({ ...form, title: e.currentTarget.value })}
             />
 
-            <TextInput
-              label={t("bookEdit.authors")}
-              description={t("bookEdit.commaSeparated")}
-              value={form.authors}
-              onChange={(e) => setForm({ ...form, authors: e.currentTarget.value })}
-            />
-
             <Group grow align="flex-start">
-              <TextInput
-                label={t("bookEdit.series")}
-                value={form.seriesName}
-                onChange={(e) => setForm({ ...form, seriesName: e.currentTarget.value })}
-              />
-              <NumberInput
-                label={t("bookEdit.seriesIndex")}
-                step={0.1}
-                value={form.seriesIndex}
-                onChange={(value) => setForm({ ...form, seriesIndex: value === "" ? "" : String(value) })}
-              />
-            </Group>
-
-            <TextInput
-              label={t("bookEdit.tags")}
-              description={t("bookEdit.commaSeparated")}
-              value={form.tags}
-              onChange={(e) => setForm({ ...form, tags: e.currentTarget.value })}
-            />
-
-            <MultiSelect
-              label={t("bookEdit.collections")}
-              data={collectionOptions}
-              value={form.collectionIds}
-              onChange={(value) => setForm({ ...form, collectionIds: value })}
-              searchable
-              clearable
-            />
-
-            <Group grow align="flex-start">
-              <TextInput
+              <Autocomplete
                 label={t("bookEdit.publisher")}
+                data={publishersQuery.data ?? []}
                 value={form.publisher}
-                onChange={(e) => setForm({ ...form, publisher: e.currentTarget.value })}
+                onChange={(value) => setForm({ ...form, publisher: value })}
               />
               <TextInput
                 label={t("bookEdit.language")}
@@ -210,6 +226,63 @@ export function BookEditForm({ bookId, onClose, onSaved }: BookEditFormProps) {
                 allowDeselect={false}
               />
             </Group>
+
+            <MultiSelect
+              label={t("bookEdit.authors")}
+              data={authorOptions}
+              value={form.authors}
+              onChange={(values) => {
+                setForm({ ...form, authors: values });
+                setAuthorSearch("");
+              }}
+              searchable
+              searchValue={authorSearch}
+              onSearchChange={setAuthorSearch}
+            />
+
+            <Group grow align="flex-start">
+              <Select
+                label={t("bookEdit.series")}
+                data={seriesOptions}
+                value={form.seriesName || null}
+                onChange={(value) => {
+                  setForm({ ...form, seriesName: value ?? "" });
+                  setSeriesSearch("");
+                }}
+                searchable
+                clearable
+                searchValue={seriesSearch}
+                onSearchChange={setSeriesSearch}
+              />
+              <NumberInput
+                label={t("bookEdit.seriesIndex")}
+                step={0.1}
+                value={form.seriesIndex}
+                onChange={(value) => setForm({ ...form, seriesIndex: value === "" ? "" : String(value) })}
+              />
+            </Group>
+
+            <MultiSelect
+              label={t("bookEdit.tags")}
+              data={tagOptions}
+              value={form.tags}
+              onChange={(values) => {
+                setForm({ ...form, tags: values });
+                setTagSearch("");
+              }}
+              searchable
+              searchValue={tagSearch}
+              onSearchChange={setTagSearch}
+            />
+
+            <MultiSelect
+              label={t("bookEdit.collections")}
+              data={collectionOptions}
+              value={form.collectionIds}
+              onChange={(value) => setForm({ ...form, collectionIds: value })}
+              searchable
+              clearable
+            />
 
             <Textarea
               label={t("bookEdit.description")}

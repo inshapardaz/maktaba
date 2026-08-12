@@ -6,7 +6,8 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Maktaba.Api.Endpoints;
 
-/// <summary>Distinct author/series/tag lists (with book counts) for the browse sidebar.</summary>
+/// <summary>Distinct author/series/tag lists (with book counts) for the browse sidebar, plus a bare
+/// publisher-name list for the book-edit form's autocomplete.</summary>
 public static class BrowseEndpoints
 {
     public static void MapBrowseEndpoints(this WebApplication app)
@@ -41,6 +42,21 @@ public static class BrowseEndpoints
                 .Select(t => new { t.Id, t.Name, Count = t.BookTags.Count })
                 .ToListAsync();
             return Results.Ok(tags.Select(t => new BrowseGroupDto(IdCodec.Encode(t.Id), t.Name, t.Count)));
+        });
+
+        // Distinct publisher names already in the library, for the book-edit form's publisher
+        // autocomplete - unlike Authors/Series/Tags, Publisher is a plain string field on Book
+        // (find-or-create only in the loose sense of "suggest a match", never its own entity/table),
+        // so this returns bare strings rather than BrowseGroupDto with an id/count.
+        app.MapGet("/api/publishers", async (MaktabaDbContext db) =>
+        {
+            var publishers = await db.Books
+                .Where(b => b.Publisher != null && b.Publisher != "")
+                .Select(b => b.Publisher!)
+                .Distinct()
+                .OrderBy(p => p)
+                .ToListAsync();
+            return Results.Ok(publishers);
         });
 
         app.MapGet("/api/reading-statuses", async (MaktabaDbContext db) =>

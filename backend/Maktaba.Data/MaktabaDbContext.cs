@@ -16,6 +16,9 @@ public class MaktabaDbContext(DbContextOptions<MaktabaDbContext> options) : DbCo
     public DbSet<BookCollection> BookCollections => Set<BookCollection>();
     public DbSet<BookFile> BookFiles => Set<BookFile>();
     public DbSet<Identifier> Identifiers => Set<Identifier>();
+    public DbSet<Bookmark> Bookmarks => Set<Bookmark>();
+    public DbSet<Note> Notes => Set<Note>();
+    public DbSet<ReadingProgress> ReadingProgress => Set<ReadingProgress>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -56,6 +59,24 @@ public class MaktabaDbContext(DbContextOptions<MaktabaDbContext> options) : DbCo
             .HasOne(i => i.Book)
             .WithMany(b => b.Identifiers)
             .HasForeignKey(i => i.BookId);
+
+        modelBuilder.Entity<Bookmark>(e =>
+        {
+            e.HasOne(bm => bm.Book).WithMany().HasForeignKey(bm => bm.BookId);
+            e.HasIndex(bm => bm.ClientId).IsUnique();
+        });
+
+        modelBuilder.Entity<Note>(e =>
+        {
+            e.HasOne(n => n.Book).WithMany().HasForeignKey(n => n.BookId);
+            e.HasIndex(n => n.ClientId).IsUnique();
+        });
+
+        modelBuilder.Entity<ReadingProgress>(e =>
+        {
+            e.HasKey(rp => rp.BookId);
+            e.HasOne(rp => rp.Book).WithOne().HasForeignKey<ReadingProgress>(rp => rp.BookId);
+        });
 
         modelBuilder.Entity<Author>().HasIndex(a => a.Name);
         modelBuilder.Entity<Book>().HasIndex(b => b.SortTitle);

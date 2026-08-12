@@ -1,5 +1,4 @@
 using Maktaba.Core.Entities;
-using Maktaba.Core.Ids;
 using Maktaba.Core.Naming;
 using Maktaba.Core.Services;
 using Microsoft.EntityFrameworkCore;
@@ -8,8 +7,6 @@ namespace Maktaba.Data.Services;
 
 public class BookEditService(MaktabaDbContext db, ILibraryPathProvider libraryPath) : IBookEditService
 {
-    private readonly record struct FolderMove(string OldAbsolute, string NewAbsolute);
-
     public async Task<Book?> UpdateAsync(int bookId, BookEditRequest request, CancellationToken ct = default)
     {
         var book = await db.Books
@@ -79,7 +76,7 @@ public class BookEditService(MaktabaDbContext db, ILibraryPathProvider libraryPa
             }
         }
 
-        var move = RelocateOnDiskIfNeeded(book, oldFolderRelative);
+        var move = BookFolderRelocator.RelocateIfNeeded(book, oldFolderRelative, libraryPath.LibraryRootPath!);
 
         try
         {
@@ -96,61 +93,5 @@ public class BookEditService(MaktabaDbContext db, ILibraryPathProvider libraryPa
         }
 
         return book;
-    }
-
-    /// <summary>
-    /// Renames/moves the book's on-disk folder (and its files) to match a new title/primary-author,
-    /// mirroring the "{AuthorSortName}/{Title} ({BookId})" layout ImportService creates on import.
-    /// No-op if neither title nor primary author changed.
-    /// </summary>
-    private FolderMove? RelocateOnDiskIfNeeded(Book book, string oldFolderRelative)
-    {
-        var libraryRoot = libraryPath.LibraryRootPath!;
-
-        var newAuthorSortName = book.BookAuthors
-            .OrderBy(ba => ba.Order)
-            .Select(ba => ba.Author.SortName)
-            .FirstOrDefault() ?? "Unknown Author";
-
-        var newFolderRelative = Path.Combine(
-            FileNaming.SanitizePathSegment(newAuthorSortName),
-            FileNaming.SanitizePathSegment($"{book.Title} ({IdCodec.Encode(book.Id)})"));
-
-        if (string.Equals(newFolderRelative, oldFolderRelative, StringComparison.Ordinal))
-        {
-            return null;
-        }
-
-        var oldAbsolute = Path.Combine(libraryRoot, oldFolderRelative);
-        var newAbsolute = Path.Combine(libraryRoot, newFolderRelative);
-
-        Directory.CreateDirectory(Path.GetDirectoryName(newAbsolute)!);
-        Directory.Move(oldAbsolute, newAbsolute);
-        book.FolderPath = newFolderRelative;
-
-        var oldAuthorFolder = Path.GetDirectoryName(oldAbsolute)!;
-        if (Directory.Exists(oldAuthorFolder) && Directory.EnumerateFileSystemEntries(oldAuthorFolder).Any() == false)
-        {
-            Directory.Delete(oldAuthorFolder);
-        }
-
-        foreach (var file in book.Files)
-        {
-            var oldFileName = Path.GetFileName(file.FilePath);
-            var newFileName = FileNaming.SanitizePathSegment(book.Title) + Path.GetExtension(file.FilePath);
-
-            if (string.Equals(oldFileName, newFileName, StringComparison.Ordinal))
-            {
-                file.FilePath = Path.Combine(newFolderRelative, oldFileName);
-                continue;
-            }
-
-            var oldFileAbsolute = Path.Combine(newAbsolute, oldFileName);
-            var newFileAbsolute = EbookFileHelpers.GetUniqueFilePath(newAbsolute, newFileName);
-            File.Move(oldFileAbsolute, newFileAbsolute);
-            file.FilePath = Path.Combine(newFolderRelative, Path.GetFileName(newFileAbsolute));
-        }
-
-        return new FolderMove(oldAbsolute, newAbsolute);
     }
 }

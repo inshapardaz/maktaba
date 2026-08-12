@@ -12,6 +12,7 @@ import { Sidebar, type GroupFilter, type MainView } from "./components/Sidebar";
 import { AuthorsView } from "./components/AuthorsView";
 import { CollectionsView } from "./components/CollectionsView";
 import { TagsView } from "./components/TagsView";
+import { SeriesView } from "./components/SeriesView";
 import { FilterBar, type SortKey, type ViewMode } from "./components/FilterBar";
 import { ImportDialog } from "./components/ImportDialog";
 import { SettingsScreen } from "./components/SettingsScreen";
@@ -173,6 +174,7 @@ function App() {
             onOpenAuthors={() => setMainView("authors")}
             onOpenCollections={() => setMainView("collections")}
             onOpenTags={() => setMainView("tags")}
+            onOpenSeries={() => setMainView("series")}
             onImport={handleImportClick}
           />
         </AppShell.Navbar>
@@ -184,6 +186,8 @@ function App() {
             <CollectionsView onSelect={handleSelectFilter} onBack={() => setMainView("library")} />
           ) : mainView === "tags" ? (
             <TagsView onSelect={handleSelectFilter} onBack={() => setMainView("library")} />
+          ) : mainView === "series" ? (
+            <SeriesView onSelect={handleSelectFilter} onBack={() => setMainView("library")} />
           ) : (
             <>
               <FilterBar

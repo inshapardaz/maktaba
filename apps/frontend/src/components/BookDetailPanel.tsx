@@ -20,7 +20,15 @@ import {
   Tooltip,
 } from "@mantine/core";
 import { IconAlertCircle, IconBook2, IconFolder, IconExternalLink, IconTrash } from "@tabler/icons-react";
-import { getBook, deleteBook, coverUrl, updateBookStatus, type BookFileInfo, type ReadingStatus } from "../api";
+import {
+  getBook,
+  deleteBook,
+  coverUrl,
+  updateBookStatus,
+  getReadingProgress,
+  type BookFileInfo,
+  type ReadingStatus,
+} from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
 import { BookEditForm } from "./BookEditForm";
 import { SpineCover } from "./SpineCover";
@@ -58,6 +66,11 @@ export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelP
   } = useQuery({
     queryKey: ["book", bookId],
     queryFn: () => getBook(bookId),
+  });
+
+  const { data: progress } = useQuery({
+    queryKey: ["progress", bookId],
+    queryFn: () => getReadingProgress(bookId),
   });
 
   const statusMutation = useMutation({
@@ -190,6 +203,15 @@ export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelP
               onChange={(value) => statusMutation.mutate(value as ReadingStatus)}
               disabled={statusMutation.isPending}
             />
+            {progress && progress.totalChapters > 0 && (
+              <Text size="xs" c="dimmed">
+                {t("bookDetail.progress", {
+                  percentage: Math.round(progress.percentage),
+                  chapter: progress.currentChapter,
+                  totalChapters: progress.totalChapters,
+                })}
+              </Text>
+            )}
           </Stack>
 
           {book.description && <Text size="sm">{book.description}</Text>}
