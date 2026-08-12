@@ -11,6 +11,7 @@ import { createAppTheme } from "./theme";
 import { ThemeColorProvider, useThemeColor } from "./ThemeColorContext";
 import { LanguageProvider, getStoredLanguage } from "./i18n/LanguageContext";
 import { ReaderOverlay } from "./components/ReaderOverlay";
+import { BackendGate } from "./components/BackendGate";
 import App from "./App.tsx";
 
 const queryClient = new QueryClient();
@@ -60,11 +61,13 @@ createRoot(document.getElementById("root")!).render(
           <LanguageProvider>
             <Notifications position="bottom-right" />
             <QueryClientProvider client={queryClient}>
-              {readerRequest ? (
-                <ReaderWindow bookId={readerRequest.bookId} format={readerRequest.format} title={readerRequest.title} />
-              ) : (
-                <App />
-              )}
+              <BackendGate>
+                {readerRequest ? (
+                  <ReaderWindow bookId={readerRequest.bookId} format={readerRequest.format} title={readerRequest.title} />
+                ) : (
+                  <App />
+                )}
+              </BackendGate>
             </QueryClientProvider>
           </LanguageProvider>
         </ThemedMantineProvider>

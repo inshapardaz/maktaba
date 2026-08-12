@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
+import type { SidecarStatus } from "./sidecar";
 
 function getArg(name: string): string | undefined {
   const prefix = `--${name}=`;
@@ -38,4 +39,16 @@ contextBridge.exposeInMainWorld("maktaba", {
 
   // Resolves the real filesystem path for a File dropped onto the window (drag-and-drop import).
   getPathForFile: (file: File): string => webUtils.getPathForFile(file),
+
+  // The Maktaba.Api sidecar starts asynchronously alongside this window (see main.ts's
+  // initSidecar) — getSidecarStatus() gives the renderer its current state on mount, and
+  // onSidecarStatus() delivers later transitions ("starting" -> "ready" or "error") so the
+  // frontend can show a loading screen / error message instead of hitting a dead API.
+  getSidecarStatus: (): Promise<SidecarStatus> => ipcRenderer.invoke("maktaba:get-sidecar-status"),
+
+  onSidecarStatus: (callback: (status: SidecarStatus) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, status: SidecarStatus) => callback(status);
+    ipcRenderer.on("maktaba:sidecar-status", listener);
+    return () => ipcRenderer.removeListener("maktaba:sidecar-status", listener);
+  },
 });

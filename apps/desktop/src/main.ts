@@ -1,9 +1,10 @@
 import { app, BrowserWindow, ipcMain } from "electron";
 import * as path from "node:path";
-import { startSidecar, stopSidecar, SidecarHandle } from "./sidecar";
+import { startSidecar, stopSidecar, waitForHealth, SidecarHandle, SidecarStatus } from "./sidecar";
 import { registerNativeHandlers } from "./native";
 
 let sidecar: SidecarHandle | null = null;
+let sidecarStatus: SidecarStatus = { state: "starting" };
 let mainWindow: BrowserWindow | null = null;
 // Keyed by "<bookId>:<format>" so re-opening the same book/format focuses its existing
 // window instead of stacking duplicates; different books (or the same book in a different
@@ -18,6 +19,52 @@ const appIconPath = path.join(__dirname, "..", "build", "icon.png");
 
 registerNativeHandlers(() => mainWindow);
 
+// Every window (main + readers) shows its own loading/error state driven off this, since each
+// is an independent renderer process that needs to learn the current status on mount, and then
+// be told about any later transition. "starting" -> "ready" is the happy path; "error" can be
+// reached either from here (health check timed out) or from the sidecar process dying/failing
+// to spawn (see initSidecar below).
+function broadcastSidecarStatus(status: SidecarStatus): void {
+  sidecarStatus = status;
+  for (const win of BrowserWindow.getAllWindows()) {
+    win.webContents.send("maktaba:sidecar-status", status);
+  }
+}
+
+ipcMain.handle("maktaba:get-sidecar-status", () => sidecarStatus);
+
+/**
+ * Spawns the backend and starts health-checking it in the background, without blocking on
+ * readiness — the caller can create+show the window immediately and let the frontend render
+ * its own loading state until a "ready"/"error" status comes through.
+ */
+async function initSidecar(): Promise<SidecarHandle> {
+  sidecarStatus = { state: "starting" };
+  const handle = await startSidecar({ isPackaged: app.isPackaged, resourcesPath: process.resourcesPath });
+
+  handle.process.on("error", (err) => {
+    broadcastSidecarStatus({ state: "error", message: err.message });
+  });
+
+  // A process exit before we've ever reached "ready" means startup failed outright (missing
+  // exe, crash on launch, etc.) — report it immediately rather than waiting out the full
+  // waitForHealth timeout below.
+  handle.process.once("exit", (code, signal) => {
+    if (sidecarStatus.state === "starting") {
+      broadcastSidecarStatus({
+        state: "error",
+        message: `Maktaba.Api exited before it became ready (code ${code ?? "unknown"}${signal ? `, signal ${signal}` : ""})`,
+      });
+    }
+  });
+
+  waitForHealth(handle.port)
+    .then(() => broadcastSidecarStatus({ state: "ready" }))
+    .catch((err: Error) => broadcastSidecarStatus({ state: "error", message: err.message }));
+
+  return handle;
+}
+
 function webPreferencesFor(handle: SidecarHandle) {
   return {
     preload: path.join(__dirname, "preload.js"),
@@ -30,7 +77,7 @@ function webPreferencesFor(handle: SidecarHandle) {
 }
 
 async function createWindow(): Promise<void> {
-  sidecar = await startSidecar({ isPackaged: app.isPackaged, resourcesPath: process.resourcesPath });
+  sidecar = await initSidecar();
 
   mainWindow = new BrowserWindow({
     width: 1280,

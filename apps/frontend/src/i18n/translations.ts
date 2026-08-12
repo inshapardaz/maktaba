@@ -18,6 +18,10 @@ const en = {
   "libraryPicker.opening": "Opening…",
   "libraryPicker.errorTitle": "Couldn't open library",
 
+  "backend.starting": "Starting Maktaba…",
+  "backend.errorTitle": "Maktaba couldn't start",
+  "backend.errorHint": "Try closing and reopening the app. If this keeps happening, check that no other program is using the same port.",
+
   "toolbar.addBooks": "Add Books",
   "toolbar.sortBy": "Sort by",
   "toolbar.sortTitle": "Title",
@@ -181,6 +185,10 @@ const ur: TranslationDict = {
   "libraryPicker.choose": "لائبریری فولڈر منتخب کریں",
   "libraryPicker.opening": "کھولا جا رہا ہے…",
   "libraryPicker.errorTitle": "لائبریری نہیں کھل سکی",
+
+  "backend.starting": "مکتبہ شروع ہو رہا ہے…",
+  "backend.errorTitle": "مکتبہ شروع نہیں ہو سکا",
+  "backend.errorHint": "ایپ بند کر کے دوبارہ کھولنے کی کوشش کریں۔ اگر یہ مسئلہ برقرار رہے تو چیک کریں کہ کوئی اور پروگرام اسی پورٹ کا استعمال تو نہیں کر رہا۔",
 
   "toolbar.addBooks": "کتابیں شامل کریں",
   "toolbar.sortBy": "ترتیب",

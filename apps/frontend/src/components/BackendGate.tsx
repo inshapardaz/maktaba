@@ -1,0 +1,53 @@
+import { useEffect, useState, type ReactNode } from "react";
+import { Alert, Loader, Stack, Text } from "@mantine/core";
+import { IconAlertCircle } from "@tabler/icons-react";
+import { useLanguage } from "../i18n/LanguageContext";
+import type { SidecarStatus } from "../maktaba";
+
+// Gates rendering of the real app (or reader window) until the Maktaba.Api sidecar (spawned by
+// Electron's main process alongside this window — see apps/desktop/src/main.ts's initSidecar)
+// answers its health check. Every window queries the current status on mount and subscribes to
+// later transitions, since main.ts creates/shows the window before the backend is confirmed
+// ready rather than blocking on it.
+export function BackendGate({ children }: { children: ReactNode }) {
+  const { t } = useLanguage();
+  const [status, setStatus] = useState<SidecarStatus>({ state: "starting" });
+
+  useEffect(() => {
+    let cancelled = false;
+    void window.maktaba.getSidecarStatus().then((current) => {
+      if (!cancelled) setStatus(current);
+    });
+    const unsubscribe = window.maktaba.onSidecarStatus((next) => setStatus(next));
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, []);
+
+  if (status.state === "error") {
+    return (
+      <Stack align="center" justify="center" h="100vh" gap="sm" p="xl" ta="center">
+        <Alert color="red" icon={<IconAlertCircle size={18} />} title={t("backend.errorTitle")} maw={480}>
+          <Stack gap="xs">
+            <Text size="sm">{status.message}</Text>
+            <Text size="sm" c="dimmed">
+              {t("backend.errorHint")}
+            </Text>
+          </Stack>
+        </Alert>
+      </Stack>
+    );
+  }
+
+  if (status.state === "starting") {
+    return (
+      <Stack align="center" justify="center" h="100vh" gap="sm">
+        <Loader />
+        <Text c="dimmed">{t("backend.starting")}</Text>
+      </Stack>
+    );
+  }
+
+  return <>{children}</>;
+}

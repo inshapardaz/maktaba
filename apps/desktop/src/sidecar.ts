@@ -10,6 +10,13 @@ export interface SidecarHandle {
   token: string;
 }
 
+/** Pushed to renderer windows via IPC (see main.ts's broadcastSidecarStatus) so the frontend
+ * can show a loading screen until the backend answers /health, or an error if it never does. */
+export type SidecarStatus =
+  | { state: "starting" }
+  | { state: "ready" }
+  | { state: "error"; message: string };
+
 function getFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const server = net.createServer();
@@ -28,7 +35,7 @@ function getFreePort(): Promise<number> {
   });
 }
 
-function waitForHealth(port: number, timeoutMs = 30000): Promise<void> {
+export function waitForHealth(port: number, timeoutMs = 30000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
 
   return new Promise((resolve, reject) => {
@@ -80,11 +87,20 @@ function packagedExecutablePath(resourcesPath: string): string {
 }
 
 /**
+ * Spawns the backend but does not wait for it to become healthy — callers that need to know
+ * when it's actually ready to serve requests should separately await `waitForHealth(port)`.
+ * Splitting these lets the Electron window appear (and the frontend show its own loading
+ * state) immediately instead of the whole app staying window-less during backend startup.
+ *
  * Dev mode: `dotnet run` against the backend project directly.
  * Packaged mode: spawn the self-contained published executable bundled as an
  * electron-builder extraResource under `resources/backend/` (see
  * apps/desktop/package.json's `build.win/mac/linux.extraResources` and
  * scripts/publish-backend.mjs).
+ *
+ * `windowsHide: true` is required on Windows: Maktaba.Api is a console-subsystem executable
+ * (ASP.NET Core apphost), so without it Windows pops up a visible console window alongside the
+ * Electron app for the lifetime of the process.
  */
 export async function startSidecar(options: SidecarOptions): Promise<SidecarHandle> {
   const port = await getFreePort();
@@ -93,6 +109,7 @@ export async function startSidecar(options: SidecarOptions): Promise<SidecarHand
   const child = options.isPackaged
     ? spawn(packagedExecutablePath(options.resourcesPath), [`--port=${port}`, `--token=${token}`], {
       stdio: "inherit",
+      windowsHide: true,
     })
     : spawn(
       "dotnet",
@@ -105,14 +122,12 @@ export async function startSidecar(options: SidecarOptions): Promise<SidecarHand
         `--port=${port}`,
         `--token=${token}`,
       ],
-      { stdio: "inherit" },
+      { stdio: "inherit", windowsHide: true },
     );
 
   child.on("error", (err) => {
     console.error("Failed to start Maktaba.Api sidecar:", err);
   });
-
-  await waitForHealth(port);
 
   return { process: child, port, token };
 }
