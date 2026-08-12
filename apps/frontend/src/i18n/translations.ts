@@ -55,6 +55,7 @@ const en = {
   "seriesView.title": "Series",
   "seriesView.searchPlaceholder": "Search series…",
   "seriesView.empty": "No series found.",
+  "seriesView.rename": "Rename series",
 
   "collectionsView.title": "Collections",
   "collectionsView.namePlaceholder": "New collection name",
@@ -218,6 +219,7 @@ const ur: TranslationDict = {
   "seriesView.title": "سیریز",
   "seriesView.searchPlaceholder": "سیریز تلاش کریں…",
   "seriesView.empty": "کوئی سیریز نہیں ملی۔",
+  "seriesView.rename": "سیریز کا نام تبدیل کریں",
 
   "collectionsView.title": "مجموعے",
   "collectionsView.namePlaceholder": "نئے مجموعے کا نام",

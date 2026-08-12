@@ -42,10 +42,30 @@ internal static class BookFolderRelocator
         Directory.Move(oldAbsolute, newAbsolute);
         book.FolderPath = newFolderRelative;
 
+        // Best-effort only: a cloud-synced library folder (OneDrive/Dropbox/etc.) can hold a brief
+        // lock on a directory it still considers "empty" from .NET's point of view, making
+        // Directory.Delete throw even though nothing is actually left in it. This step is pure
+        // cosmetic cleanup (removing a now-empty leftover author folder) - not required for
+        // correctness, since the book's own folder has already been moved above - so a failure here
+        // must not abort the whole rename/edit and leave DB and disk out of sync (this method
+        // wouldn't return its FolderMove, and the caller's rollback tracking would miss a move that
+        // in fact already succeeded). The empty folder is simply left behind for the user (or a
+        // later sync/retry) to clean up.
         var oldAuthorFolder = Path.GetDirectoryName(oldAbsolute)!;
-        if (Directory.Exists(oldAuthorFolder) && Directory.EnumerateFileSystemEntries(oldAuthorFolder).Any() == false)
+        try
         {
-            Directory.Delete(oldAuthorFolder);
+            if (Directory.Exists(oldAuthorFolder) && Directory.EnumerateFileSystemEntries(oldAuthorFolder).Any() == false)
+            {
+                Directory.Delete(oldAuthorFolder);
+            }
+        }
+        catch (IOException)
+        {
+            // Ignored - see comment above.
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Ignored - see comment above.
         }
 
         foreach (var file in book.Files)

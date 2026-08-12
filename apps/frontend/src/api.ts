@@ -249,6 +249,14 @@ export function listSeries(): Promise<BrowseGroup[]> {
   return request<BrowseGroup[]>("/api/series");
 }
 
+// Cascades to every book in this series automatically. Same 409-on-collision behavior as renameAuthor.
+export function renameSeries(id: string, name: string): Promise<BrowseGroup> {
+  return request<BrowseGroup>(`/api/series/${id}/name`, {
+    method: "PUT",
+    body: JSON.stringify({ name }),
+  });
+}
+
 export function listTags(): Promise<BrowseGroup[]> {
   return request<BrowseGroup[]>("/api/tags");
 }

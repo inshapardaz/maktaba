@@ -104,5 +104,6 @@ app.MapSystemEndpoints();
 app.MapReaderDataEndpoints();
 app.MapAuthorEndpoints();
 app.MapTagEndpoints();
+app.MapSeriesEndpoints();
 
 app.Run();

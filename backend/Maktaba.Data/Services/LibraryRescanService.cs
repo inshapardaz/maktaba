@@ -97,16 +97,31 @@ public partial class LibraryRescanService(
                 ct.ThrowIfCancellationRequested();
 
                 var bookDir = bookDirs[i];
-                if (await TryIndexBookFolderAsync(libraryRoot, bookDir, previousStates, ct))
+                try
                 {
-                    importedCount++;
+                    if (await TryIndexBookFolderAsync(libraryRoot, bookDir, previousStates, ct))
+                    {
+                        importedCount++;
 
-                    // Flushed now (within the still-open transaction, not yet durably committed) so
-                    // the next book's EntityResolvers lookups - plain DB queries, blind to unflushed
-                    // change-tracker inserts - see the authors/series/tags this book just created
-                    // instead of re-creating duplicates for every book after the first by a given
-                    // author (the actual cause of books "coming back" duplicated after a rescan).
-                    await db.SaveChangesAsync(ct);
+                        // Flushed now (within the still-open transaction, not yet durably committed) so
+                        // the next book's EntityResolvers lookups - plain DB queries, blind to unflushed
+                        // change-tracker inserts - see the authors/series/tags this book just created
+                        // instead of re-creating duplicates for every book after the first by a given
+                        // author (the actual cause of books "coming back" duplicated after a rescan).
+                        await db.SaveChangesAsync(ct);
+                    }
+                }
+                catch (Exception) when (ct.IsCancellationRequested == false)
+                {
+                    // A single book folder that can't be read (a permission error, a cloud-synced
+                    // folder - OneDrive/Dropbox/etc. - still downloading, a corrupt file, ...) must not
+                    // block every *other* book in the library from being correctly re-indexed, and just
+                    // as importantly must not block books whose folders really were deleted from
+                    // actually being pruned below: unlike the cancellation/hard-failure case (still
+                    // meant to roll back the whole scan, see the comment on `transaction` above), this
+                    // discards only the partial, never-saved entities this one book's attempt left in
+                    // the change tracker and moves on to the rest.
+                    db.ChangeTracker.Clear();
                 }
 
                 progress.Report(i + 1, Path.GetFileName(bookDir));

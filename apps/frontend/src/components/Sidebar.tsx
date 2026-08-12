@@ -1,4 +1,4 @@
-import { Badge, Box, Button, Divider, Group, Kbd, NavLink, ScrollArea, Text, Tooltip, UnstyledButton } from "@mantine/core";
+import { ActionIcon, Badge, Box, Divider, Group, Kbd, NavLink, ScrollArea, Text, Tooltip, UnstyledButton } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { spotlight } from "@mantine/spotlight";
 import {
@@ -242,18 +242,22 @@ export function Sidebar({
       style={{ flexDirection: "column", borderInlineEnd: "1px solid var(--mantine-color-default-border)" }}
     >
       <Box px="md" pt="md" pb="sm">
-        <Text ff="var(--mantine-font-family-headings)" fw={600} fz={22} mb="sm">
-          مکتبہ
-        </Text>
-
-        <Button
-          fullWidth
-          leftSection={<IconPlus size={16} />}
-          onClick={onImport}
-          mb="sm"
-        >
-          {t("toolbar.addBooks")}
-        </Button>
+        <Group justify="space-between" wrap="nowrap" mb="sm">
+          <Text ff="var(--mantine-font-family-headings)" fw={600} fz={22}>
+            مکتبہ
+          </Text>
+          <Tooltip label={t("toolbar.addBooks")}>
+            <ActionIcon
+              variant="outline"
+              size="lg"
+              onClick={onImport}
+              aria-label={t("toolbar.addBooks")}
+              style={{ borderStyle: "dashed" }}
+            >
+              <IconPlus size={18} />
+            </ActionIcon>
+          </Tooltip>
+        </Group>
 
         {/* Same trigger as the header used to have (see Toolbar) - opens the global Spotlight
             (Ctrl/Cmd+K works from anywhere regardless of where this visible trigger lives). */}
