@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { ReaderOverlay } from "./ReaderOverlay";
 
 interface InlineReaderProps {
@@ -16,5 +17,21 @@ interface InlineReaderProps {
 // mainView/groupFilter/etc. ever changed, so whatever was showing underneath reappears exactly as
 // it was.
 export function InlineReader({ bookId, format, onClose }: InlineReaderProps) {
+  // Escape closes the reader, same as its own close button - only wired up here (not
+  // ReaderOverlay itself), since the pop-out window has no "previous screen" to return to and
+  // relies on native window chrome (Alt+F4/the OS close button) instead. If qari has its own
+  // Escape handling for a transient overlay (e.g. dismissing a note popover), that keydown stops
+  // propagating before it reaches this window-level listener, so this only fires when nothing
+  // inside the reader already claimed the key.
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
   return <ReaderOverlay bookId={bookId} format={format} onClose={onClose} />;
 }

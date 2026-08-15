@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { spotlight } from "@mantine/spotlight";
 import {
@@ -33,6 +33,22 @@ import type { GroupFilter, MainView } from "./Sidebar";
 // height and the mac trafficLightPosition.y are derived from that same constant). Exported so
 // App.tsx can give AppShell's header slot the same height.
 export const TITLEBAR_HEIGHT = 40;
+
+// The WICG Window Controls Overlay API (https://github.com/WICG/window-controls-overlay) that
+// Electron's win/linux titleBarOverlay is built on - not yet in TS's lib.dom.d.ts, so declared
+// here. getTitlebarAreaRect() gives the actual safe-content rectangle (whichever physical side the
+// caption buttons are really on, at their real rendered width for the current theme/DPI/RTL
+// state), and geometrychange fires whenever that rectangle changes.
+interface WindowControlsOverlay extends EventTarget {
+  visible: boolean;
+  getTitlebarAreaRect: () => DOMRect;
+}
+
+declare global {
+  interface Navigator {
+    windowControlsOverlay?: WindowControlsOverlay;
+  }
+}
 
 interface TitleBarProps {
   hasLibrary: boolean;
@@ -129,6 +145,24 @@ export function TitleBar({
   const colorScheme = useComputedColorScheme("light");
   const isMac = window.maktaba.platform === "darwin";
   const libraryActive = mainView === "library" && !activeFilter;
+  // The win/linux safe-content rectangle, measured live - see the WindowControlsOverlay
+  // declaration above. Previous attempts at this reserved a hardcoded pixel width via CSS
+  // (paddingRight: 138, and later env(titlebar-area-*)) and both were wrong in practice: the
+  // caption buttons' actual width/side varies by Windows theme/DPI/RTL in ways a guessed constant
+  // or an apparently-unpopulated env() value didn't track, clipping content under LTR and hiding
+  // most of the bar under RTL. This reads Chromium's own live overlay geometry instead.
+  const [overlayRect, setOverlayRect] = useState<DOMRect | null>(null);
+
+  useEffect(() => {
+    if (isMac) return;
+    const overlay = navigator.windowControlsOverlay;
+    if (!overlay) return;
+
+    const update = () => setOverlayRect(overlay.visible ? overlay.getTitlebarAreaRect() : null);
+    update();
+    overlay.addEventListener("geometrychange", update);
+    return () => overlay.removeEventListener("geometrychange", update);
+  }, [isMac]);
 
   // Keeps the native win/linux caption-button strip's colors matching the app's own light/dark
   // setting rather than the OS default, which can otherwise mismatch the page right next to it.
@@ -147,23 +181,18 @@ export function TitleBar({
         flexShrink: 0,
         borderBottom: "1px solid var(--mantine-color-default-border)",
         boxSizing: "border-box",
+        overflow: "hidden",
         // Reserves space for the native controls so our own content never sits under them. mac's
         // traffic lights are a fixed native offset from the top-left regardless of app direction,
-        // so that side stays hardcoded. win/linux's titleBarOverlay caption buttons can sit on
-        // either physical side (they move to the left under RTL/Urdu - see Electron's custom
-        // title bar docs) and their actual reserved width varies by Windows theme/DPI, so instead
-        // of guessing a pixel width, we read Chromium's own `env(titlebar-area-*)` values, which
-        // already describe the exact safe content rectangle for whichever side/width the overlay
-        // actually occupies. paddingLeft skips to the safe area's start; paddingRight is whatever
-        // remains between the safe area's end and the full-width box's right edge.
-        paddingLeft: isMac ? 80 : "env(titlebar-area-x, 12px)",
-        paddingRight: isMac
-          ? 12
-          : "calc(100% - env(titlebar-area-x, 12px) - env(titlebar-area-width, calc(100% - 150px)))",
+        // so that side stays hardcoded. win/linux uses the live-measured overlayRect (see above);
+        // until the first geometrychange fires we fall back to the old best-guess constants rather
+        // than rendering with zero reservation.
+        paddingLeft: isMac ? 80 : (overlayRect?.x ?? 12),
+        paddingRight: isMac ? 12 : overlayRect ? window.innerWidth - overlayRect.x - overlayRect.width : 150,
       }}
     >
       <Group gap={6} wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
-        <Text ff="var(--mantine-font-family-headings)" fw={600} fz={16} style={{ flexShrink: 0 }}>
+        <Text ff="var(--mantine-font-family-headings)" fw={600} fz={16} ms={8} style={{ flexShrink: 0 }}>
           {t("app.name")}
         </Text>
 
@@ -240,6 +269,7 @@ export function TitleBar({
           variant="outline"
           size="xs"
           onClick={onImport}
+          me={8}
           style={{ flexShrink: 0 }}
         >
           {t("toolbar.addBooks")}
