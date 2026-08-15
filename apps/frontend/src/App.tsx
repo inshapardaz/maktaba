@@ -25,13 +25,6 @@ import { useLanguage } from "./i18n/LanguageContext";
 import { ReaderLauncherProvider, type ReaderRequest } from "./ReaderLauncherContext";
 import { getStoredReaderEngine, getStoredReaderOpenMode } from "./readerSettings";
 
-const EBOOK_EXTENSIONS = [".epub", ".pdf"];
-
-function isEbookPath(path: string): boolean {
-  const lower = path.toLowerCase();
-  return EBOOK_EXTENSIONS.some((ext) => lower.endsWith(ext));
-}
-
 function compareBooks(a: BookSummary, b: BookSummary, sortKey: SortKey): number {
   switch (sortKey) {
     case "title":
@@ -162,24 +155,28 @@ function App() {
     setMainView("library");
   };
 
-  const handleImportClick = async () => {
-    const files = await window.maktaba.pickEbookFiles();
-    if (files.length > 0) {
-      setImportFiles(files);
-    }
+  // Opens ImportDialog with an empty queue rather than pre-picking files here, so its own
+  // "Browse files" / "Import folder" buttons are reachable - previously this jumped straight to
+  // the (files-only) OS picker and never opened the dialog if it was cancelled, meaning there was
+  // no way to reach the folder-import option from the UI at all.
+  const handleImportClick = () => {
+    setImportFiles([]);
   };
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setDragActive(false);
 
-    const paths = Array.from(e.dataTransfer.files)
-      .map((file) => window.maktaba.getPathForFile(file))
-      .filter(isEbookPath);
-
-    if (paths.length > 0) {
-      setImportFiles(paths);
+    const paths = Array.from(e.dataTransfer.files).map((file) => window.maktaba.getPathForFile(file));
+    if (paths.length === 0) {
+      return;
     }
+
+    void window.maktaba.resolveEbookPaths(paths).then((files) => {
+      if (files.length > 0) {
+        setImportFiles(files);
+      }
+    });
   };
 
   // The one place that decides how "Read"/"Resume" actually opens a book - internal reader vs the

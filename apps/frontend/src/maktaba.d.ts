@@ -15,6 +15,9 @@ declare global {
       platform: NodeJS.Platform;
       pickLibraryFolder: () => Promise<string | null>;
       pickEbookFiles: () => Promise<string[]>;
+      pickEbookFolder: () => Promise<string[]>;
+      resolveEbookPaths: (paths: string[]) => Promise<string[]>;
+      onResolveEbookPathsProgress: (callback: (progress: { found: number; currentPath: string }) => void) => () => void;
       revealInFolder: (filePath: string) => Promise<void>;
       openPath: (filePath: string) => Promise<void>;
       trashPath: (filePath: string) => Promise<void>;

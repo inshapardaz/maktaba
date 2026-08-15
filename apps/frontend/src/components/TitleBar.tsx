@@ -146,12 +146,20 @@ export function TitleBar({
         gap: 6,
         flexShrink: 0,
         borderBottom: "1px solid var(--mantine-color-default-border)",
-        // Reserves space for the native controls so our own content never sits under them. These
-        // are true physical properties (not paddingInlineStart/End) since the win/linux
-        // caption-button overlay and mac's traffic lights sit at a fixed screen corner regardless
-        // of the app's own RTL/Urdu layout — only the content between them mirrors with direction.
-        paddingLeft: isMac ? 80 : 12,
-        paddingRight: isMac ? 12 : 138,
+        boxSizing: "border-box",
+        // Reserves space for the native controls so our own content never sits under them. mac's
+        // traffic lights are a fixed native offset from the top-left regardless of app direction,
+        // so that side stays hardcoded. win/linux's titleBarOverlay caption buttons can sit on
+        // either physical side (they move to the left under RTL/Urdu - see Electron's custom
+        // title bar docs) and their actual reserved width varies by Windows theme/DPI, so instead
+        // of guessing a pixel width, we read Chromium's own `env(titlebar-area-*)` values, which
+        // already describe the exact safe content rectangle for whichever side/width the overlay
+        // actually occupies. paddingLeft skips to the safe area's start; paddingRight is whatever
+        // remains between the safe area's end and the full-width box's right edge.
+        paddingLeft: isMac ? 80 : "env(titlebar-area-x, 12px)",
+        paddingRight: isMac
+          ? 12
+          : "calc(100% - env(titlebar-area-x, 12px) - env(titlebar-area-width, calc(100% - 150px)))",
       }}
     >
       <Group gap={6} wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>

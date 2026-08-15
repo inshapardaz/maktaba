@@ -28,6 +28,21 @@ contextBridge.exposeInMainWorld("maktaba", {
 
   pickEbookFiles: (): Promise<string[]> => ipcRenderer.invoke("maktaba:pick-ebook-files"),
 
+  pickEbookFolder: (): Promise<string[]> => ipcRenderer.invoke("maktaba:pick-ebook-folder"),
+
+  // Recursively flattens folders (and passes through already-matching files) into a deduped list
+  // of importable .epub/.pdf paths - shared by the folder picker and folder drag-and-drop.
+  resolveEbookPaths: (paths: string[]): Promise<string[]> =>
+    ipcRenderer.invoke("maktaba:resolve-ebook-paths", paths),
+
+  // Live progress while resolveEbookPaths walks a folder tree - see native.ts's walkEbookFiles.
+  onResolveEbookPathsProgress: (callback: (progress: { found: number; currentPath: string }) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, progress: { found: number; currentPath: string }) =>
+      callback(progress);
+    ipcRenderer.on("maktaba:resolve-ebook-paths-progress", listener);
+    return () => ipcRenderer.removeListener("maktaba:resolve-ebook-paths-progress", listener);
+  },
+
   revealInFolder: (filePath: string): Promise<void> =>
     ipcRenderer.invoke("maktaba:reveal-in-folder", filePath),
 

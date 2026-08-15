@@ -12,6 +12,7 @@ import {
 import type { ReaderError, FontFamily, ReadingProgressRecord } from "@inshapardaz/qari/models";
 import type { CustomStoreAdapter, CustomNoteStoreAdapter, CustomProgressStoreAdapter } from "@inshapardaz/qari/interfaces";
 import {
+  getBook,
   getBookFile,
   listBookmarks,
   saveBookmark,
@@ -23,6 +24,17 @@ import {
   saveReadingProgress,
 } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
+
+// ISO 639-1 codes (matches BookEditForm's language field) for languages conventionally written
+// right-to-left - checked against the primary subtag only, so a regional variant like "ar-EG"
+// still matches.
+const RTL_LANGUAGE_CODES = new Set(["ar", "he", "fa", "ur", "ps", "sd", "yi", "ckb"]);
+
+function isRtlLanguageCode(code: string | null | undefined): boolean {
+  if (!code) return false;
+  const primary = code.trim().toLowerCase().split(/[-_]/)[0];
+  return RTL_LANGUAGE_CODES.has(primary);
+}
 
 interface ReaderOverlayProps {
   bookId: string;
@@ -116,6 +128,18 @@ export function ReaderOverlay({ bookId, format, onClose }: ReaderOverlayProps) {
     refetchOnWindowFocus: false,
   });
 
+  // Only needed to pick a PDF's reading direction (see `direction` below) - EPUBs already carry
+  // their own page-progression-direction metadata that qari's "auto" detection reads directly, but
+  // PdfMetadataExtractor never populates Language (PDF info dicts don't reliably carry it), so a
+  // PDF's language is a case-by-case book-record field (often set by hand via BookEditForm) rather
+  // than something "auto" can detect from the file itself.
+  const bookQuery = useQuery({
+    queryKey: ["book", bookId],
+    queryFn: () => getBook(bookId),
+    enabled: format === "Pdf",
+    staleTime: Infinity,
+  });
+
   // Reader reloads the whole book whenever this object's *reference* changes (its internal
   // load-book effect depends on `source` by identity) - memoized so a settings/progress-driven
   // re-render of this component doesn't create a new object and trigger a spurious reload.
@@ -193,6 +217,13 @@ export function ReaderOverlay({ bookId, format, onClose }: ReaderOverlayProps) {
     [bookId, schedulePositionSave],
   );
 
+  // PDFs have no reliable in-file signal for qari's own "auto" direction detection to key off, so
+  // once we know the book's language, force it explicitly - RTL for a book tagged with an RTL
+  // language, LTR otherwise. Leave "auto" in place (its EPUB metadata/character-frequency
+  // detection) whenever the language is unknown, rather than guessing LTR and getting it wrong for
+  // an RTL book nobody's tagged yet.
+  const direction = format === "Pdf" && bookQuery.data?.language ? (isRtlLanguageCode(bookQuery.data.language) ? "rtl" : "ltr") : "auto";
+
   return (
     <Box pos="fixed" top={0} left={0} right={0} bottom={0} bg="var(--mantine-color-body)" style={{ zIndex: 2000 }}>
       {fileQuery.isLoading && (
@@ -222,7 +253,7 @@ export function ReaderOverlay({ bookId, format, onClose }: ReaderOverlayProps) {
           source={source}
           {...settings}
           fontFamily={settings.fontFamily as FontFamily | undefined}
-          direction="auto"
+          direction={direction}
           translations={LOCALES[language]}
           showCloseButton={!!onClose}
           onClose={onClose}

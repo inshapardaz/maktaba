@@ -1,4 +1,39 @@
 import { ipcMain, dialog, shell, BrowserWindow } from "electron";
+import { promises as fs } from "fs";
+import path from "path";
+
+const EBOOK_EXTENSIONS = new Set([".epub", ".pdf"]);
+
+function isEbookFile(filePath: string): boolean {
+  return EBOOK_EXTENSIONS.has(path.extname(filePath).toLowerCase());
+}
+
+interface ScanProgress {
+  found: number;
+  currentPath: string;
+}
+
+// Recursively walks a directory (no depth limit) collecting .epub/.pdf files, so "Import folder"
+// / dropping a folder can pick up books organized in nested Author/Title subfolders (e.g. an
+// existing Calibre export or another Maktaba library's on-disk layout). Reports progress as it
+// goes (folder tree walks over a large library can take a few seconds) via onProgress rather than
+// only returning a final result, so the renderer can show a live "scanning…" indicator.
+async function walkEbookFiles(dirPath: string, foundRef: { count: number }, onProgress: (progress: ScanProgress) => void): Promise<string[]> {
+  onProgress({ found: foundRef.count, currentPath: dirPath });
+  const entries = await fs.readdir(dirPath, { withFileTypes: true });
+  const results: string[] = [];
+  for (const entry of entries) {
+    const entryPath = path.join(dirPath, entry.name);
+    if (entry.isDirectory()) {
+      results.push(...(await walkEbookFiles(entryPath, foundRef, onProgress)));
+    } else if (entry.isFile() && isEbookFile(entryPath)) {
+      results.push(entryPath);
+      foundRef.count++;
+      onProgress({ found: foundRef.count, currentPath: dirPath });
+    }
+  }
+  return results;
+}
 
 /**
  * Native OS integrations the renderer can't do itself (dialogs, opening/revealing files).
@@ -24,6 +59,47 @@ export function registerNativeHandlers(getWindow: () => BrowserWindow | null): v
       filters: [{ name: "Ebooks", extensions: ["epub", "pdf"] }],
     });
     return result.canceled ? [] : result.filePaths;
+  });
+
+  ipcMain.handle("maktaba:pick-ebook-folder", async () => {
+    const win = getWindow();
+    if (!win) return [];
+    const result = await dialog.showOpenDialog(win, {
+      title: "Import ebooks from folder",
+      properties: ["openDirectory", "multiSelections"],
+    });
+    return result.canceled ? [] : result.filePaths;
+  });
+
+  // Flattens a mix of file/folder paths (from the folder picker or a drag-and-drop event) into a
+  // deduped list of .epub/.pdf file paths, recursing into any folders. Used for both "Import
+  // folder" and dropping a folder onto the import dropzone. Emits "maktaba:resolve-ebook-paths-
+  // progress" events on the same WebContents as it walks so the renderer can show live scan
+  // progress instead of a single opaque wait.
+  ipcMain.handle("maktaba:resolve-ebook-paths", async (event, paths: string[]) => {
+    const results = new Set<string>();
+    const foundRef = { count: 0 };
+    const onProgress = (progress: ScanProgress) => {
+      event.sender.send("maktaba:resolve-ebook-paths-progress", progress);
+    };
+    for (const inputPath of paths) {
+      let stat;
+      try {
+        stat = await fs.stat(inputPath);
+      } catch {
+        continue;
+      }
+      if (stat.isDirectory()) {
+        for (const filePath of await walkEbookFiles(inputPath, foundRef, onProgress)) {
+          results.add(filePath);
+        }
+      } else if (isEbookFile(inputPath)) {
+        results.add(inputPath);
+        foundRef.count++;
+        onProgress({ found: foundRef.count, currentPath: inputPath });
+      }
+    }
+    return [...results];
   });
 
   ipcMain.handle("maktaba:reveal-in-folder", (_event, filePath: string) => {

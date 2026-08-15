@@ -6,13 +6,14 @@ import {
   Group,
   Loader,
   Modal,
+  Progress,
   ScrollArea,
   SegmentedControl,
   Stack,
   Text,
   Tooltip,
 } from "@mantine/core";
-import { IconCheck, IconFileUpload, IconUpload, IconX } from "@tabler/icons-react";
+import { IconCheck, IconFileUpload, IconFolder, IconUpload, IconX } from "@tabler/icons-react";
 import {
   convertBook,
   DuplicateBookError,
@@ -44,6 +45,11 @@ function fileNameOf(path: string): string {
   return path.split(/[\\/]/).pop() ?? path;
 }
 
+function dirNameOf(path: string): string {
+  const idx = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+  return idx === -1 ? "" : path.slice(0, idx);
+}
+
 const STATUS_KEY: Record<ItemStatus, TranslationKey> = {
   pending: "importDialog.statusPending",
   importing: "importDialog.statusImporting",
@@ -51,6 +57,12 @@ const STATUS_KEY: Record<ItemStatus, TranslationKey> = {
   done: "importDialog.statusDone",
   error: "importDialog.statusError",
   skipped: "importDialog.statusSkipped",
+};
+
+const DUPLICATE_ACTION_KEY: Record<DuplicateAction, TranslationKey> = {
+  skip: "duplicate.skip",
+  merge: "duplicate.addFormat",
+  "keep-both": "duplicate.importNew",
 };
 
 function StatusIcon({ status }: { status: ItemStatus }) {
@@ -76,12 +88,19 @@ export function ImportDialog({ initialFiles, onClose, onImported }: ImportDialog
   const [convertFormat, setConvertFormat] = useState<ConvertFormat>(getStoredDefaultFormat());
   const convertFormatRef = useRef(convertFormat);
   const [isProcessing, setProcessing] = useState(false);
+  const [isResolving, setResolving] = useState(false);
+  const [scanProgress, setScanProgress] = useState<{ found: number; currentPath: string } | null>(null);
   const [isDragOver, setDragOver] = useState(false);
   const [pendingDuplicate, setPendingDuplicate] = useState<{ filePath: string; info: DuplicateBookInfo } | null>(null);
   const duplicateResolverRef = useRef<((action: DuplicateAction | "cancel") => void) | null>(null);
   const processingRef = useRef(false);
   const cancelledRef = useRef(false);
   const mountedRef = useRef(true);
+  // Set once the user checks "apply to all remaining duplicates" - a ref (not just state) because
+  // an in-flight runQueue loop closure needs to see the latest value immediately, the same reason
+  // cancelledRef/processingRef are refs rather than state.
+  const applyToAllRef = useRef<DuplicateAction | null>(null);
+  const [applyToAllAction, setApplyToAllAction] = useState<DuplicateAction | null>(null);
 
   const capabilitiesQuery = useQuery({ queryKey: ["systemCapabilities"], queryFn: getSystemCapabilities });
   const calibreAvailable = capabilitiesQuery.data?.calibreAvailable ?? false;
@@ -97,6 +116,16 @@ export function ImportDialog({ initialFiles, onClose, onImported }: ImportDialog
     [],
   );
 
+  useEffect(
+    () =>
+      window.maktaba.onResolveEbookPathsProgress((progress) => {
+        if (mountedRef.current) {
+          setScanProgress(progress);
+        }
+      }),
+    [],
+  );
+
   function commit() {
     if (mountedRef.current) {
       setQueue([...queueRef.current]);
@@ -109,6 +138,9 @@ export function ImportDialog({ initialFiles, onClose, onImported }: ImportDialog
   }
 
   function askUserForDuplicateAction(filePath: string, info: DuplicateBookInfo): Promise<DuplicateAction | "cancel"> {
+    if (applyToAllRef.current) {
+      return Promise.resolve(applyToAllRef.current);
+    }
     return new Promise((resolve) => {
       duplicateResolverRef.current = resolve;
       if (mountedRef.current) {
@@ -117,12 +149,23 @@ export function ImportDialog({ initialFiles, onClose, onImported }: ImportDialog
     });
   }
 
-  function resolveDuplicate(action: DuplicateAction | "cancel") {
+  function resolveDuplicate(action: DuplicateAction | "cancel", applyToAll: boolean) {
     if (mountedRef.current) {
       setPendingDuplicate(null);
     }
+    if (applyToAll && action !== "cancel") {
+      applyToAllRef.current = action;
+      if (mountedRef.current) {
+        setApplyToAllAction(action);
+      }
+    }
     duplicateResolverRef.current?.(action);
     duplicateResolverRef.current = null;
+  }
+
+  function clearApplyToAll() {
+    applyToAllRef.current = null;
+    setApplyToAllAction(null);
   }
 
   async function processOne(item: QueueItem) {
@@ -207,6 +250,9 @@ export function ImportDialog({ initialFiles, onClose, onImported }: ImportDialog
       return;
     }
     cancelledRef.current = false;
+    // A fresh batch always starts by asking again, rather than silently reusing whatever
+    // resolution the previous batch's duplicates were bulk-applied with.
+    clearApplyToAll();
     queueRef.current = [...queueRef.current, ...filePaths.map((filePath) => ({ filePath, status: "pending" as const }))];
     commit();
     void runQueue();
@@ -217,13 +263,42 @@ export function ImportDialog({ initialFiles, onClose, onImported }: ImportDialog
     enqueue(files);
   };
 
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+  const handleBrowseFolder = async () => {
+    const folders = await window.maktaba.pickEbookFolder();
+    if (folders.length === 0) {
+      return;
+    }
+    setResolving(true);
+    setScanProgress(null);
+    try {
+      const files = await window.maktaba.resolveEbookPaths(folders);
+      enqueue(files);
+    } finally {
+      if (mountedRef.current) {
+        setResolving(false);
+        setScanProgress(null);
+      }
+    }
+  };
+
+  const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setDragOver(false);
-    const paths = Array.from(e.dataTransfer.files)
-      .map((file) => window.maktaba.getPathForFile(file))
-      .filter((path) => /\.(epub|pdf)$/i.test(path));
-    enqueue(paths);
+    const paths = Array.from(e.dataTransfer.files).map((file) => window.maktaba.getPathForFile(file));
+    if (paths.length === 0) {
+      return;
+    }
+    setResolving(true);
+    setScanProgress(null);
+    try {
+      const files = await window.maktaba.resolveEbookPaths(paths);
+      enqueue(files);
+    } finally {
+      if (mountedRef.current) {
+        setResolving(false);
+        setScanProgress(null);
+      }
+    }
   };
 
   const convertOptions = [
@@ -232,9 +307,14 @@ export function ImportDialog({ initialFiles, onClose, onImported }: ImportDialog
     { value: "Pdf", label: "PDF" },
   ];
 
+  const completedCount = queue.filter(
+    (item) => item.status === "done" || item.status === "error" || item.status === "skipped",
+  ).length;
+  const currentItem = queue.find((item) => item.status === "importing" || item.status === "converting");
+
   return (
     <>
-      <Modal opened onClose={onClose} title={t("importDialog.title")} size="md">
+      <Modal opened onClose={onClose} title={t("importDialog.title")} size="xl" closeOnClickOutside={false}>
         <Stack gap="md">
           <Box
             onDragOver={(e) => {
@@ -254,13 +334,56 @@ export function ImportDialog({ initialFiles, onClose, onImported }: ImportDialog
             <Stack align="center" gap={6}>
               <IconFileUpload size={28} style={{ opacity: 0.6 }} />
               <Text size="sm" c="dimmed">
-                {t("importDialog.dropzoneTitle")}
+                {isResolving ? t("importDialog.resolving") : t("importDialog.dropzoneTitle")}
               </Text>
-              <Button size="xs" variant="default" onClick={() => void handleBrowse()} mt={4}>
-                {t("importDialog.browse")}
-              </Button>
+              {isResolving && scanProgress && (
+                <Stack gap={0} align="center">
+                  <Text size="xs" c="dimmed">
+                    {t("importDialog.scanFound", { count: scanProgress.found })}
+                  </Text>
+                  <Text size="xs" c="dimmed" truncate="end" maw={420} title={scanProgress.currentPath}>
+                    {scanProgress.currentPath}
+                  </Text>
+                </Stack>
+              )}
+              <Group gap={8} mt={4}>
+                <Button size="xs" variant="default" onClick={() => void handleBrowse()} disabled={isResolving}>
+                  {t("importDialog.browse")}
+                </Button>
+                <Button
+                  size="xs"
+                  variant="default"
+                  leftSection={<IconFolder size={14} />}
+                  onClick={() => void handleBrowseFolder()}
+                  disabled={isResolving}
+                  loading={isResolving}
+                >
+                  {t("importDialog.importFolder")}
+                </Button>
+              </Group>
             </Stack>
           </Box>
+
+          {applyToAllAction && (
+            <Group
+              justify="space-between"
+              wrap="nowrap"
+              px="sm"
+              py={6}
+              style={{
+                border: "1px solid var(--mantine-color-default-border)",
+                borderRadius: "var(--mantine-radius-sm)",
+                backgroundColor: "var(--mantine-color-default-hover)",
+              }}
+            >
+              <Text size="xs" c="dimmed">
+                {t("importDialog.applyingToAll", { action: t(DUPLICATE_ACTION_KEY[applyToAllAction]) })}
+              </Text>
+              <Button size="xs" variant="subtle" onClick={clearApplyToAll}>
+                {t("importDialog.clearApplyToAll")}
+              </Button>
+            </Group>
+          )}
 
           <Group justify="space-between">
             <Text size="sm">{t("importDialog.convertTo")}</Text>
@@ -275,7 +398,23 @@ export function ImportDialog({ initialFiles, onClose, onImported }: ImportDialog
             </Tooltip>
           </Group>
 
-          <ScrollArea.Autosize mah={280}>
+          {queue.length > 0 && (
+            <Stack gap={4}>
+              <Group justify="space-between">
+                <Text size="xs" c="dimmed">
+                  {t("importDialog.importProgress", { done: completedCount, total: queue.length })}
+                </Text>
+                {isProcessing && (
+                  <Text size="xs" c="dimmed" truncate="end" maw={260} title={fileNameOf(currentItem?.filePath ?? "")}>
+                    {currentItem ? fileNameOf(currentItem.filePath) : ""}
+                  </Text>
+                )}
+              </Group>
+              <Progress value={(completedCount / queue.length) * 100} size="sm" animated={isProcessing} />
+            </Stack>
+          )}
+
+          <ScrollArea.Autosize mah={320}>
             {queue.length === 0 ? (
               <Text size="sm" c="dimmed" ta="center" py="md">
                 {t("importDialog.empty")}
@@ -285,13 +424,19 @@ export function ImportDialog({ initialFiles, onClose, onImported }: ImportDialog
                 {queue.map((item) => (
                   <Group key={item.filePath} justify="space-between" wrap="nowrap" gap="sm">
                     <Box style={{ minWidth: 0, flex: 1 }}>
-                      <Text size="sm" truncate="end" title={item.filePath}>
+                      <Text size="sm" fw={500} truncate="end" title={item.filePath}>
                         {fileNameOf(item.filePath)}
                       </Text>
-                      {item.message && (
+                      {item.message ? (
                         <Text size="xs" c={item.status === "error" ? "red" : "dimmed"} truncate="end" title={item.message}>
                           {item.message}
                         </Text>
+                      ) : (
+                        dirNameOf(item.filePath) && (
+                          <Text size="xs" c="dimmed" truncate="end" title={item.filePath}>
+                            {dirNameOf(item.filePath)}
+                          </Text>
+                        )
                       )}
                     </Box>
                     <Group gap={6} wrap="nowrap" style={{ flexShrink: 0 }}>
@@ -311,9 +456,18 @@ export function ImportDialog({ initialFiles, onClose, onImported }: ImportDialog
               leftSection={<IconUpload size={14} />}
               variant="default"
               onClick={() => void handleBrowse()}
-              disabled={isProcessing}
+              disabled={isProcessing || isResolving}
             >
               {t("importDialog.browse")}
+            </Button>
+            <Button
+              leftSection={<IconFolder size={14} />}
+              variant="default"
+              onClick={() => void handleBrowseFolder()}
+              disabled={isProcessing || isResolving}
+              loading={isResolving}
+            >
+              {t("importDialog.importFolder")}
             </Button>
             <Button onClick={onClose}>{t("importDialog.close")}</Button>
           </Group>
