@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Alert, Loader, Stack, Text } from "@mantine/core";
-import { IconAlertCircle } from "@tabler/icons-react";
+import { Alert, Button, Loader, Stack, Text } from "@mantine/core";
+import { IconAlertCircle, IconRefresh } from "@tabler/icons-react";
 import { useLanguage } from "../i18n/LanguageContext";
 import type { SidecarStatus } from "../maktaba";
 
@@ -26,16 +26,20 @@ export function BackendGate({ children }: { children: ReactNode }) {
   }, []);
 
   if (status.state === "error") {
+    // The raw error (status.message) is deliberately not shown here - it's an internal detail
+    // (a stack trace, a port-in-use message, etc.) that isn't actionable for the user; Retry
+    // re-runs the same health check main.ts already did (see maktaba:retry-sidecar), or respawns
+    // the sidecar entirely if the process actually died.
     return (
-      <Stack align="center" justify="center" h="100vh" gap="sm" p="xl" ta="center">
+      <Stack align="center" justify="center" h="100vh" gap="md" p="xl" ta="center">
         <Alert color="red" icon={<IconAlertCircle size={18} />} title={t("backend.errorTitle")} maw={480}>
-          <Stack gap="xs">
-            <Text size="sm">{status.message}</Text>
-            <Text size="sm" c="dimmed">
-              {t("backend.errorHint")}
-            </Text>
-          </Stack>
+          <Text size="sm" c="dimmed">
+            {t("backend.errorHint")}
+          </Text>
         </Alert>
+        <Button leftSection={<IconRefresh size={16} />} onClick={() => void window.maktaba.retrySidecar()}>
+          {t("backend.retry")}
+        </Button>
       </Stack>
     );
   }

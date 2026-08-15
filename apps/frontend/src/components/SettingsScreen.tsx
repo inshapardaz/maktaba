@@ -1,10 +1,18 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ColorSwatch, Group, Modal, Select, SegmentedControl, Stack, Tabs, Text, Tooltip, UnstyledButton } from "@mantine/core";
-import { IconBooks, IconCheck, IconFileImport, IconPalette } from "@tabler/icons-react";
+import { Alert, ColorSwatch, Group, Modal, Select, SegmentedControl, Stack, Tabs, Text, Tooltip, UnstyledButton } from "@mantine/core";
+import { IconAlertTriangle, IconBook2, IconBooks, IconCheck, IconFileImport, IconPalette } from "@tabler/icons-react";
 import { getSystemCapabilities } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
 import { getStoredDefaultFormat, setStoredDefaultFormat, type ConvertFormat } from "../convertFormat";
+import {
+  getStoredReaderEngine,
+  getStoredReaderOpenMode,
+  setStoredReaderEngine,
+  setStoredReaderOpenMode,
+  type ReaderEngine,
+  type ReaderOpenMode,
+} from "../readerSettings";
 import { useThemeColor } from "../ThemeColorContext";
 import { THEME_COLOR_OPTIONS } from "../theme";
 import { URDU_FONT_OPTIONS, type UrduFontName } from "../urduFont";
@@ -30,6 +38,9 @@ export function SettingsScreen({ opened, onClose, onLibraryChanged }: SettingsSc
   const { t, urduFont, setUrduFont } = useLanguage();
   const { themeColor, setThemeColor } = useThemeColor();
   const [defaultFormat, setDefaultFormat] = useState<ConvertFormat>(getStoredDefaultFormat());
+  const [readerOpenMode, setReaderOpenMode] = useState<ReaderOpenMode>(getStoredReaderOpenMode());
+  const [epubEngine, setEpubEngine] = useState<ReaderEngine>(getStoredReaderEngine("Epub"));
+  const [pdfEngine, setPdfEngine] = useState<ReaderEngine>(getStoredReaderEngine("Pdf"));
 
   const capabilitiesQuery = useQuery({ queryKey: ["systemCapabilities"], queryFn: getSystemCapabilities });
   const calibreAvailable = capabilitiesQuery.data?.calibreAvailable ?? false;
@@ -38,6 +49,18 @@ export function SettingsScreen({ opened, onClose, onLibraryChanged }: SettingsSc
     const format = value as ConvertFormat;
     setDefaultFormat(format);
     setStoredDefaultFormat(format);
+  };
+
+  const handleReaderOpenModeChange = (value: string) => {
+    const mode = value as ReaderOpenMode;
+    setReaderOpenMode(mode);
+    setStoredReaderOpenMode(mode);
+  };
+
+  const handleEngineChange = (format: "Epub" | "Pdf", value: string) => {
+    const engine = value as ReaderEngine;
+    (format === "Epub" ? setEpubEngine : setPdfEngine)(engine);
+    setStoredReaderEngine(format, engine);
   };
 
   return (
@@ -49,6 +72,9 @@ export function SettingsScreen({ opened, onClose, onLibraryChanged }: SettingsSc
           </Tabs.Tab>
           <Tabs.Tab value="appearance" leftSection={<IconPalette size={14} />}>
             {t("settings.appearance")}
+          </Tabs.Tab>
+          <Tabs.Tab value="reading" leftSection={<IconBook2 size={14} />}>
+            {t("settings.reading")}
           </Tabs.Tab>
           <Tabs.Tab value="import" leftSection={<IconFileImport size={14} />}>
             {t("settings.import")}
@@ -107,6 +133,52 @@ export function SettingsScreen({ opened, onClose, onLibraryChanged }: SettingsSc
                 allowDeselect={false}
               />
             </Group>
+          </Stack>
+        </Tabs.Panel>
+
+        <Tabs.Panel value="reading" pt="lg">
+          <Stack gap="md">
+            <Group justify="space-between">
+              <FieldLabel>{t("settings.readerWindow")}</FieldLabel>
+              <SegmentedControl
+                size="sm"
+                data={[
+                  { value: "window", label: t("settings.readerWindowPopout") },
+                  { value: "inline", label: t("settings.readerWindowInline") },
+                ]}
+                value={readerOpenMode}
+                onChange={handleReaderOpenModeChange}
+              />
+            </Group>
+            <Group justify="space-between">
+              <FieldLabel>{t("settings.epubReader")}</FieldLabel>
+              <SegmentedControl
+                size="sm"
+                data={[
+                  { value: "internal", label: t("settings.readerEngineInternal") },
+                  { value: "external", label: t("settings.readerEngineExternal") },
+                ]}
+                value={epubEngine}
+                onChange={(value) => handleEngineChange("Epub", value)}
+              />
+            </Group>
+            <Group justify="space-between">
+              <FieldLabel>{t("settings.pdfReader")}</FieldLabel>
+              <SegmentedControl
+                size="sm"
+                data={[
+                  { value: "internal", label: t("settings.readerEngineInternal") },
+                  { value: "external", label: t("settings.readerEngineExternal") },
+                ]}
+                value={pdfEngine}
+                onChange={(value) => handleEngineChange("Pdf", value)}
+              />
+            </Group>
+            {(epubEngine === "external" || pdfEngine === "external") && (
+              <Alert color="yellow" variant="light" icon={<IconAlertTriangle size={16} />}>
+                {t("settings.externalReaderWarning")}
+              </Alert>
+            )}
           </Stack>
         </Tabs.Panel>
 

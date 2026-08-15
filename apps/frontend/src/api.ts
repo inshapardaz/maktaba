@@ -9,6 +9,10 @@ export interface BookSummary {
   dateAdded: string;
   hasCover: boolean;
   readingStatus: ReadingStatus;
+  // Null unless the book belongs to a series / has ever had reading progress saved - see
+  // FilterBar.tsx's SortKey ("seriesIndex"/"lastRead").
+  seriesIndex: number | null;
+  lastReadAt: string | null;
 }
 
 export interface BookFileInfo {
@@ -198,6 +202,25 @@ export function listBooks(filters: BookFilters = {}): Promise<BookSummary[]> {
 
 export function getBook(id: string): Promise<BookDetail> {
   return request<BookDetail>(`/api/books/${id}`);
+}
+
+export interface ContinueReadingBook {
+  id: string;
+  title: string;
+  authors: string[];
+  hasCover: boolean;
+  readingStatus: ReadingStatus;
+  format: "Epub" | "Pdf";
+  absolutePath: string;
+  percentage: number;
+  updatedAt: string;
+}
+
+// Every book with saved reading progress, most recently updated first (see backend
+// BookEndpoints.cs's /continue-reading) - the Home view takes items[0] as "last read" and filters
+// readingStatus === "Reading" for the "currently reading" list from this one ordered feed.
+export function listContinueReading(limit?: number): Promise<ContinueReadingBook[]> {
+  return request<ContinueReadingBook[]>(`/api/books/continue-reading${limit ? `?limit=${limit}` : ""}`);
 }
 
 export function importBook(filePath: string, duplicateAction?: DuplicateAction): Promise<{ id: string }> {

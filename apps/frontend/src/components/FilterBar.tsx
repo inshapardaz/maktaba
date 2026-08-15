@@ -1,9 +1,24 @@
-import { Anchor, Breadcrumbs, Group, Select, Pill, SegmentedControl, Text, Tooltip } from "@mantine/core";
-import { IconLayoutGrid, IconList } from "@tabler/icons-react";
+import { useState } from "react";
+import {
+  Anchor,
+  Breadcrumbs,
+  Button,
+  Group,
+  Indicator,
+  Pill,
+  Popover,
+  Select,
+  SegmentedControl,
+  Stack,
+  Text,
+  Tooltip,
+} from "@mantine/core";
+import { IconArrowsSort, IconFilter, IconLayoutGrid, IconList } from "@tabler/icons-react";
 import { useLanguage } from "../i18n/LanguageContext";
 import type { GroupFilter } from "./Sidebar";
 
-export type SortKey = "title" | "author" | "dateAdded" | "rating";
+export type SortKey = "title" | "author" | "dateAdded" | "rating" | "seriesIndex" | "lastRead";
+export type SortDirection = "asc" | "desc";
 export type ViewMode = "grid" | "list";
 
 interface FilterBarProps {
@@ -12,7 +27,9 @@ interface FilterBarProps {
   minRating: number;
   onMinRatingChange: (value: number) => void;
   sortKey: SortKey;
+  sortDirection: SortDirection;
   onSortKeyChange: (key: SortKey) => void;
+  onSortDirectionChange: (direction: SortDirection) => void;
   viewMode: ViewMode;
   onViewModeChange: (mode: ViewMode) => void;
   groupFilter: GroupFilter | null;
@@ -36,7 +53,9 @@ export function FilterBar({
   minRating,
   onMinRatingChange,
   sortKey,
+  sortDirection,
   onSortKeyChange,
+  onSortDirectionChange,
   viewMode,
   onViewModeChange,
   groupFilter,
@@ -45,6 +64,8 @@ export function FilterBar({
   onClearSearch,
 }: FilterBarProps) {
   const { t } = useLanguage();
+  const [sortOpen, setSortOpen] = useState(false);
+  const [filterOpen, setFilterOpen] = useState(false);
 
   const groupCategoryLabel =
     groupFilter &&
@@ -73,7 +94,16 @@ export function FilterBar({
     { value: "author", label: t("toolbar.sortAuthor") },
     { value: "dateAdded", label: t("toolbar.sortDateAdded") },
     { value: "rating", label: t("toolbar.sortRating") },
+    { value: "seriesIndex", label: t("toolbar.sortSeriesIndex") },
+    { value: "lastRead", label: t("toolbar.sortLastRead") },
   ];
+
+  const directionOptions: { value: SortDirection; label: string }[] = [
+    { value: "asc", label: t("filterBar.ascending") },
+    { value: "desc", label: t("filterBar.descending") },
+  ];
+
+  const hasActiveFilter = format !== "" || minRating > 0;
 
   return (
     <Group
@@ -109,35 +139,6 @@ export function FilterBar({
           )}
         </Breadcrumbs>
 
-        <Group gap="sm" wrap="wrap">
-          <Select
-            w={140}
-            data={formatOptions}
-            value={format}
-            onChange={(value) => onFormatChange(value ?? "")}
-            allowDeselect={false}
-          />
-
-          <Select
-            w={140}
-            data={ratingOptions}
-            value={String(minRating)}
-            onChange={(value) => onMinRatingChange(Number(value ?? 0))}
-            allowDeselect={false}
-          />
-
-          {/* Sort sits right next to the rating filter it's most related to (both refine how the
-              list is narrowed/ordered). */}
-          <Select
-            w={140}
-            aria-label={t("toolbar.sortBy")}
-            data={sortOptions}
-            value={sortKey}
-            onChange={(value) => value && onSortKeyChange(value as SortKey)}
-            allowDeselect={false}
-          />
-        </Group>
-
         {/* Free-text search is set via the Spotlight's "Search for '…'" action rather than typed
             live here - this pill is what makes an active search term visible/clearable afterward. */}
         {searchTerm && (
@@ -147,35 +148,112 @@ export function FilterBar({
         )}
       </Group>
 
-      {/* Right-aligned, directly above the grid/list it controls. Icon-only, with a tooltip
-          standing in for the label text. */}
-      <SegmentedControl
-        size="sm"
-        value={viewMode}
-        onChange={(value) => onViewModeChange(value as ViewMode)}
-        data={[
-          {
-            value: "grid",
-            label: (
-              <Tooltip label={t("toolbar.gridLabel")} openDelay={300} withinPortal>
-                <Group gap={0} wrap="nowrap" px={4}>
-                  <IconLayoutGrid size={15} />
-                </Group>
-              </Tooltip>
-            ),
-          },
-          {
-            value: "list",
-            label: (
-              <Tooltip label={t("toolbar.listLabel")} openDelay={300} withinPortal>
-                <Group gap={0} wrap="nowrap" px={4}>
-                  <IconList size={15} />
-                </Group>
-              </Tooltip>
-            ),
-          },
-        ]}
-      />
+      {/* Right-aligned, directly above the grid/list it controls - Sort and Filter are compact
+          popover-triggered buttons (rather than always-visible inline Selects) so this row stays
+          short regardless of how many filter dimensions exist. */}
+      <Group gap="xs" wrap="wrap">
+        <Popover opened={sortOpen} onChange={setSortOpen} position="bottom-end" shadow="md" withArrow>
+          <Popover.Target>
+            <Button
+              size="xs"
+              variant={sortOpen ? "light" : "default"}
+              leftSection={<IconArrowsSort size={15} />}
+              onClick={() => setSortOpen((o) => !o)}
+            >
+              {t("toolbar.sortBy")}
+            </Button>
+          </Popover.Target>
+          <Popover.Dropdown miw={280}>
+            <Stack gap={4}>
+              <Text fz={10.5} fw={700} c="dimmed" tt="uppercase" style={{ letterSpacing: "0.08em" }}>
+                {t("toolbar.sortBy")}
+              </Text>
+              <Group gap="xs" wrap="nowrap">
+                <Select
+                  style={{ flex: 1 }}
+                  data={sortOptions}
+                  value={sortKey}
+                  onChange={(value) => value && onSortKeyChange(value as SortKey)}
+                  allowDeselect={false}
+                  comboboxProps={{ withinPortal: false }}
+                />
+                <Select
+                  w={140}
+                  data={directionOptions}
+                  value={sortDirection}
+                  onChange={(value) => value && onSortDirectionChange(value as SortDirection)}
+                  allowDeselect={false}
+                  comboboxProps={{ withinPortal: false }}
+                />
+              </Group>
+            </Stack>
+          </Popover.Dropdown>
+        </Popover>
+
+        <Popover opened={filterOpen} onChange={setFilterOpen} position="bottom-end" shadow="md" withArrow>
+          <Popover.Target>
+            <Indicator disabled={!hasActiveFilter} size={8} offset={4} color="red" withBorder>
+              <Button
+                size="xs"
+                variant={filterOpen ? "light" : "default"}
+                leftSection={<IconFilter size={15} />}
+                onClick={() => setFilterOpen((o) => !o)}
+              >
+                {t("toolbar.filter")}
+              </Button>
+            </Indicator>
+          </Popover.Target>
+          <Popover.Dropdown miw={220}>
+            <Stack gap="sm">
+              <Text fz={10.5} fw={700} c="dimmed" tt="uppercase" style={{ letterSpacing: "0.08em" }}>
+                {t("toolbar.filter")}
+              </Text>
+              <Select
+                data={formatOptions}
+                value={format}
+                onChange={(value) => onFormatChange(value ?? "")}
+                allowDeselect={false}
+                comboboxProps={{ withinPortal: false }}
+              />
+              <Select
+                data={ratingOptions}
+                value={String(minRating)}
+                onChange={(value) => onMinRatingChange(Number(value ?? 0))}
+                allowDeselect={false}
+                comboboxProps={{ withinPortal: false }}
+              />
+            </Stack>
+          </Popover.Dropdown>
+        </Popover>
+
+        <SegmentedControl
+          size="sm"
+          value={viewMode}
+          onChange={(value) => onViewModeChange(value as ViewMode)}
+          data={[
+            {
+              value: "grid",
+              label: (
+                <Tooltip label={t("toolbar.gridLabel")} openDelay={300} withinPortal>
+                  <Group gap={0} wrap="nowrap" px={4}>
+                    <IconLayoutGrid size={15} />
+                  </Group>
+                </Tooltip>
+              ),
+            },
+            {
+              value: "list",
+              label: (
+                <Tooltip label={t("toolbar.listLabel")} openDelay={300} withinPortal>
+                  <Group gap={0} wrap="nowrap" px={4}>
+                    <IconList size={15} />
+                  </Group>
+                </Tooltip>
+              ),
+            },
+          ]}
+        />
+      </Group>
     </Group>
   );
 }

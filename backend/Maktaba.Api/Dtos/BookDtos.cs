@@ -12,7 +12,29 @@ public record BookSummaryDto(
     int Rating,
     DateTime DateAdded,
     bool HasCover,
-    string ReadingStatus
+    string ReadingStatus,
+    // Null unless the book belongs to a series / has ever had reading progress saved - lets the
+    // frontend offer "series order" and "last read" as sort keys without a second request per book
+    // (see App.tsx's sortBooks and FilterBar.tsx's SortKey).
+    double? SeriesIndex,
+    DateTime? LastReadAt
+);
+
+// Powers the Home view's "continue reading" hero + "currently reading" list - one row per book
+// that has ever had reading progress saved (see Maktaba.Core.Entities.ReadingProgress), regardless
+// of its current ReadingStatus, ordered by UpdatedAt desc so the most recently read book is first.
+public record ContinueReadingBookDto(
+    string Id,
+    string Title,
+    string[] Authors,
+    bool HasCover,
+    string ReadingStatus,
+    string Format,
+    // Lets the frontend's "open with external app" reader-engine setting bypass the in-app reader
+    // entirely from the Home view too, not just from BookDetailPanel's files list.
+    string AbsolutePath,
+    double Percentage,
+    DateTime UpdatedAt
 );
 
 public record IdentifierDto(string Scheme, string Value);

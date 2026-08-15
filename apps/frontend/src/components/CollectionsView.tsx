@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ActionIcon, Box, Button, Group, NavLink, ScrollArea, Stack, Text, TextInput, Title } from "@mantine/core";
-import { IconArrowLeft, IconSearch, IconTrash } from "@tabler/icons-react";
+import { ActionIcon, Box, Button, Group, NavLink, Stack, Text, TextInput } from "@mantine/core";
+import { IconSearch, IconTrash } from "@tabler/icons-react";
 import { createCollection, deleteCollection, listCollections } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
+import { BrowseViewHeader } from "./BrowseViewHeader";
 import type { GroupFilter } from "./Sidebar";
 
 interface CollectionsViewProps {
@@ -55,37 +56,32 @@ export function CollectionsView({ onSelect, onBack }: CollectionsViewProps) {
   }, [collectionsQuery.data, search]);
 
   return (
-    <Box p="xl" maw={640}>
-      <Group mb="lg" gap="sm">
-        <ActionIcon variant="default" onClick={onBack} aria-label={t("common.back")}>
-          <IconArrowLeft size={16} />
-        </ActionIcon>
-        <Title order={2}>{t("collectionsView.title")}</Title>
-      </Group>
+    <Box display="flex" style={{ flexDirection: "column", height: "100%" }}>
+      <BrowseViewHeader title={t("collectionsView.title")} onBack={onBack} />
 
-      <form onSubmit={handleAdd}>
-        <Group gap="xs" mb="md">
-          <TextInput
-            style={{ flex: 1 }}
-            placeholder={t("collectionsView.namePlaceholder")}
-            value={name}
-            onChange={(e) => setName(e.currentTarget.value)}
-          />
-          <Button type="submit" loading={createMutation.isPending} disabled={name.trim().length === 0}>
-            {t("collectionsView.add")}
-          </Button>
-        </Group>
-      </form>
+      <Box p="xl" maw={640} style={{ flex: 1, overflow: "auto" }}>
+        <form onSubmit={handleAdd}>
+          <Group gap="xs" mb="md">
+            <TextInput
+              style={{ flex: 1 }}
+              placeholder={t("collectionsView.namePlaceholder")}
+              value={name}
+              onChange={(e) => setName(e.currentTarget.value)}
+            />
+            <Button type="submit" loading={createMutation.isPending} disabled={name.trim().length === 0}>
+              {t("collectionsView.add")}
+            </Button>
+          </Group>
+        </form>
 
-      <TextInput
-        mb="md"
-        placeholder={t("collectionsView.searchPlaceholder")}
-        leftSection={<IconSearch size={15} />}
-        value={search}
-        onChange={(e) => setSearch(e.currentTarget.value)}
-      />
+        <TextInput
+          mb="md"
+          placeholder={t("collectionsView.searchPlaceholder")}
+          leftSection={<IconSearch size={15} />}
+          value={search}
+          onChange={(e) => setSearch(e.currentTarget.value)}
+        />
 
-      <ScrollArea.Autosize mah="calc(100vh - 320px)">
         <Stack gap={2}>
           {filtered.length === 0 && (
             <Text size="sm" c="dimmed">
@@ -142,7 +138,7 @@ export function CollectionsView({ onSelect, onBack }: CollectionsViewProps) {
             </Group>
           ))}
         </Stack>
-      </ScrollArea.Autosize>
+      </Box>
     </Box>
   );
 }

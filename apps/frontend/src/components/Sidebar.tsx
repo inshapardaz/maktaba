@@ -1,31 +1,36 @@
-import { ActionIcon, Badge, Box, Divider, Group, Kbd, NavLink, ScrollArea, Text, Tooltip, UnstyledButton } from "@mantine/core";
-import { useQuery } from "@tanstack/react-query";
-import { spotlight } from "@mantine/spotlight";
+import { useState } from "react";
 import {
-  IconBookmark,
-  IconBooks,
-  IconCircleCheck,
-  IconCircleDashed,
+  ActionIcon,
+  Box,
+  Group,
+  NavLink,
+  Popover,
+  ScrollArea,
+  Text,
+  TextInput,
+  Tooltip,
+  UnstyledButton,
+  useComputedColorScheme,
+  useMantineColorScheme,
+} from "@mantine/core";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  IconCheck,
   IconFolder,
   IconFolderOpen,
+  IconMoon,
   IconPlus,
-  IconSearch,
   IconSettings,
   IconStack2,
+  IconSun,
   IconTag,
   IconUser,
 } from "@tabler/icons-react";
 import type { Icon } from "@tabler/icons-react";
-import {
-  listAuthors,
-  listCollections,
-  listReadingStatusCounts,
-  listSeries,
-  listTags,
-  type BrowseGroup,
-  type ReadingStatus,
-} from "../api";
+import { createCollection, listAuthors, listCollections, listSeries, listTags, type BrowseGroup } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
+import { LANGUAGES } from "../i18n/translations";
+import { LibrarySwitcher } from "./LibrarySwitcher";
 
 export type GroupFilterKind = "authorId" | "seriesId" | "tagId" | "collectionId" | "readingStatus";
 
@@ -35,10 +40,12 @@ export interface GroupFilter {
   name: string;
 }
 
-export type MainView = "library" | "authors" | "collections" | "tags" | "series";
+export type MainView = "home" | "library" | "authors" | "collections" | "tags" | "series";
 
-// Sidebar rows for these groups are capped so a library with hundreds of authors or collections
-// doesn't turn the navbar into an unusable scroll — the full list lives in AuthorsView/
+type BrowseSection = "collections" | "authors" | "series" | "tags";
+
+// Sidebar lists for these groups are capped so a library with hundreds of authors or collections
+// doesn't turn a single section into an unusable scroll — the full list lives in AuthorsView/
 // CollectionsView/TagsView, opened via the chevron.
 const SIDEBAR_GROUP_LIMIT = 5;
 
@@ -50,15 +57,14 @@ function topByBookCount(groups: BrowseGroup[] | undefined): BrowseGroup[] {
 interface SidebarProps {
   activeFilter: GroupFilter | null;
   onSelect: (filter: GroupFilter | null) => void;
-  mainView: MainView;
   settingsOpen: boolean;
-  onShowAllBooks: () => void;
-  onOpenSettings: () => void;
+  collapsed: boolean;
   onOpenAuthors: () => void;
   onOpenCollections: () => void;
   onOpenTags: () => void;
   onOpenSeries: () => void;
-  onImport: () => void;
+  onOpenSettings: () => void;
+  onLibraryChanged: () => void;
 }
 
 function sectionRowStyles(isActive: boolean) {
@@ -104,14 +110,10 @@ function GroupSection({
   groups: BrowseGroup[] | undefined;
   action?: React.ReactNode;
 }) {
-  if (!groups || (groups.length === 0 && !action)) {
-    return null;
-  }
-
   return (
-    <Box py="sm" px={4} style={{ borderBottom: "1px solid var(--mantine-color-default-border)" }}>
+    <Box py="sm" px={4}>
       <SectionTitle action={action}>{title}</SectionTitle>
-      {groups.map((group) => {
+      {groups?.map((group) => {
         const isActive = activeFilter?.kind === kind && activeFilter.id === group.id;
         return (
           <NavLink
@@ -135,97 +137,29 @@ function GroupSection({
   );
 }
 
-function MainLinksSection({
-  mainView,
-  activeFilter,
-  onSelect,
-  onShowAllBooks,
-}: {
-  mainView: MainView;
-  activeFilter: GroupFilter | null;
-  onSelect: (filter: GroupFilter | null) => void;
-  onShowAllBooks: () => void;
-}) {
-  const { t } = useLanguage();
-  const statusQuery = useQuery({ queryKey: ["readingStatusCounts"], queryFn: listReadingStatusCounts });
-
-  const labels: Record<ReadingStatus, string> = {
-    Unread: t("readingStatus.unread"),
-    Reading: t("readingStatus.reading"),
-    Finished: t("readingStatus.finished"),
-  };
-
-  const icons: Record<ReadingStatus, Icon> = {
-    Unread: IconCircleDashed,
-    Reading: IconBookmark,
-    Finished: IconCircleCheck,
-  };
-
-  const totalBooks = statusQuery.data?.reduce((sum, s) => sum + s.count, 0);
-  const allBooksActive = mainView === "library" && !activeFilter;
-
-  return (
-    <Box py="sm" px={4} style={{ borderBottom: "1px solid var(--mantine-color-default-border)" }}>
-      <NavLink
-        label={t("toolbar.allBooks")}
-        leftSection={<IconBooks size={16} stroke={1.5} />}
-        active={allBooksActive}
-        onClick={onShowAllBooks}
-        rightSection={
-          totalBooks !== undefined && (
-            <Badge size="sm" variant={allBooksActive ? "filled" : "light"} circle>
-              {totalBooks}
-            </Badge>
-          )
-        }
-        px="md"
-        py={7}
-        styles={sectionRowStyles(allBooksActive)}
-      />
-
-      {statusQuery.data?.map(({ status, count }) => {
-        const isActive = activeFilter?.kind === "readingStatus" && activeFilter.id === status;
-        const StatusIcon = icons[status];
-        return (
-          <NavLink
-            key={status}
-            label={labels[status]}
-            leftSection={<StatusIcon size={16} stroke={1.5} />}
-            active={isActive}
-            onClick={() => onSelect(isActive ? null : { kind: "readingStatus", id: status, name: labels[status] })}
-            rightSection={
-              <Badge size="sm" variant={isActive ? "filled" : "light"} circle>
-                {count}
-              </Badge>
-            }
-            px="md"
-            py={7}
-            styles={sectionRowStyles(isActive)}
-          />
-        );
-      })}
-    </Box>
-  );
-}
-
 export function Sidebar({
   activeFilter,
   onSelect,
-  mainView,
   settingsOpen,
-  onShowAllBooks,
-  onOpenSettings,
+  collapsed,
   onOpenAuthors,
   onOpenCollections,
   onOpenTags,
   onOpenSeries,
-  onImport,
+  onOpenSettings,
+  onLibraryChanged,
 }: SidebarProps) {
-  const { t } = useLanguage();
+  const { t, language, setLanguage } = useLanguage();
+  const { setColorScheme } = useMantineColorScheme();
+  const computedColorScheme = useComputedColorScheme("light");
+  const queryClient = useQueryClient();
   const authorsQuery = useQuery({ queryKey: ["authors"], queryFn: listAuthors });
   const seriesQuery = useQuery({ queryKey: ["series"], queryFn: listSeries });
   const tagsQuery = useQuery({ queryKey: ["tags"], queryFn: listTags });
   const collectionsQuery = useQuery({ queryKey: ["collections"], queryFn: listCollections });
+
+  const otherLanguage = LANGUAGES.find((option) => option.value !== language)!;
+  const currentLanguage = LANGUAGES.find((option) => option.value === language)!;
 
   const seeAllAction = (onClick: () => void) => (
     <Tooltip label={t("sidebar.seeAll")}>
@@ -235,112 +169,211 @@ export function Sidebar({
     </Tooltip>
   );
 
+  // Quick-add for collections, right next to the "see all" chevron - the only browse group that's
+  // user-created (see CollectionsView.tsx for the full management screen this mirrors), so it's
+  // the only one that gets a create affordance here.
+  const [addCollectionOpen, setAddCollectionOpen] = useState(false);
+  const [newCollectionName, setNewCollectionName] = useState("");
+
+  const createCollectionMutation = useMutation({
+    mutationFn: (name: string) => createCollection(name),
+    onSuccess: () => {
+      setNewCollectionName("");
+      setAddCollectionOpen(false);
+      void queryClient.invalidateQueries({ queryKey: ["collections"] });
+    },
+  });
+
+  const handleCreateCollection = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = newCollectionName.trim();
+    if (trimmed.length > 0) {
+      createCollectionMutation.mutate(trimmed);
+    }
+  };
+
+  const addCollectionAction = (
+    <Popover opened={addCollectionOpen} onChange={setAddCollectionOpen} position="bottom-start" withArrow shadow="md">
+      <Popover.Target>
+        <Tooltip label={t("collectionsView.add")}>
+          <UnstyledButton
+            onClick={() => setAddCollectionOpen((o) => !o)}
+            c="dimmed"
+            style={{ display: "flex" }}
+            aria-label={t("collectionsView.add")}
+          >
+            <IconPlus size={14} stroke={1.5} />
+          </UnstyledButton>
+        </Tooltip>
+      </Popover.Target>
+      <Popover.Dropdown>
+        <form onSubmit={handleCreateCollection}>
+          <Group gap={4} wrap="nowrap">
+            <TextInput
+              size="xs"
+              placeholder={t("collectionsView.namePlaceholder")}
+              value={newCollectionName}
+              onChange={(e) => setNewCollectionName(e.currentTarget.value)}
+              autoFocus
+            />
+            <ActionIcon
+              type="submit"
+              variant="filled"
+              size="sm"
+              loading={createCollectionMutation.isPending}
+              disabled={newCollectionName.trim().length === 0}
+              aria-label={t("collectionsView.add")}
+            >
+              <IconCheck size={14} />
+            </ActionIcon>
+          </Group>
+        </form>
+      </Popover.Dropdown>
+    </Popover>
+  );
+
+  const [browseSection, setBrowseSection] = useState<BrowseSection>("authors");
+
+  // "Active" here means "this is the filter currently applied to the book list" - matched against
+  // activeFilter.kind, not the locally-browsed section - so this view bar and the title bar's
+  // filter row (All books/Unread/Reading/Finished - see TitleBar.tsx) stay mutually exclusive:
+  // picking a reading-status filter there clears any highlighted tab here, and picking an
+  // author/collection/series/tag filter here clears that filter row's selection, since neither can
+  // be simultaneously "the" active filter.
+  const sectionFilterKind: Record<BrowseSection, GroupFilterKind> = {
+    authors: "authorId",
+    collections: "collectionId",
+    series: "seriesId",
+    tags: "tagId",
+  };
+
+  const sections: { key: BrowseSection; icon: Icon; label: string; active: boolean }[] = [
+    { key: "authors", icon: IconUser, label: t("sidebar.authors"), active: activeFilter?.kind === sectionFilterKind.authors },
+    { key: "collections", icon: IconFolder, label: t("sidebar.collections"), active: activeFilter?.kind === sectionFilterKind.collections },
+    { key: "series", icon: IconStack2, label: t("sidebar.series"), active: activeFilter?.kind === sectionFilterKind.series },
+    { key: "tags", icon: IconTag, label: t("sidebar.tags"), active: activeFilter?.kind === sectionFilterKind.tags },
+  ];
+
   return (
     <Box
       h="100%"
       display="flex"
       style={{ flexDirection: "column", borderInlineEnd: "1px solid var(--mantine-color-default-border)" }}
     >
-      <Box px="md" pt="md" pb="sm">
-        <Group justify="space-between" wrap="nowrap" mb="sm">
-          <Text ff="var(--mantine-font-family-headings)" fw={600} fz={22}>
-            مکتبہ
-          </Text>
-          <Tooltip label={t("toolbar.addBooks")}>
+      {/* View bar - which browse section (Collections/Authors/Series/Tags) shows below. The
+          All books/Unread/Reading/Finished filter row now lives in the title bar (see
+          TitleBar.tsx). Icon-only, so this degrades cleanly into the collapsed rail via wrapping. */}
+      <Group gap={4} px="xs" py={6} wrap="wrap" style={{ borderBottom: "1px solid var(--mantine-color-default-border)" }}>
+        {sections.map((section) => (
+          <Tooltip key={section.key} label={section.label}>
             <ActionIcon
-              variant="outline"
+              variant={section.active ? "filled" : "subtle"}
+              color={section.active ? undefined : "gray"}
               size="lg"
-              onClick={onImport}
-              aria-label={t("toolbar.addBooks")}
-              style={{ borderStyle: "dashed" }}
+              onClick={() => setBrowseSection(section.key)}
+              aria-label={section.label}
             >
-              <IconPlus size={18} />
+              <section.icon size={17} stroke={1.5} />
+            </ActionIcon>
+          </Tooltip>
+        ))}
+      </Group>
+
+      {collapsed ? (
+        <Box style={{ flex: 1 }} />
+      ) : (
+        <ScrollArea component="nav" style={{ flex: 1 }}>
+          {browseSection === "collections" && (
+            <GroupSection
+              title={t("sidebar.collections")}
+              kind="collectionId"
+              icon={IconFolder}
+              activeFilter={activeFilter}
+              onSelect={onSelect}
+              groups={topByBookCount(collectionsQuery.data)}
+              action={
+                <Group gap={6} wrap="nowrap">
+                  {addCollectionAction}
+                  {seeAllAction(onOpenCollections)}
+                </Group>
+              }
+            />
+          )}
+          {browseSection === "authors" && (
+            <GroupSection
+              title={t("sidebar.authors")}
+              kind="authorId"
+              icon={IconUser}
+              activeFilter={activeFilter}
+              onSelect={onSelect}
+              groups={topByBookCount(authorsQuery.data)}
+              action={seeAllAction(onOpenAuthors)}
+            />
+          )}
+          {browseSection === "series" && (
+            <GroupSection
+              title={t("sidebar.series")}
+              kind="seriesId"
+              icon={IconStack2}
+              activeFilter={activeFilter}
+              onSelect={onSelect}
+              groups={topByBookCount(seriesQuery.data)}
+              action={seeAllAction(onOpenSeries)}
+            />
+          )}
+          {browseSection === "tags" && (
+            <GroupSection
+              title={t("sidebar.tags")}
+              kind="tagId"
+              icon={IconTag}
+              activeFilter={activeFilter}
+              onSelect={onSelect}
+              groups={topByBookCount(tagsQuery.data)}
+              action={seeAllAction(onOpenTags)}
+            />
+          )}
+        </ScrollArea>
+      )}
+
+      <Box p={4} style={{ borderTop: "1px solid var(--mantine-color-default-border)" }}>
+        <Group gap={4} wrap="wrap" align="center">
+          <LibrarySwitcher onLibraryChanged={onLibraryChanged} onManage={onOpenSettings} compact={collapsed} />
+          <Tooltip label={t("toolbar.colorSchemeToggle")}>
+            <ActionIcon
+              variant="subtle"
+              color="gray"
+              size="lg"
+              onClick={() => setColorScheme(computedColorScheme === "light" ? "dark" : "light")}
+              aria-label={t("toolbar.colorSchemeToggle")}
+            >
+              {computedColorScheme === "light" ? <IconMoon size={17} /> : <IconSun size={17} />}
+            </ActionIcon>
+          </Tooltip>
+          <Tooltip label={`${t("toolbar.language")}: ${otherLanguage.label}`}>
+            <ActionIcon
+              variant="subtle"
+              color="gray"
+              size="lg"
+              onClick={() => setLanguage(otherLanguage.value)}
+              aria-label={t("toolbar.language")}
+            >
+              <Text size="xs" fw={700}>
+                {currentLanguage.label}
+              </Text>
+            </ActionIcon>
+          </Tooltip>
+          <Tooltip label={t("settings.title")}>
+            <ActionIcon
+              variant={settingsOpen ? "light" : "subtle"}
+              color="gray"
+              size="lg"
+              onClick={onOpenSettings}
+              aria-label={t("settings.title")}
+            >
+              <IconSettings size={17} />
             </ActionIcon>
           </Tooltip>
         </Group>
-
-        {/* Same trigger as the header used to have (see Toolbar) - opens the global Spotlight
-            (Ctrl/Cmd+K works from anywhere regardless of where this visible trigger lives). */}
-        <UnstyledButton
-          onClick={() => spotlight.open()}
-          w="100%"
-          px="sm"
-          py={6}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            border: "1px solid var(--mantine-color-default-border)",
-            borderRadius: "var(--mantine-radius-sm)",
-            backgroundColor: "var(--mantine-color-body)",
-          }}
-        >
-          <IconSearch size={14} style={{ flexShrink: 0, opacity: 0.6 }} />
-          <Text size="xs" c="dimmed" style={{ flex: 1 }} truncate="end">
-            {t("toolbar.searchPlaceholder")}
-          </Text>
-          <Kbd size="xs" style={{ flexShrink: 0 }}>
-            Ctrl K
-          </Kbd>
-        </UnstyledButton>
-      </Box>
-
-      <ScrollArea component="nav" style={{ flex: 1 }}>
-        <MainLinksSection
-          mainView={mainView}
-          activeFilter={activeFilter}
-          onSelect={onSelect}
-          onShowAllBooks={onShowAllBooks}
-        />
-        <GroupSection
-          title={t("sidebar.collections")}
-          kind="collectionId"
-          icon={IconFolder}
-          activeFilter={activeFilter}
-          onSelect={onSelect}
-          groups={topByBookCount(collectionsQuery.data)}
-          action={seeAllAction(onOpenCollections)}
-        />
-        <GroupSection
-          title={t("sidebar.authors")}
-          kind="authorId"
-          icon={IconUser}
-          activeFilter={activeFilter}
-          onSelect={onSelect}
-          groups={topByBookCount(authorsQuery.data)}
-          action={seeAllAction(onOpenAuthors)}
-        />
-        <GroupSection
-          title={t("sidebar.series")}
-          kind="seriesId"
-          icon={IconStack2}
-          activeFilter={activeFilter}
-          onSelect={onSelect}
-          groups={topByBookCount(seriesQuery.data)}
-          action={seeAllAction(onOpenSeries)}
-        />
-        <GroupSection
-          title={t("sidebar.tags")}
-          kind="tagId"
-          icon={IconTag}
-          activeFilter={activeFilter}
-          onSelect={onSelect}
-          groups={topByBookCount(tagsQuery.data)}
-          action={seeAllAction(onOpenTags)}
-        />
-      </ScrollArea>
-
-      <Divider />
-      <Box p={4}>
-        <NavLink
-          label={t("settings.title")}
-          leftSection={<IconSettings size={16} stroke={1.5} />}
-          active={settingsOpen}
-          onClick={onOpenSettings}
-          px="md"
-          py={7}
-          styles={sectionRowStyles(settingsOpen)}
-        />
       </Box>
     </Box>
   );

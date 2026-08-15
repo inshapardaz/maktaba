@@ -93,6 +93,13 @@ public static class BookEndpoints
                 ).ToList();
             }
 
+            // A second small lookup rather than an Include+join above - keeps the main query (with
+            // its several optional filters) untouched, and most books never have a progress row.
+            var bookIds = books.Select(b => b.Id).ToList();
+            var lastReadByBookId = await db.ReadingProgress
+                .Where(rp => bookIds.Contains(rp.BookId))
+                .ToDictionaryAsync(rp => rp.BookId, rp => rp.UpdatedAt);
+
             var dtos = books
                 .OrderBy(b => b.SortTitle, StringComparer.OrdinalIgnoreCase)
                 .Select(b => new BookSummaryDto(
@@ -103,8 +110,48 @@ public static class BookEndpoints
                     b.Rating,
                     b.DateAdded,
                     CoverLocator.Find(root, b.FolderPath) is not null,
-                    b.ReadingStatus.ToString()))
+                    b.ReadingStatus.ToString(),
+                    b.BookSeries.FirstOrDefault()?.SeriesIndex,
+                    lastReadByBookId.TryGetValue(b.Id, out var lastRead) ? lastRead : null))
                 .ToList();
+
+            return Results.Ok(dtos);
+        });
+
+        // Backs the Home view - every book that has a ReadingProgress row (i.e. was opened in the
+        // reader at least once), most recently updated first. The frontend takes items[0] as "last
+        // read" and filters ReadingStatus == "Reading" for the "currently reading" list, rather
+        // than this endpoint exposing two separate shapes for what's really one ordered feed.
+        group.MapGet("/continue-reading", async (MaktabaDbContext db, ILibraryPathProvider libraryPath, int? limit) =>
+        {
+            var root = libraryPath.LibraryRootPath!;
+
+            var rows = await db.ReadingProgress
+                .Include(rp => rp.Book).ThenInclude(b => b.BookAuthors).ThenInclude(ba => ba.Author)
+                .Include(rp => rp.Book).ThenInclude(b => b.Files)
+                .AsNoTracking()
+                .OrderByDescending(rp => rp.UpdatedAt)
+                .Take(limit is > 0 ? limit.Value : 20)
+                .ToListAsync();
+
+            var dtos = rows.Select(rp =>
+            {
+                var book = rp.Book;
+                // Same "prefer Epub" rule BookDetailPanel/openReader uses on the frontend - the resume
+                // button opens whichever format this feed reports without a second round trip.
+                var file = book.Files.FirstOrDefault(f => f.Format == BookFormat.Epub) ?? book.Files.FirstOrDefault();
+
+                return new ContinueReadingBookDto(
+                    IdCodec.Encode(book.Id),
+                    book.Title,
+                    book.BookAuthors.OrderBy(ba => ba.Order).Select(ba => ba.Author.Name).ToArray(),
+                    CoverLocator.Find(root, book.FolderPath) is not null,
+                    book.ReadingStatus.ToString(),
+                    (file?.Format ?? BookFormat.Epub).ToString(),
+                    file is not null ? Path.Combine(root, file.FilePath) : "",
+                    rp.Percentage,
+                    rp.UpdatedAt);
+            }).ToList();
 
             return Results.Ok(dtos);
         });

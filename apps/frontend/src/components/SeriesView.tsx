@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ActionIcon, Box, Group, NavLink, ScrollArea, Stack, Text, TextInput, Title, Tooltip } from "@mantine/core";
-import { IconArrowLeft, IconCheck, IconPencil, IconSearch, IconX } from "@tabler/icons-react";
+import { ActionIcon, Box, Group, NavLink, Stack, Text, TextInput, Tooltip } from "@mantine/core";
+import { IconCheck, IconPencil, IconSearch, IconX } from "@tabler/icons-react";
 import { listSeries, renameSeries } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
+import { BrowseViewHeader } from "./BrowseViewHeader";
 import type { GroupFilter } from "./Sidebar";
 
 interface SeriesViewProps {
@@ -59,29 +60,24 @@ export function SeriesView({ onSelect, onBack }: SeriesViewProps) {
   }, [seriesQuery.data, search]);
 
   return (
-    <Box p="xl" maw={640}>
-      <Group mb="lg" gap="sm">
-        <ActionIcon variant="default" onClick={onBack} aria-label={t("common.back")}>
-          <IconArrowLeft size={16} />
-        </ActionIcon>
-        <Title order={2}>{t("seriesView.title")}</Title>
-      </Group>
+    <Box display="flex" style={{ flexDirection: "column", height: "100%" }}>
+      <BrowseViewHeader title={t("seriesView.title")} onBack={onBack} />
 
-      <TextInput
-        mb="md"
-        placeholder={t("seriesView.searchPlaceholder")}
-        leftSection={<IconSearch size={15} />}
-        value={search}
-        onChange={(e) => setSearch(e.currentTarget.value)}
-      />
+      <Box p="xl" maw={640} style={{ flex: 1, overflow: "auto" }}>
+        <TextInput
+          mb="md"
+          placeholder={t("seriesView.searchPlaceholder")}
+          leftSection={<IconSearch size={15} />}
+          value={search}
+          onChange={(e) => setSearch(e.currentTarget.value)}
+        />
 
-      {renameError && (
-        <Text size="xs" c="red" mb="xs">
-          {renameError}
-        </Text>
-      )}
+        {renameError && (
+          <Text size="xs" c="red" mb="xs">
+            {renameError}
+          </Text>
+        )}
 
-      <ScrollArea.Autosize mah="calc(100vh - 220px)">
         <Stack gap={2}>
           {filtered.length === 0 && (
             <Text size="sm" c="dimmed">
@@ -149,7 +145,7 @@ export function SeriesView({ onSelect, onBack }: SeriesViewProps) {
             ),
           )}
         </Stack>
-      </ScrollArea.Autosize>
+      </Box>
     </Box>
   );
 }

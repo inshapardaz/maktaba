@@ -30,6 +30,7 @@ import {
   type ReadingStatus,
 } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
+import { useReaderLauncher } from "../ReaderLauncherContext";
 import { BookEditForm } from "./BookEditForm";
 import { SpineCover } from "./SpineCover";
 
@@ -54,6 +55,7 @@ interface BookDetailPanelProps {
 export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelProps) {
   const { t } = useLanguage();
   const queryClient = useQueryClient();
+  const launchReader = useReaderLauncher();
   const [isEditing, setEditing] = useState(false);
   const [isRemoving, setRemoving] = useState(false);
   const [removeError, setRemoveError] = useState<string | null>(null);
@@ -109,10 +111,14 @@ export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelP
     }
   };
 
-  // Opens in its own Electron BrowserWindow (see apps/desktop/src/main.ts's openReaderWindow)
-  // rather than in-app, so several books can be read side by side instead of one at a time.
-  const openReader = (format: "Epub" | "Pdf") => {
-    void window.maktaba.openReaderWindow(bookId, format, book?.title);
+  // Routes through the Settings -> Reading preferences (internal vs external app, pop-out window
+  // vs in the main window) instead of always opening its own Electron BrowserWindow - see
+  // ReaderLauncherContext.tsx / App.tsx's launchReader. Closes this modal first so it isn't left
+  // sitting open (or, in "this window" mode, behind the reader taking over the whole window)
+  // while the book loads.
+  const openReader = (format: "Epub" | "Pdf", absolutePath: string) => {
+    onClose();
+    launchReader({ bookId, format, title: book?.title, absolutePath });
   };
 
   const readableFiles: (BookFileInfo & { format: "Epub" | "Pdf" })[] =
@@ -187,7 +193,7 @@ export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelP
               variant="filled"
               fullWidth
               leftSection={<IconBook2 size={18} />}
-              onClick={() => openReader(preferredReadFile.format)}
+              onClick={() => openReader(preferredReadFile.format, preferredReadFile.absolutePath)}
             >
               {t("bookDetail.read")}
             </Button>
@@ -276,7 +282,12 @@ export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelP
                           Pdf) - the single-format case is already covered by the prominent Read
                           button above, so a duplicate link here would just be clutter. */}
                     {readableFiles.length > 1 && isReadableFormat(f.format) && (
-                      <Anchor size="sm" component="button" type="button" onClick={() => openReader(f.format as "Epub" | "Pdf")}>
+                      <Anchor
+                        size="sm"
+                        component="button"
+                        type="button"
+                        onClick={() => openReader(f.format as "Epub" | "Pdf", f.absolutePath)}
+                      >
                         <Group gap={4}>
                           <IconBook2 size={14} />
                           {t("bookDetail.read")}

@@ -27,6 +27,11 @@ import { useLanguage } from "../i18n/LanguageContext";
 interface ReaderOverlayProps {
   bookId: string;
   format: "Epub" | "Pdf";
+  // Only passed by InlineReader.tsx (the "render in the main window" mode) - the pop-out
+  // BrowserWindow case (main.tsx's ReaderWindow) has no in-app "previous screen" to return to, so
+  // it leaves this unset and relies on the native window chrome to close instead. qari shows its
+  // own close button in the reader header whenever this is provided.
+  onClose?: () => void;
 }
 
 // A device-wide reading preference (theme/font/layout), not per-book or synced data - matches the
@@ -76,7 +81,7 @@ function useDebouncedSave<T>(save: (value: T) => void, delayMs: number): (value:
   );
 }
 
-export function ReaderOverlay({ bookId, format }: ReaderOverlayProps) {
+export function ReaderOverlay({ bookId, format, onClose }: ReaderOverlayProps) {
   const { t, language } = useLanguage();
   const colorScheme = useComputedColorScheme("light");
   const [readerError, setReaderError] = useState<ReaderError | null>(null);
@@ -219,7 +224,8 @@ export function ReaderOverlay({ bookId, format }: ReaderOverlayProps) {
           fontFamily={settings.fontFamily as FontFamily | undefined}
           direction="auto"
           translations={LOCALES[language]}
-          showCloseButton={false}
+          showCloseButton={!!onClose}
+          onClose={onClose}
           bookmarkAdapter={bookmarkAdapter}
           noteAdapter={noteAdapter}
           progressAdapter={progressAdapter}

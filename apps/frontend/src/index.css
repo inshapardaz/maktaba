@@ -18,3 +18,14 @@ body.lang-ur .mantine-Modal-title,
 body.lang-ur .mantine-Drawer-title {
   font-family: var(--urdu-font-family);
 }
+
+/* Custom title bar (see TitleBar.tsx / main.ts's titleBarStyle: "hidden") - the row itself is a
+   drag handle so the frameless window can still be moved; interactive controls inside it opt back
+   out so clicks reach them instead of starting a window drag. */
+.maktaba-titlebar-drag {
+  -webkit-app-region: drag;
+}
+
+.maktaba-titlebar-no-drag {
+  -webkit-app-region: no-drag;
+}

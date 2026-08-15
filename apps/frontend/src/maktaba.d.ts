@@ -12,6 +12,7 @@ declare global {
     maktaba: {
       apiBaseUrl: string;
       token: string;
+      platform: NodeJS.Platform;
       pickLibraryFolder: () => Promise<string | null>;
       pickEbookFiles: () => Promise<string[]>;
       revealInFolder: (filePath: string) => Promise<void>;
@@ -21,6 +22,8 @@ declare global {
       getPathForFile: (file: File) => string;
       getSidecarStatus: () => Promise<SidecarStatus>;
       onSidecarStatus: (callback: (status: SidecarStatus) => void) => () => void;
+      retrySidecar: () => Promise<void>;
+      setTitleBarOverlay: (scheme: "light" | "dark") => Promise<void>;
     };
   }
 }

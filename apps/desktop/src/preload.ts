@@ -19,6 +19,9 @@ if (!port || !token) {
 contextBridge.exposeInMainWorld("maktaba", {
   apiBaseUrl: `http://127.0.0.1:${port}`,
   token,
+  // Lets renderer-side layout (TitleBar.tsx) reserve space for the native traffic lights (mac)
+  // vs. the native caption-button overlay (win/linux) without guessing the OS from the UA string.
+  platform: process.platform,
 
   pickLibraryFolder: (): Promise<string | null> =>
     ipcRenderer.invoke("maktaba:pick-library-folder"),
@@ -51,4 +54,13 @@ contextBridge.exposeInMainWorld("maktaba", {
     ipcRenderer.on("maktaba:sidecar-status", listener);
     return () => ipcRenderer.removeListener("maktaba:sidecar-status", listener);
   },
+
+  // Called from BackendGate.tsx's Retry button after a sidecarStatus "error" - re-checks the
+  // existing sidecar's health, or respawns it (and this window) entirely if it actually died.
+  retrySidecar: (): Promise<void> => ipcRenderer.invoke("maktaba:retry-sidecar"),
+
+  // Keeps the native win/linux caption-button overlay in sync with the app's own light/dark
+  // setting (TitleBar.tsx calls this from a useComputedColorScheme effect); no-op on mac.
+  setTitleBarOverlay: (scheme: "light" | "dark"): Promise<void> =>
+    ipcRenderer.invoke("maktaba:set-titlebar-overlay", scheme),
 });
