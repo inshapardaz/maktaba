@@ -6,6 +6,8 @@ export const LANGUAGES: { value: Language; label: string }[] = [
 ];
 
 const en = {
+  "app.name": "Maktaba",
+
   "common.cancel": "Cancel",
   "common.save": "Save",
   "common.saving": "Saving…",
@@ -93,6 +95,9 @@ const en = {
   "bookList.rating": "Rating",
   "bookList.dateAdded": "Date added",
   "bookList.status": "Status",
+
+  "bookGrid.read": "Read",
+  "bookGrid.viewDetails": "View details",
 
   "bookDetail.edit": "Edit",
   "bookDetail.remove": "Remove",
@@ -199,6 +204,8 @@ export type TranslationKey = keyof typeof en;
 type TranslationDict = Record<TranslationKey, string>;
 
 const ur: TranslationDict = {
+  "app.name": "مکتبہ",
+
   "common.cancel": "منسوخ کریں",
   "common.save": "محفوظ کریں",
   "common.saving": "محفوظ ہو رہا ہے…",
@@ -286,6 +293,9 @@ const ur: TranslationDict = {
   "bookList.rating": "درجہ بندی",
   "bookList.dateAdded": "شامل کرنے کی تاریخ",
   "bookList.status": "حیثیت",
+
+  "bookGrid.read": "پڑھیں",
+  "bookGrid.viewDetails": "تفصیلات دیکھیں",
 
   "bookDetail.edit": "ترمیم کریں",
   "bookDetail.remove": "ہٹا دیں",

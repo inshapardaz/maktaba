@@ -26,6 +26,7 @@ import {
   coverUrl,
   updateBookStatus,
   getReadingProgress,
+  pickPreferredReadFile,
   type BookFileInfo,
   type ReadingStatus,
 } from "../api";
@@ -123,9 +124,7 @@ export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelP
 
   const readableFiles: (BookFileInfo & { format: "Epub" | "Pdf" })[] =
     book?.files.filter((f): f is BookFileInfo & { format: "Epub" | "Pdf" } => isReadableFormat(f.format)) ?? [];
-  // Epub is the fuller in-app reading experience (reflowable, chapters) - preferred when a book
-  // has both formats, e.g. after an M8 conversion.
-  const preferredReadFile = readableFiles.find((f) => f.format === "Epub") ?? readableFiles[0];
+  const preferredReadFile = book ? pickPreferredReadFile(book.files) : undefined;
 
   return (
     <Modal opened onClose={onClose} centered size={560} padding="lg">

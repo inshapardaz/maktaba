@@ -204,6 +204,18 @@ export function getBook(id: string): Promise<BookDetail> {
   return request<BookDetail>(`/api/books/${id}`);
 }
 
+function isReadableFormat(format: string): format is "Epub" | "Pdf" {
+  return format === "Epub" || format === "Pdf";
+}
+
+// Epub is the fuller in-app reading experience (reflowable, chapters) - preferred when a book has
+// both formats, e.g. after an M8 conversion. Shared by BookDetailPanel and BookGrid's hover "Read"
+// action so both pick the same file for a given book.
+export function pickPreferredReadFile(files: BookFileInfo[]): (BookFileInfo & { format: "Epub" | "Pdf" }) | undefined {
+  const readableFiles = files.filter((f): f is BookFileInfo & { format: "Epub" | "Pdf" } => isReadableFormat(f.format));
+  return readableFiles.find((f) => f.format === "Epub") ?? readableFiles[0];
+}
+
 export interface ContinueReadingBook {
   id: string;
   title: string;

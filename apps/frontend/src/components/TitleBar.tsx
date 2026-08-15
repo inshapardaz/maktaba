@@ -156,7 +156,7 @@ export function TitleBar({
     >
       <Group gap={6} wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
         <Text ff="var(--mantine-font-family-headings)" fw={600} fz={16} style={{ flexShrink: 0 }}>
-          مکتبہ
+          {t("app.name")}
         </Text>
 
         {hasLibrary && (

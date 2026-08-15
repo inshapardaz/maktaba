@@ -1,7 +1,11 @@
-import { Badge, Box, Table } from "@mantine/core";
-import type { BookSummary } from "../api";
+import { Badge, Box, Group, Image, Table } from "@mantine/core";
+import { coverUrl, type BookSummary } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
 import { READING_STATUS_COLOR, READING_STATUS_LABEL_KEY } from "../readingStatus";
+import { SpineCover } from "./SpineCover";
+
+const THUMB_WIDTH = 28;
+const THUMB_HEIGHT = 40;
 
 interface BookListProps {
   books: BookSummary[];
@@ -34,7 +38,25 @@ export function BookList({ books, onSelect }: BookListProps) {
         <Table.Tbody>
           {books.map((book) => (
             <Table.Tr key={book.id} onClick={() => onSelect(book.id)} style={{ cursor: "pointer" }}>
-              <Table.Td fw={600}>{book.title}</Table.Td>
+              <Table.Td fw={600}>
+                <Group gap="sm" wrap="nowrap">
+                  {book.hasCover ? (
+                    <Image
+                      src={coverUrl(book.id)}
+                      alt=""
+                      loading="lazy"
+                      w={THUMB_WIDTH}
+                      h={THUMB_HEIGHT}
+                      fit="cover"
+                      radius={4}
+                      style={{ flexShrink: 0, border: "1px solid var(--mantine-color-default-border)" }}
+                    />
+                  ) : (
+                    <SpineCover id={book.id} title={book.title} width={THUMB_WIDTH} height={THUMB_HEIGHT} titleSize={6} padding={3} />
+                  )}
+                  {book.title}
+                </Group>
+              </Table.Td>
               <Table.Td>{book.authors.join(", ") || t("common.unknownAuthor")}</Table.Td>
               <Table.Td>
                 {"★".repeat(book.rating)}

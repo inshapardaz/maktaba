@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppShell, Box, Center, Loader, Overlay, Text, Group } from "@mantine/core";
 import { IconUpload } from "@tabler/icons-react";
@@ -65,6 +65,15 @@ function defaultDirectionFor(sortKey: SortKey): SortDirection {
 function App() {
   const { t } = useLanguage();
   const queryClient = useQueryClient();
+
+  // Keeps the OS-level window title (taskbar/Alt-Tab) in sync with the in-app language too -
+  // scoped to App.tsx (the main window only) rather than LanguageContext.tsx, since reader windows
+  // share that same provider and already set document.title to the book's title themselves (see
+  // main.tsx's ReaderWindow) - a blanket effect there would fight that.
+  useEffect(() => {
+    document.title = t("app.name");
+  }, [t]);
+
   const [mainView, setMainView] = useState<MainView>("library");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);

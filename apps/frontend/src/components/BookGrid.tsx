@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Badge, Box, Image, Text, UnstyledButton } from "@mantine/core";
-import type { BookSummary } from "../api";
-import { coverUrl } from "../api";
+import { ActionIcon, Badge, Box, Group, Image, Loader, Text, Tooltip, UnstyledButton } from "@mantine/core";
+import { IconBook2, IconInfoCircle } from "@tabler/icons-react";
+import { coverUrl, getBook, pickPreferredReadFile, type BookSummary } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
+import { useReaderLauncher } from "../ReaderLauncherContext";
 import { READING_STATUS_COLOR, READING_STATUS_LABEL_KEY } from "../readingStatus";
 import { SpineCover } from "./SpineCover";
 
@@ -17,8 +18,121 @@ const COVER_HEIGHT = 240; // 2:3 aspect ratio, per design/README.md §3
 const CARD_HEIGHT = 290;
 const GAP = 20;
 
-export function BookGrid({ books, onSelect }: BookGridProps) {
+interface BookCardProps {
+  book: BookSummary;
+  onSelect: (id: string) => void;
+}
+
+function BookCard({ book, onSelect }: BookCardProps) {
   const { t } = useLanguage();
+  const launchReader = useReaderLauncher();
+  const [hovered, setHovered] = useState(false);
+  const [loadingRead, setLoadingRead] = useState(false);
+
+  const handleRead = async () => {
+    if (loadingRead) return;
+    setLoadingRead(true);
+    try {
+      const detail = await getBook(book.id);
+      const file = pickPreferredReadFile(detail.files);
+      if (file) {
+        launchReader({ bookId: book.id, format: file.format, title: detail.title, absolutePath: file.absolutePath });
+      }
+    } finally {
+      setLoadingRead(false);
+    }
+  };
+
+  return (
+    <UnstyledButton
+      w={CARD_WIDTH}
+      onClick={() => onSelect(book.id)}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <Box pos="relative">
+        {book.hasCover ? (
+          <Image
+            src={coverUrl(book.id)}
+            alt=""
+            loading="lazy"
+            w={CARD_WIDTH}
+            h={COVER_HEIGHT}
+            fit="cover"
+            radius="sm"
+            style={{ border: "1px solid var(--mantine-color-default-border)", boxShadow: "var(--mantine-shadow-sm)" }}
+          />
+        ) : (
+          <SpineCover
+            id={book.id}
+            title={book.title}
+            author={book.authors.join(", ") || t("common.unknownAuthor")}
+            width={CARD_WIDTH}
+            height={COVER_HEIGHT}
+          />
+        )}
+        {book.readingStatus !== "Unread" && (
+          <Badge
+            color={READING_STATUS_COLOR[book.readingStatus]}
+            size="xs"
+            style={{ position: "absolute", insetBlockStart: 8, insetInlineEnd: 8 }}
+          >
+            {t(READING_STATUS_LABEL_KEY[book.readingStatus])}
+          </Badge>
+        )}
+        {hovered && (
+          <Group
+            gap={6}
+            justify="center"
+            style={{
+              position: "absolute",
+              inset: 0,
+              background: "rgba(0, 0, 0, 0.45)",
+              borderRadius: "var(--mantine-radius-sm)",
+            }}
+          >
+            <Tooltip label={t("bookGrid.read")}>
+              <ActionIcon
+                size="lg"
+                radius="xl"
+                variant="filled"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  void handleRead();
+                }}
+                disabled={loadingRead}
+              >
+                {loadingRead ? <Loader size={16} color="white" /> : <IconBook2 size={18} />}
+              </ActionIcon>
+            </Tooltip>
+            <Tooltip label={t("bookGrid.viewDetails")}>
+              <ActionIcon
+                size="lg"
+                radius="xl"
+                variant="filled"
+                color="gray"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onSelect(book.id);
+                }}
+              >
+                <IconInfoCircle size={18} />
+              </ActionIcon>
+            </Tooltip>
+          </Group>
+        )}
+      </Box>
+      <Text size="sm" fw={600} mt={8} lineClamp={2} title={book.title}>
+        {book.title}
+      </Text>
+      <Text size="xs" c="dimmed" truncate="end" title={book.authors.join(", ")}>
+        {book.authors.join(", ") || t("common.unknownAuthor")}
+      </Text>
+    </UnstyledButton>
+  );
+}
+
+export function BookGrid({ books, onSelect }: BookGridProps) {
   const parentRef = useRef<HTMLDivElement>(null);
   const [columnCount, setColumnCount] = useState(1);
 
@@ -68,45 +182,7 @@ export function BookGrid({ books, onSelect }: BookGridProps) {
               }}
             >
               {rowBooks.map((book) => (
-                <UnstyledButton key={book.id} w={CARD_WIDTH} onClick={() => onSelect(book.id)}>
-                  <Box pos="relative">
-                    {book.hasCover ? (
-                      <Image
-                        src={coverUrl(book.id)}
-                        alt=""
-                        loading="lazy"
-                        w={CARD_WIDTH}
-                        h={COVER_HEIGHT}
-                        fit="cover"
-                        radius="sm"
-                        style={{ border: "1px solid var(--mantine-color-default-border)", boxShadow: "var(--mantine-shadow-sm)" }}
-                      />
-                    ) : (
-                      <SpineCover
-                        id={book.id}
-                        title={book.title}
-                        author={book.authors.join(", ") || t("common.unknownAuthor")}
-                        width={CARD_WIDTH}
-                        height={COVER_HEIGHT}
-                      />
-                    )}
-                    {book.readingStatus !== "Unread" && (
-                      <Badge
-                        color={READING_STATUS_COLOR[book.readingStatus]}
-                        size="xs"
-                        style={{ position: "absolute", insetBlockStart: 8, insetInlineEnd: 8 }}
-                      >
-                        {t(READING_STATUS_LABEL_KEY[book.readingStatus])}
-                      </Badge>
-                    )}
-                  </Box>
-                  <Text size="sm" fw={600} mt={8} lineClamp={2} title={book.title}>
-                    {book.title}
-                  </Text>
-                  <Text size="xs" c="dimmed" truncate="end" title={book.authors.join(", ")}>
-                    {book.authors.join(", ") || t("common.unknownAuthor")}
-                  </Text>
-                </UnstyledButton>
+                <BookCard key={book.id} book={book} onSelect={onSelect} />
               ))}
             </Box>
           );
