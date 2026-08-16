@@ -6,6 +6,7 @@ import { registerNativeHandlers } from "./native";
 let sidecar: SidecarHandle | null = null;
 let sidecarStatus: SidecarStatus = { state: "starting" };
 let mainWindow: BrowserWindow | null = null;
+let splashWindow: BrowserWindow | null = null;
 const isMac = process.platform === "darwin";
 // Keyed by "<bookId>:<format>" so re-opening the same book/format focuses its existing
 // window instead of stacking duplicates; different books (or the same book in a different
@@ -18,7 +19,44 @@ const isDev = !app.isPackaged;
 // setting it explicitly here too keeps the dev-mode window/taskbar icon consistent.
 const appIconPath = path.join(__dirname, "..", "build", "icon.png");
 
+// Both best set as early as possible (before app is even "ready"). In a packaged build these
+// mostly just formalize what electron-builder's own productName/appId already bake into the exe;
+// in dev mode (running node_modules/electron's own binary directly) Windows still shows "Electron"
+// as the taskbar flyout name/icon regardless — that's the raw electron.exe's own embedded resource
+// strings and isn't fixable from script without rebranding the binary itself, so this is mainly for
+// correctness in the packaged app and for anything (notifications, mac menu bar) that reads
+// app.getName() at runtime.
+app.setName("Maktaba");
+app.setAppUserModelId("com.inshapardaz.maktaba");
+
 registerNativeHandlers(() => mainWindow);
+
+// A tiny frameless window with no preload/IPC needs (just a static local HTML file) shown the
+// instant the app launches, before the sidecar has even been spawned - covers the gap between
+// process start and the main window's first paint so there's no blank/white flash. Closed once
+// createWindow()'s mainWindow fires "ready-to-show" (see below); never shown again on a
+// retrySidecar()-triggered window recreation, only on the very first launch.
+function createSplashWindow(): void {
+  splashWindow = new BrowserWindow({
+    width: 360,
+    height: 420,
+    frame: false,
+    resizable: false,
+    movable: false,
+    show: true,
+    skipTaskbar: true,
+    icon: appIconPath,
+    webPreferences: { contextIsolation: true, nodeIntegration: false },
+  });
+  void splashWindow.loadFile(path.join(__dirname, "..", "splash", "splash.html"));
+}
+
+function closeSplashWindow(): void {
+  if (splashWindow && !splashWindow.isDestroyed()) {
+    splashWindow.close();
+  }
+  splashWindow = null;
+}
 
 // Every window (main + readers) shows its own loading/error state driven off this, since each
 // is an independent renderer process that needs to learn the current status on mount, and then
@@ -107,9 +145,18 @@ async function createWindow(): Promise<void> {
     // Hides the native title bar so the renderer can draw its own (TitleBar.tsx) while keeping
     // the native minimize/maximize/close affordances — a plain `frame: false` would lose those.
     titleBarStyle: "hidden",
+    // Stays hidden until the page has actually painted something (see "ready-to-show" below) -
+    // otherwise the window would show its own blank/white flash the instant it's created, before
+    // the splash window (which is covering that gap) gets swapped out for it.
+    show: false,
     ...(isMac
       ? { trafficLightPosition: { x: 16, y: (TITLEBAR_HEIGHT - 12) / 2 } }
       : { titleBarOverlay: titleBarOverlayFor("light") }),
+  });
+
+  mainWindow.once("ready-to-show", () => {
+    closeSplashWindow();
+    mainWindow?.show();
   });
 
   if (isDev) {
@@ -188,7 +235,10 @@ ipcMain.handle(
     openReaderWindow(bookId, format, title),
 );
 
-app.whenReady().then(createWindow);
+app.whenReady().then(async () => {
+  createSplashWindow();
+  await createWindow();
+});
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {

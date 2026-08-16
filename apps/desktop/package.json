@@ -29,6 +29,7 @@
     },
     "files": [
       "dist/**/*",
+      "splash/**/*",
       "package.json",
       "!**/*.map"
     ],

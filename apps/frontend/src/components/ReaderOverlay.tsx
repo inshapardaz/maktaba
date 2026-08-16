@@ -24,6 +24,7 @@ import {
   saveReadingProgress,
 } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
+import { TITLEBAR_HEIGHT } from "./TitleBar";
 
 // ISO 639-1 codes (matches BookEditForm's language field) for languages conventionally written
 // right-to-left - checked against the primary subtag only, so a regional variant like "ar-EG"
@@ -44,6 +45,11 @@ interface ReaderOverlayProps {
   // it leaves this unset and relies on the native window chrome to close instead. qari shows its
   // own close button in the reader header whenever this is provided.
   onClose?: () => void;
+  // Set only by InlineReader.tsx - leaves the app's own title bar (App.tsx's AppShell.Header)
+  // visible above the reader instead of covering it, since that titlebar is the app's real window
+  // chrome here (unlike the pop-out BrowserWindow case, which already has its own native OS title
+  // bar and covers the full window). Defaults to false so the pop-out window is unaffected.
+  embedded?: boolean;
 }
 
 // A device-wide reading preference (theme/font/layout), not per-book or synced data - matches the
@@ -93,7 +99,7 @@ function useDebouncedSave<T>(save: (value: T) => void, delayMs: number): (value:
   );
 }
 
-export function ReaderOverlay({ bookId, format, onClose }: ReaderOverlayProps) {
+export function ReaderOverlay({ bookId, format, onClose, embedded }: ReaderOverlayProps) {
   const { t, language } = useLanguage();
   const colorScheme = useComputedColorScheme("light");
   const [readerError, setReaderError] = useState<ReaderError | null>(null);
@@ -225,7 +231,15 @@ export function ReaderOverlay({ bookId, format, onClose }: ReaderOverlayProps) {
   const direction = format === "Pdf" && bookQuery.data?.language ? (isRtlLanguageCode(bookQuery.data.language) ? "rtl" : "ltr") : "auto";
 
   return (
-    <Box pos="fixed" top={0} left={0} right={0} bottom={0} bg="var(--mantine-color-body)" style={{ zIndex: 2000 }}>
+    <Box
+      pos="fixed"
+      top={embedded ? TITLEBAR_HEIGHT : 0}
+      left={0}
+      right={0}
+      bottom={0}
+      bg="var(--mantine-color-body)"
+      style={{ zIndex: 2000 }}
+    >
       {fileQuery.isLoading && (
         <Center h="100%">
           <Loader />

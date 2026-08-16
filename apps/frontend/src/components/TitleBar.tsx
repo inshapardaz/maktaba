@@ -50,6 +50,55 @@ declare global {
   }
 }
 
+// Shared by the real TitleBar below and by BackendGate.tsx's minimal loading/error bar (shown
+// before the real one ever mounts) - factored out so both compute the exact same native-control
+// safe area rather than duplicating (and risking drifting out of sync with) this measurement.
+export function useTitleBarOverlayPadding(): { paddingLeft: number; paddingRight: number } {
+  const isMac = window.maktaba.platform === "darwin";
+  // The win/linux safe-content rectangle, measured live - see the WindowControlsOverlay
+  // declaration above. Previous attempts at this reserved a hardcoded pixel width via CSS
+  // (paddingRight: 138, and later env(titlebar-area-*)) and both were wrong in practice: the
+  // caption buttons' actual width/side varies by Windows theme/DPI/RTL in ways a guessed constant
+  // or an apparently-unpopulated env() value didn't track, clipping content under LTR and hiding
+  // most of the bar under RTL. This reads Chromium's own live overlay geometry instead.
+  const [overlayRect, setOverlayRect] = useState<DOMRect | null>(null);
+
+  useEffect(() => {
+    if (isMac) return;
+    const overlay = navigator.windowControlsOverlay;
+    if (!overlay) return;
+
+    const update = () => setOverlayRect(overlay.visible ? overlay.getTitlebarAreaRect() : null);
+    update();
+    overlay.addEventListener("geometrychange", update);
+    return () => overlay.removeEventListener("geometrychange", update);
+  }, [isMac]);
+
+  return {
+    // Reserves space for the native controls so our own content never sits under them. mac's
+    // traffic lights are a fixed native offset from the top-left regardless of app direction, so
+    // that side stays hardcoded. win/linux uses the live-measured overlayRect (see above); until
+    // the first geometrychange fires we fall back to the old best-guess constants rather than
+    // rendering with zero reservation.
+    paddingLeft: isMac ? 80 : (overlayRect?.x ?? 12),
+    paddingRight: isMac ? 12 : overlayRect ? window.innerWidth - overlayRect.x - overlayRect.width : 150,
+  };
+}
+
+// The app icon + name, used both as the real TitleBar's leftmost element and (standalone) as
+// BackendGate.tsx's minimal loading/error bar - a single spot to change if the branding ever does.
+export function TitleBarBrand() {
+  const { t } = useLanguage();
+  return (
+    <Group gap={8} wrap="nowrap" ms={8} style={{ flexShrink: 0 }}>
+      <img src="/icon.png" alt="" width={20} height={20} style={{ borderRadius: 4, flexShrink: 0 }} />
+      <Text ff="var(--mantine-font-family-headings)" fw={600} fz={16} style={{ flexShrink: 0 }}>
+        {t("app.name")}
+      </Text>
+    </Group>
+  );
+}
+
 interface TitleBarProps {
   hasLibrary: boolean;
   mainView: MainView;
@@ -60,6 +109,11 @@ interface TitleBarProps {
   activeFilter: GroupFilter | null;
   onSelect: (filter: GroupFilter | null) => void;
   onShowAllBooks: () => void;
+  // Set while the inline reader (App.tsx's inlineReader) is open - none of the sidebar/filter/
+  // search/import actions are reachable behind it (InlineReader covers the rest of the window), so
+  // they're hidden rather than left as dead clicks. The bar itself (branding + drag region) still
+  // renders so the window keeps its custom titlebar and stays draggable.
+  actionsHidden?: boolean;
 }
 
 // All books/Unread/Reading/Finished - see Sidebar.tsx's view bar (Authors/Collections/Series/Tags)
@@ -140,29 +194,13 @@ export function TitleBar({
   activeFilter,
   onSelect,
   onShowAllBooks,
+  actionsHidden,
 }: TitleBarProps) {
   const { t } = useLanguage();
   const colorScheme = useComputedColorScheme("light");
-  const isMac = window.maktaba.platform === "darwin";
   const libraryActive = mainView === "library" && !activeFilter;
-  // The win/linux safe-content rectangle, measured live - see the WindowControlsOverlay
-  // declaration above. Previous attempts at this reserved a hardcoded pixel width via CSS
-  // (paddingRight: 138, and later env(titlebar-area-*)) and both were wrong in practice: the
-  // caption buttons' actual width/side varies by Windows theme/DPI/RTL in ways a guessed constant
-  // or an apparently-unpopulated env() value didn't track, clipping content under LTR and hiding
-  // most of the bar under RTL. This reads Chromium's own live overlay geometry instead.
-  const [overlayRect, setOverlayRect] = useState<DOMRect | null>(null);
-
-  useEffect(() => {
-    if (isMac) return;
-    const overlay = navigator.windowControlsOverlay;
-    if (!overlay) return;
-
-    const update = () => setOverlayRect(overlay.visible ? overlay.getTitlebarAreaRect() : null);
-    update();
-    overlay.addEventListener("geometrychange", update);
-    return () => overlay.removeEventListener("geometrychange", update);
-  }, [isMac]);
+  const showActions = hasLibrary && !actionsHidden;
+  const { paddingLeft, paddingRight } = useTitleBarOverlayPadding();
 
   // Keeps the native win/linux caption-button strip's colors matching the app's own light/dark
   // setting rather than the OS default, which can otherwise mismatch the page right next to it.
@@ -182,21 +220,14 @@ export function TitleBar({
         borderBottom: "1px solid var(--mantine-color-default-border)",
         boxSizing: "border-box",
         overflow: "hidden",
-        // Reserves space for the native controls so our own content never sits under them. mac's
-        // traffic lights are a fixed native offset from the top-left regardless of app direction,
-        // so that side stays hardcoded. win/linux uses the live-measured overlayRect (see above);
-        // until the first geometrychange fires we fall back to the old best-guess constants rather
-        // than rendering with zero reservation.
-        paddingLeft: isMac ? 80 : (overlayRect?.x ?? 12),
-        paddingRight: isMac ? 12 : overlayRect ? window.innerWidth - overlayRect.x - overlayRect.width : 150,
+        paddingLeft,
+        paddingRight,
       }}
     >
       <Group gap={6} wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
-        <Text ff="var(--mantine-font-family-headings)" fw={600} fz={16} ms={8} style={{ flexShrink: 0 }}>
-          {t("app.name")}
-        </Text>
+        <TitleBarBrand />
 
-        {hasLibrary && (
+        {showActions && (
           <>
             <Tooltip label={t(collapsed ? "sidebar.expand" : "sidebar.collapse")}>
               <ActionIcon
@@ -234,7 +265,7 @@ export function TitleBar({
         )}
       </Group>
 
-      {hasLibrary && (
+      {showActions && (
         <Box style={{ flex: 1, display: "flex", justifyContent: "center", minWidth: 0 }}>
           <UnstyledButton
             className="maktaba-titlebar-no-drag"
@@ -262,7 +293,7 @@ export function TitleBar({
         </Box>
       )}
 
-      {hasLibrary && (
+      {showActions && (
         <Button
           className="maktaba-titlebar-no-drag"
           leftSection={<IconPlus size={15} />}

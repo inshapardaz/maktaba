@@ -13,7 +13,7 @@ import {
   Text,
   Tooltip,
 } from "@mantine/core";
-import { IconCheck, IconFileUpload, IconFolder, IconUpload, IconX } from "@tabler/icons-react";
+import { IconCheck, IconFileUpload, IconFolder, IconX } from "@tabler/icons-react";
 import {
   convertBook,
   DuplicateBookError,
@@ -452,23 +452,6 @@ export function ImportDialog({ initialFiles, onClose, onImported }: ImportDialog
           </ScrollArea.Autosize>
 
           <Group justify="flex-end">
-            <Button
-              leftSection={<IconUpload size={14} />}
-              variant="default"
-              onClick={() => void handleBrowse()}
-              disabled={isProcessing || isResolving}
-            >
-              {t("importDialog.browse")}
-            </Button>
-            <Button
-              leftSection={<IconFolder size={14} />}
-              variant="default"
-              onClick={() => void handleBrowseFolder()}
-              disabled={isProcessing || isResolving}
-              loading={isResolving}
-            >
-              {t("importDialog.importFolder")}
-            </Button>
             <Button onClick={onClose}>{t("importDialog.close")}</Button>
           </Group>
         </Stack>

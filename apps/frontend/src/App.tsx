@@ -245,6 +245,7 @@ function App() {
               activeFilter={groupFilter}
               onSelect={handleSelectFilter}
               onShowAllBooks={handleShowAllBooks}
+              actionsHidden={!!inlineReader}
             />
           </AppShell.Header>
 

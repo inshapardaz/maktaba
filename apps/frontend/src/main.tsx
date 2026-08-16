@@ -61,7 +61,7 @@ createRoot(document.getElementById("root")!).render(
           <LanguageProvider>
             <Notifications position="bottom-right" />
             <QueryClientProvider client={queryClient}>
-              <BackendGate>
+              <BackendGate showTitleBar={!readerRequest}>
                 {readerRequest ? (
                   <ReaderWindow bookId={readerRequest.bookId} format={readerRequest.format} title={readerRequest.title} />
                 ) : (

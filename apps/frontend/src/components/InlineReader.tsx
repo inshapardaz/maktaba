@@ -8,14 +8,15 @@ interface InlineReaderProps {
 }
 
 // The "render in the main window" alternative to main.ts's openReaderWindow (a separate Electron
-// BrowserWindow) - reuses the same ReaderOverlay the pop-out window loads. ReaderOverlay already
-// renders pos="fixed" covering the whole viewport at zIndex 2000 (so the pop-out window's content
-// fills it edge to edge), which conveniently means mounting it here also takes over the entire app
-// window - title bar and sidebar included - with no extra layout work. The close affordance is
-// qari's own reader-header close button (showCloseButton/onClose - see ReaderOverlay.tsx), not a
-// custom one layered on top. Closing it is just unmounting this component: nothing about
-// mainView/groupFilter/etc. ever changed, so whatever was showing underneath reappears exactly as
-// it was.
+// BrowserWindow) - reuses the same ReaderOverlay the pop-out window loads. `embedded` keeps
+// ReaderOverlay's fixed positioning but starts it below TITLEBAR_HEIGHT instead of at the very top,
+// so App.tsx's custom title bar (AppShell.Header) stays visible above it - its own actions are
+// hidden by App.tsx (see TitleBar's actionsHidden prop) since nothing behind the reader is
+// reachable, but the bar itself (branding + drag region) still shows. Everything below the title
+// bar, sidebar included, is covered edge to edge. The close affordance is qari's own reader-header
+// close button (showCloseButton/onClose - see ReaderOverlay.tsx), not a custom one layered on top.
+// Closing it is just unmounting this component: nothing about mainView/groupFilter/etc. ever
+// changed, so whatever was showing underneath reappears exactly as it was.
 export function InlineReader({ bookId, format, onClose }: InlineReaderProps) {
   // Escape closes the reader, same as its own close button - only wired up here (not
   // ReaderOverlay itself), since the pop-out window has no "previous screen" to return to and
@@ -33,5 +34,5 @@ export function InlineReader({ bookId, format, onClose }: InlineReaderProps) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onClose]);
 
-  return <ReaderOverlay bookId={bookId} format={format} onClose={onClose} />;
+  return <ReaderOverlay bookId={bookId} format={format} onClose={onClose} embedded />;
 }
