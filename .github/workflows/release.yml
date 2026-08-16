@@ -4,14 +4,31 @@ on:
   push:
     tags:
       - "v*.*.*"
+  pull_request:
   workflow_dispatch:
     inputs:
+      bump:
+        description: "Version part to auto-increment from the latest existing tag (ignored if 'tag' is set below)"
+        required: false
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: patch
       tag:
-        description: 'Release tag to build/publish (e.g. "v0.1.0"). If the tag does not exist yet, it will be created pointing at the selected branch/commit.'
-        required: true
+        description: 'Optional explicit release tag (e.g. "v0.1.0"), overriding auto-increment. Leave blank to auto-increment from the latest tag using "bump" above. If the tag does not exist yet, it will be created pointing at the selected branch/commit.'
+        required: false
 
 permissions:
   contents: write
+
+# A PR build re-pushes commits often and each run packages 3 platforms, so superseded PR runs are
+# cancelled - but never a real tag-push/workflow_dispatch release, since those are keyed by their
+# own distinct ref (refs/tags/vX vs refs/pull/N/merge) and should always run to completion.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   determine-version:
@@ -21,16 +38,53 @@ jobs:
       tag: ${{ steps.version.outputs.tag }}
       version: ${{ steps.version.outputs.version }}
     steps:
+      # Only needed to read the existing tag list for auto-increment below (a tag-push trigger
+      # already knows its own tag from GITHUB_REF_NAME without this) - fetch-depth: 0 pulls full
+      # history/tags rather than the default single-commit shallow clone.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Resolve tag and version
         id: version
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            # No real tag is ever created for a PR build (the release job below is skipped for
+            # this event) - just the next patch version, beta-suffixed with the PR number so
+            # packaged installers are distinguishable and traceable back to the PR that built them.
+            LATEST_TAG="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -n1)"
+            LATEST="${LATEST_TAG#v}"
+            LATEST="${LATEST:-0.0.0}"
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$LATEST"
+            PATCH=$((PATCH + 1))
+            TAG="v${MAJOR}.${MINOR}.${PATCH}-beta.${{ github.event.pull_request.number }}"
+            echo "PR build - using $TAG"
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.tag }}" ]; then
             TAG="${{ inputs.tag }}"
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            LATEST_TAG="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -n1)"
+            LATEST="${LATEST_TAG#v}"
+            LATEST="${LATEST:-0.0.0}"
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$LATEST"
+            case "${{ inputs.bump }}" in
+              major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+              minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+              *)     PATCH=$((PATCH + 1)) ;;
+            esac
+            TAG="v${MAJOR}.${MINOR}.${PATCH}"
+            echo "No explicit tag given - auto-incrementing (${{ inputs.bump }}) from latest tag '${LATEST_TAG:-<none>}' to $TAG"
           else
             TAG="${GITHUB_REF_NAME}"
           fi
-          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Tag '$TAG' must look like vMAJOR.MINOR.PATCH (e.g. v0.1.0)" >&2
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-beta\.[0-9]+)?$ ]]; then
+            echo "Tag '$TAG' must look like vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-beta.N (e.g. v0.1.0, v0.1.0-beta.42)" >&2
+            exit 1
+          fi
+          # Only relevant for workflow_dispatch: a tag-push trigger's own tag legitimately already
+          # exists (it's what triggered this run), and a PR build's beta tag is never actually
+          # created as a git tag - so skip the check for both.
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "Tag '$TAG' already exists" >&2
             exit 1
           fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
@@ -99,6 +153,7 @@ jobs:
   release:
     name: Create GitHub release
     needs: [determine-version, build]
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - name: Download all installer artifacts
