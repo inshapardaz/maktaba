@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppShell, Box, Center, Loader, Overlay, Text, Group } from "@mantine/core";
 import { IconUpload } from "@tabler/icons-react";
-import { getCurrentLibrary, listBooks, type BookFilters, type BookSummary } from "./api";
+import { getCurrentLibrary, listBooks, updateBookStatus, type BookFilters, type BookSummary } from "./api";
 import { LibraryPicker } from "./components/LibraryPicker";
 import { LibrarySpotlight } from "./components/LibrarySpotlight";
 import { BookGrid } from "./components/BookGrid";
@@ -67,7 +67,7 @@ function App() {
     document.title = t("app.name");
   }, [t]);
 
-  const [mainView, setMainView] = useState<MainView>("library");
+  const [mainView, setMainView] = useState<MainView>("home");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sortKey, setSortKeyState] = useState<SortKey>("title");
@@ -184,6 +184,16 @@ function App() {
   // over the main window - so BookDetailPanel/HomeView/etc. never touch window.maktaba or
   // readerSettings.ts themselves (see ReaderLauncherContext.tsx).
   const launchReader = (request: ReaderRequest) => {
+    // First time opening this book - not on every subsequent resume, and never overriding
+    // "Finished" back to "Reading" just because it was reopened (e.g. to check something).
+    // Fire-and-forget: nothing here should block or fail the actual read from opening.
+    if (request.readingStatus === "Unread") {
+      void updateBookStatus(request.bookId, "Reading").then(() => {
+        invalidateLibraryQueries(queryClient);
+        void queryClient.invalidateQueries({ queryKey: ["book", request.bookId] });
+      });
+    }
+
     if (getStoredReaderEngine(request.format) === "external") {
       void window.maktaba.openPath(request.absolutePath);
       return;
@@ -203,7 +213,7 @@ function App() {
     setMinRating(0);
     void queryClient.invalidateQueries({ queryKey: ["library"] });
     invalidateLibraryQueries(queryClient);
-    setMainView("library");
+    setMainView("home");
     setSettingsOpen(false);
   };
 

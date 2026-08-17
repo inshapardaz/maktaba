@@ -1,7 +1,9 @@
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain, Menu } from "electron";
 import * as path from "node:path";
+import * as fs from "node:fs";
 import { startSidecar, stopSidecar, waitForHealth, SidecarHandle, SidecarStatus } from "./sidecar";
 import { registerNativeHandlers } from "./native";
+import { buildAppMenu } from "./menu";
 
 let sidecar: SidecarHandle | null = null;
 let sidecarStatus: SidecarStatus = { state: "starting" };
@@ -30,6 +32,62 @@ app.setName("Maktaba");
 app.setAppUserModelId("com.inshapardaz.maktaba");
 
 registerNativeHandlers(() => mainWindow);
+
+// Whether the standard File/Edit/View/Window/Help app menu (menu.ts's buildAppMenu) is shown -
+// natively as each reader pop-out window's own menu bar (they use the default OS frame), and via
+// a menu button in the main window's custom title bar (which has no room for a full menu bar row -
+// see maktaba:show-app-menu below). A user preference, not a per-window state: persisted to disk
+// so it survives restarts, independent of any one library.
+const preferencesPath = path.join(app.getPath("userData"), "electron-preferences.json");
+
+function loadMenuBarEnabled(): boolean {
+  try {
+    const raw = JSON.parse(fs.readFileSync(preferencesPath, "utf8")) as { menuBarEnabled?: boolean };
+    return raw.menuBarEnabled ?? true;
+  } catch {
+    return true;
+  }
+}
+
+let menuBarEnabled = loadMenuBarEnabled();
+const appMenu = buildAppMenu();
+
+// Applies the current on/off state to every already-open window (main + readers) plus the mac
+// global menu bar / the default new windows will otherwise inherit - called once at startup and
+// again any time the setting is toggled from Settings, so an existing session never needs a
+// restart to see the change take effect.
+function applyMenuPreference(): void {
+  Menu.setApplicationMenu(menuBarEnabled ? appMenu : null);
+  for (const win of BrowserWindow.getAllWindows()) {
+    win.setMenu(menuBarEnabled ? appMenu : null);
+  }
+}
+
+applyMenuPreference();
+
+ipcMain.handle("maktaba:get-menu-bar-enabled", () => menuBarEnabled);
+
+ipcMain.handle("maktaba:set-menu-bar-enabled", (_event, enabled: boolean) => {
+  menuBarEnabled = enabled;
+  applyMenuPreference();
+  try {
+    fs.mkdirSync(path.dirname(preferencesPath), { recursive: true });
+    fs.writeFileSync(preferencesPath, JSON.stringify({ menuBarEnabled }));
+  } catch {
+    // Best-effort - worst case the toggle just doesn't survive a restart.
+  }
+});
+
+// The main window's title-bar menu button (TitleBar.tsx) has no native menu bar row to live in
+// (Window Controls Overlay reserves that whole strip for the draggable custom title bar), so it
+// pops the exact same Menu used elsewhere as a context menu instead, anchored under the button.
+ipcMain.handle("maktaba:show-app-menu", (event, position: { x: number; y: number }) => {
+  if (!menuBarEnabled) return;
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win) {
+    appMenu.popup({ window: win, x: Math.round(position.x), y: Math.round(position.y) });
+  }
+});
 
 // A tiny frameless window with no preload/IPC needs (just a static local HTML file) shown the
 // instant the app launches, before the sidecar has even been spawned - covers the gap between

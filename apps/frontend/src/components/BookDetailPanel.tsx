@@ -119,7 +119,7 @@ export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelP
   // while the book loads.
   const openReader = (format: "Epub" | "Pdf", absolutePath: string) => {
     onClose();
-    launchReader({ bookId, format, title: book?.title, absolutePath });
+    launchReader({ bookId, format, title: book?.title, absolutePath, readingStatus: book?.readingStatus ?? "Unread" });
   };
 
   const readableFiles: (BookFileInfo & { format: "Epub" | "Pdf" })[] =

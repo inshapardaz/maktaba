@@ -75,32 +75,19 @@ const STAR_RATING_OPTIONS = [
 
 // Common library languages - stored as ISO 639-1 codes (matches what's typically already in EPUB/
 // PDF metadata's dc:language, so an edit made here round-trips with a rescan instead of drifting
-// into a different format) with their English display name as the label. Not exhaustive -
-// withCurrentLanguage below makes sure a book already tagged with a code outside this list still
-// shows correctly instead of silently going blank.
-const LANGUAGE_OPTIONS = [
-  { value: "en", label: "English" },
-  { value: "ur", label: "Urdu" },
-  { value: "ar", label: "Arabic" },
-  { value: "fa", label: "Persian" },
-  { value: "hi", label: "Hindi" },
-  { value: "bn", label: "Bengali" },
-  { value: "fr", label: "French" },
-  { value: "es", label: "Spanish" },
-  { value: "de", label: "German" },
-  { value: "it", label: "Italian" },
-  { value: "pt", label: "Portuguese" },
-  { value: "nl", label: "Dutch" },
-  { value: "ru", label: "Russian" },
-  { value: "tr", label: "Turkish" },
-  { value: "pl", label: "Polish" },
-  { value: "zh", label: "Chinese" },
-  { value: "ja", label: "Japanese" },
-  { value: "ko", label: "Korean" },
-];
+// into a different format). Not exhaustive - withCurrentLanguage below makes sure a book already
+// tagged with a code outside this list still shows correctly instead of silently going blank.
+const LANGUAGE_CODES = ["en", "ur", "ar", "fa", "hi", "bn", "fr", "es", "de", "it", "pt", "nl", "ru", "tr", "pl", "zh", "ja", "ko"] as const;
+
+// Labels follow the current UI language (translations.ts's "language.<code>" keys) rather than
+// always English, so this needs to be computed with `t` at render time instead of a module-level
+// constant.
+function getLanguageOptions(t: (key: TranslationKey) => string): { value: string; label: string }[] {
+  return LANGUAGE_CODES.map((code) => ({ value: code, label: t(`language.${code}` as TranslationKey) }));
+}
 
 // Keeps a Select's current value visible/selected even when it falls outside the curated
-// LANGUAGE_OPTIONS list (e.g. a regional code like "en-US", or something extraction found that
+// getLanguageOptions() list (e.g. a regional code like "en-US", or something extraction found that
 // isn't in the list at all) - appended as a plain extra option (label = the raw code itself, since
 // there's no display name to look up) rather than dropped, so editing an already-set field doesn't
 // silently blank it out.
@@ -317,7 +304,7 @@ export function BookEditForm({ bookId, onClose, onSaved }: BookEditFormProps) {
               />
               <Select
                 label={t("bookEdit.language")}
-                data={withCurrentLanguage(LANGUAGE_OPTIONS, form.language)}
+                data={withCurrentLanguage(getLanguageOptions(t), form.language)}
                 value={form.language || null}
                 onChange={(value) => setForm({ ...form, language: value ?? "" })}
                 searchable

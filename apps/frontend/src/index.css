@@ -8,15 +8,41 @@ body,
   margin: 0;
 }
 
+/* A unicode-range-restricted alias, listed before --urdu-font-family below, so mixed-script text
+   (an English book title, "EPUB"/"PDF", page numbers, star ratings, …) keeps rendering in
+   Mantine's own default font even while the rest of the document is in Urdu mode - without this,
+   the browser would use the *selected Urdu font's own* Latin/digit glyphs for that text (all three
+   options bundle a stylistically-matched Latin companion face), which reads as visibly
+   inconsistent with the plain sans-serif used everywhere else. Only Basic/Extended Latin, common
+   punctuation, currency, and letterlike symbols are claimed here — anything outside these ranges
+   (all Arabic-script blocks, including Urdu-specific punctuation like "،"/"؟") is deliberately left
+   unclaimed so it falls through to the real Urdu font next in the stack. `local()` only resolves
+   against fonts already installed on the OS (Windows/macOS ship all of these) - if none resolve on
+   some system, this face contributes nothing and Latin text there falls back to the Urdu font
+   instead, same as before this rule existed, so this can't make things worse.
+   Mantine's own `--mantine-font-family` var can't be reused as a `local()` source (it's a CSS
+   keyword stack like -apple-system, not a real font name @font-face can look up), hence spelling
+   the same effective fonts out by name here. */
+@font-face {
+  font-family: "Maktaba UI Latin";
+  src:
+    local("Segoe UI"),
+    local(".AppleSystemUIFont"),
+    local("Helvetica Neue"),
+    local("Noto Sans"),
+    local("Arial");
+  unicode-range: U+0000-024F, U+2000-206F, U+2070-209F, U+20A0-20CF, U+2100-214F;
+}
+
 /* Toggled by LanguageContext when the Urdu UI is active — Mantine's default (Latin-only) font
    stack doesn't cover the Urdu script, so swap the whole document to the user's chosen Urdu font
-   (Settings -> Appearance -> Urdu font) rather than falling back to the OS default. The
+   (Settings -> General -> Urdu font) rather than falling back to the OS default. The
    --urdu-font-family value itself is set on :root by LanguageContext, from src/urduFont.ts's
    options, so this rule doesn't need to know the actual font names. */
 body.lang-ur,
 body.lang-ur .mantine-Modal-title,
 body.lang-ur .mantine-Drawer-title {
-  font-family: var(--urdu-font-family);
+  font-family: "Maktaba UI Latin", var(--urdu-font-family);
 }
 
 /* Custom title bar (see TitleBar.tsx / main.ts's titleBarStyle: "hidden") - the row itself is a

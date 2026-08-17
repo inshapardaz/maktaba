@@ -1,4 +1,5 @@
 import { createContext, useContext, type ReactNode } from "react";
+import type { ReadingStatus } from "./api";
 
 export interface ReaderRequest {
   bookId: string;
@@ -7,6 +8,10 @@ export interface ReaderRequest {
   // Needed for the "external app" reader-engine setting (see readerSettings.ts) to hand the file
   // straight to window.maktaba.openPath instead of ever touching the in-app reader.
   absolutePath: string;
+  // The book's status *before* this read - lets App.tsx's launchReader auto-bump Unread -> Reading
+  // without an extra fetch, since every caller already has this in hand from whatever query got it
+  // the book in the first place (BookSummary/BookDetail/ContinueReadingBook all carry it).
+  readingStatus: ReadingStatus;
 }
 
 type ReaderLauncher = (request: ReaderRequest) => void;

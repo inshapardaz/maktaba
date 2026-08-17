@@ -78,4 +78,18 @@ contextBridge.exposeInMainWorld("maktaba", {
   // setting (TitleBar.tsx calls this from a useComputedColorScheme effect); no-op on mac.
   setTitleBarOverlay: (scheme: "light" | "dark"): Promise<void> =>
     ipcRenderer.invoke("maktaba:set-titlebar-overlay", scheme),
+
+  // Whether the standard File/Edit/View/Window/Help app menu (see main.ts/menu.ts) is on - a
+  // persisted preference, not per-window state, toggled from Settings and reflected live in every
+  // open window (reader pop-outs' own native menu bar, and the main window's menu button).
+  getMenuBarEnabled: (): Promise<boolean> => ipcRenderer.invoke("maktaba:get-menu-bar-enabled"),
+
+  setMenuBarEnabled: (enabled: boolean): Promise<void> =>
+    ipcRenderer.invoke("maktaba:set-menu-bar-enabled", enabled),
+
+  // Pops the same app menu as a context menu at the given point in the caller's own window -
+  // used by the main window's title-bar menu button, which has no native menu bar row to live in
+  // (Window Controls Overlay reserves that whole strip for the custom draggable title bar).
+  showAppMenu: (position: { x: number; y: number }): Promise<void> =>
+    ipcRenderer.invoke("maktaba:show-app-menu", position),
 });

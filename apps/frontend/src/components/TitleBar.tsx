@@ -21,6 +21,7 @@ import {
   IconHome2,
   IconLayoutSidebarLeftCollapse,
   IconLayoutSidebarLeftExpand,
+  IconMenu2,
   IconPlus,
   IconSearch,
 } from "@tabler/icons-react";
@@ -96,6 +97,41 @@ export function TitleBarBrand() {
         {t("app.name")}
       </Text>
     </Group>
+  );
+}
+
+// Opens the same File/Edit/View/Window/Help menu the reader pop-out windows show natively (see
+// apps/desktop/src/menu.ts) as a native popup anchored under this button - the main window's
+// custom title bar has no room for a full menu bar row (Window Controls Overlay reserves that
+// whole strip for the draggable branding/buttons), so a button that pops the identical Menu is the
+// closest equivalent. Hidden entirely when the user has turned the menu off in Settings ->
+// Appearance (settings.menuBar) - main.ts's own maktaba:show-app-menu handler no-ops in that case
+// too, but skipping the render avoids offering a control that would visibly do nothing.
+function MenuButton() {
+  const { t } = useLanguage();
+  const menuBarQuery = useQuery({ queryKey: ["menuBarEnabled"], queryFn: () => window.maktaba.getMenuBarEnabled() });
+
+  if (!menuBarQuery.data) {
+    return null;
+  }
+
+  const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    void window.maktaba.showAppMenu({ x: Math.round(rect.left), y: Math.round(rect.bottom) });
+  };
+
+  return (
+    <Tooltip label={t("toolbar.menu")}>
+      <ActionIcon
+        className="maktaba-titlebar-no-drag"
+        variant="subtle"
+        color="gray"
+        onClick={handleClick}
+        aria-label={t("toolbar.menu")}
+      >
+        <IconMenu2 size={16} />
+      </ActionIcon>
+    </Tooltip>
   );
 }
 
@@ -226,6 +262,7 @@ export function TitleBar({
     >
       <Group gap={6} wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
         <TitleBarBrand />
+        <MenuButton />
 
         {showActions && (
           <>

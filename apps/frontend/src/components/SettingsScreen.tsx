@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Alert, ColorSwatch, Group, Modal, Select, SegmentedControl, Stack, Tabs, Text, Tooltip, UnstyledButton } from "@mantine/core";
-import { IconAlertTriangle, IconBook2, IconBooks, IconCheck, IconFileImport, IconPalette } from "@tabler/icons-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Alert, ColorSwatch, Group, Modal, Select, SegmentedControl, Stack, Switch, Tabs, Text, Tooltip, UnstyledButton } from "@mantine/core";
+import { IconAlertTriangle, IconBook2, IconBooks, IconCheck, IconFileImport, IconSettings } from "@tabler/icons-react";
 import { getSystemCapabilities } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
 import { getStoredDefaultFormat, setStoredDefaultFormat, type ConvertFormat } from "../convertFormat";
@@ -41,9 +41,19 @@ export function SettingsScreen({ opened, onClose, onLibraryChanged }: SettingsSc
   const [readerOpenMode, setReaderOpenMode] = useState<ReaderOpenMode>(getStoredReaderOpenMode());
   const [epubEngine, setEpubEngine] = useState<ReaderEngine>(getStoredReaderEngine("Epub"));
   const [pdfEngine, setPdfEngine] = useState<ReaderEngine>(getStoredReaderEngine("Pdf"));
+  const queryClient = useQueryClient();
 
   const capabilitiesQuery = useQuery({ queryKey: ["systemCapabilities"], queryFn: getSystemCapabilities });
   const calibreAvailable = capabilitiesQuery.data?.calibreAvailable ?? false;
+
+  // Shared with TitleBar.tsx's MenuButton (same query key) so toggling here updates that button's
+  // visibility immediately, without waiting for a refetch.
+  const menuBarQuery = useQuery({ queryKey: ["menuBarEnabled"], queryFn: () => window.maktaba.getMenuBarEnabled() });
+
+  const handleMenuBarChange = (enabled: boolean) => {
+    queryClient.setQueryData(["menuBarEnabled"], enabled);
+    void window.maktaba.setMenuBarEnabled(enabled);
+  };
 
   const handleDefaultFormatChange = (value: string) => {
     const format = value as ConvertFormat;
@@ -65,13 +75,13 @@ export function SettingsScreen({ opened, onClose, onLibraryChanged }: SettingsSc
 
   return (
     <Modal opened={opened} onClose={onClose} title={t("settings.title")} size="xl" centered>
-      <Tabs defaultValue="libraries" keepMounted={false}>
+      <Tabs defaultValue="general" keepMounted={false}>
         <Tabs.List>
+          <Tabs.Tab value="general" leftSection={<IconSettings size={14} />}>
+            {t("settings.general")}
+          </Tabs.Tab>
           <Tabs.Tab value="libraries" leftSection={<IconBooks size={14} />}>
             {t("settings.libraries")}
-          </Tabs.Tab>
-          <Tabs.Tab value="appearance" leftSection={<IconPalette size={14} />}>
-            {t("settings.appearance")}
           </Tabs.Tab>
           <Tabs.Tab value="reading" leftSection={<IconBook2 size={14} />}>
             {t("settings.reading")}
@@ -81,13 +91,7 @@ export function SettingsScreen({ opened, onClose, onLibraryChanged }: SettingsSc
           </Tabs.Tab>
         </Tabs.List>
 
-        <Tabs.Panel value="libraries" pt="lg">
-          {/* Resyncing a specific library (including the active one) lives per-row here now -
-              see LibrariesSettings - rather than as a separate blanket "rescan" action. */}
-          <LibrariesSettings onActiveLibraryChanged={onLibraryChanged} />
-        </Tabs.Panel>
-
-        <Tabs.Panel value="appearance" pt="lg">
+        <Tabs.Panel value="general" pt="lg">
           <Stack gap="md">
             <Group justify="space-between">
               <FieldLabel>{t("settings.language")}</FieldLabel>
@@ -133,7 +137,25 @@ export function SettingsScreen({ opened, onClose, onLibraryChanged }: SettingsSc
                 allowDeselect={false}
               />
             </Group>
+            <Stack gap={2}>
+              <Group justify="space-between">
+                <FieldLabel>{t("settings.menuBar")}</FieldLabel>
+                <Switch
+                  checked={menuBarQuery.data ?? true}
+                  onChange={(e) => handleMenuBarChange(e.currentTarget.checked)}
+                />
+              </Group>
+              <Text size="xs" c="dimmed">
+                {t("settings.menuBarHint")}
+              </Text>
+            </Stack>
           </Stack>
+        </Tabs.Panel>
+
+        <Tabs.Panel value="libraries" pt="lg">
+          {/* Resyncing a specific library (including the active one) lives per-row here now -
+              see LibrariesSettings - rather than as a separate blanket "rescan" action. */}
+          <LibrariesSettings onActiveLibraryChanged={onLibraryChanged} />
         </Tabs.Panel>
 
         <Tabs.Panel value="reading" pt="lg">

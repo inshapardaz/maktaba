@@ -28,7 +28,13 @@ export function HomeView({ onSelectBook }: HomeViewProps) {
   const continueReadingQuery = useQuery({ queryKey: ["continueReading"], queryFn: () => listContinueReading(20) });
 
   const resumeBook = (book: ContinueReadingBook) => {
-    launchReader({ bookId: book.id, format: book.format, title: book.title, absolutePath: book.absolutePath });
+    launchReader({
+      bookId: book.id,
+      format: book.format,
+      title: book.title,
+      absolutePath: book.absolutePath,
+      readingStatus: book.readingStatus,
+    });
   };
 
   const items = continueReadingQuery.data ?? [];

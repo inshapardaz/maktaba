@@ -27,6 +27,9 @@ declare global {
       onSidecarStatus: (callback: (status: SidecarStatus) => void) => () => void;
       retrySidecar: () => Promise<void>;
       setTitleBarOverlay: (scheme: "light" | "dark") => Promise<void>;
+      getMenuBarEnabled: () => Promise<boolean>;
+      setMenuBarEnabled: (enabled: boolean) => Promise<void>;
+      showAppMenu: (position: { x: number; y: number }) => Promise<void>;
     };
   }
 }

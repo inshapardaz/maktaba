@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ActionIcon, Badge, Box, Group, Image, Loader, Text, Tooltip, UnstyledButton } from "@mantine/core";
-import { IconBook2, IconInfoCircle } from "@tabler/icons-react";
+import { IconBook2, IconEdit, IconInfoCircle } from "@tabler/icons-react";
 import { coverUrl, getBook, pickPreferredReadFile, type BookSummary } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
 import { useReaderLauncher } from "../ReaderLauncherContext";
 import { READING_STATUS_COLOR, READING_STATUS_LABEL_KEY } from "../readingStatus";
+import { BookEditForm } from "./BookEditForm";
 import { SpineCover } from "./SpineCover";
 
 interface BookGridProps {
@@ -21,9 +22,10 @@ const GAP = 20;
 interface BookCardProps {
   book: BookSummary;
   onSelect: (id: string) => void;
+  onEdit: (id: string) => void;
 }
 
-function BookCard({ book, onSelect }: BookCardProps) {
+function BookCard({ book, onSelect, onEdit }: BookCardProps) {
   const { t } = useLanguage();
   const launchReader = useReaderLauncher();
   const [hovered, setHovered] = useState(false);
@@ -36,7 +38,13 @@ function BookCard({ book, onSelect }: BookCardProps) {
       const detail = await getBook(book.id);
       const file = pickPreferredReadFile(detail.files);
       if (file) {
-        launchReader({ bookId: book.id, format: file.format, title: detail.title, absolutePath: file.absolutePath });
+        launchReader({
+          bookId: book.id,
+          format: file.format,
+          title: detail.title,
+          absolutePath: file.absolutePath,
+          readingStatus: detail.readingStatus,
+        });
       }
     } finally {
       setLoadingRead(false);
@@ -119,6 +127,20 @@ function BookCard({ book, onSelect }: BookCardProps) {
                 <IconInfoCircle size={18} />
               </ActionIcon>
             </Tooltip>
+            <Tooltip label={t("bookDetail.edit")}>
+              <ActionIcon
+                size="lg"
+                radius="xl"
+                variant="filled"
+                color="gray"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onEdit(book.id);
+                }}
+              >
+                <IconEdit size={18} />
+              </ActionIcon>
+            </Tooltip>
           </Group>
         )}
       </Box>
@@ -135,6 +157,7 @@ function BookCard({ book, onSelect }: BookCardProps) {
 export function BookGrid({ books, onSelect }: BookGridProps) {
   const parentRef = useRef<HTMLDivElement>(null);
   const [columnCount, setColumnCount] = useState(1);
+  const [editingBookId, setEditingBookId] = useState<string | null>(null);
 
   useEffect(() => {
     const el = parentRef.current;
@@ -182,12 +205,20 @@ export function BookGrid({ books, onSelect }: BookGridProps) {
               }}
             >
               {rowBooks.map((book) => (
-                <BookCard key={book.id} book={book} onSelect={onSelect} />
+                <BookCard key={book.id} book={book} onSelect={onSelect} onEdit={setEditingBookId} />
               ))}
             </Box>
           );
         })}
       </div>
+
+      {editingBookId && (
+        <BookEditForm
+          bookId={editingBookId}
+          onClose={() => setEditingBookId(null)}
+          onSaved={() => setEditingBookId(null)}
+        />
+      )}
     </Box>
   );
 }
