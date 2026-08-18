@@ -1,0 +1,12 @@
+[package]
+name = "maktaba-core"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde.workspace = true
+chrono.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+sqids.workspace = true
+rusqlite.workspace = true

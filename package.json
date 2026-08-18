@@ -14,9 +14,8 @@
     "build:frontend": "npm run build --workspace maktaba-frontend",
     "build:desktop": "npm run build --workspace maktaba-desktop",
     "publish:backend": "node scripts/publish-backend.mjs",
-    "publish:backend:all": "node scripts/publish-backend.mjs --all",
     "package:win": "npm run build:frontend && npm run build:desktop && node scripts/publish-backend.mjs win-x64 && npm run package:win --workspace maktaba-desktop",
-    "package:mac": "npm run build:frontend && npm run build:desktop && node scripts/publish-backend.mjs osx-x64 osx-arm64 && npm run package:mac --workspace maktaba-desktop",
+    "package:mac": "npm run build:frontend && npm run build:desktop && node scripts/publish-backend.mjs && npm run package:mac --workspace maktaba-desktop",
     "package:linux": "npm run build:frontend && npm run build:desktop && node scripts/publish-backend.mjs linux-x64 && npm run package:linux --workspace maktaba-desktop"
   },
   "devDependencies": {

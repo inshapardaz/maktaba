@@ -1,8 +1,14 @@
 # Maktaba (مکتبہ) — project context for Claude
 
 Local-first ebook library manager (Calibre-alternative). Electron + React/TypeScript frontend,
-C#/.NET 9 backend running as a local HTTP sidecar. All data lives on the user's disk under a
+Rust backend (axum) running as a local HTTP sidecar. All data lives on the user's disk under a
 library folder the user picks; no accounts, no cloud.
+
+**Backend history**: the backend was originally C#/.NET 9 (ASP.NET Core Minimal API + EF Core);
+it was rewritten to Rust (see `backend-rust/`) to eliminate .NET-related runtime issues. The old
+C# projects still exist at `backend/` for reference/rollback but are no longer built, packaged, or
+spawned by the desktop app — `backend-rust/` is the live backend. See `backend-rust/README.md` for
+Rust-specific setup, the pdfium vendoring story, and what has/hasn't been verified end-to-end.
 
 Background docs: `docs/SPEC.md` (original v1 spec) and `docs/TASKS.md` (milestone log, M0–M4 +
 Sqids migration). **Both are now stale in places** — SPEC.md still describes a single-library
@@ -14,9 +20,9 @@ early decisions were made, not *what exists now*.
 
 ```
 Electron main (apps/desktop/src/main.ts)
-  spawns Maktaba.Api as a child process (apps/desktop/src/sidecar.ts)
-    - dev: `dotnet run --project backend/Maktaba.Api`
-    - packaged: runs the self-contained published exe from resources/backend/<rid>/
+  spawns maktaba-api as a child process (apps/desktop/src/sidecar.ts)
+    - dev: runs backend-rust/target/debug/maktaba-api(.exe) directly (`cargo build` it first)
+    - packaged: runs the release exe from resources/backend/<rid>/ (see "Desktop packaging")
     - picks a free loopback port + random bearer token, passes both via argv, waits for /health
   creates BrowserWindow(s), injects {port, token} into the renderer via preload/contextBridge
     (apps/desktop/src/preload.ts → window.maktaba.*; never via URL/query string)
@@ -25,16 +31,17 @@ Renderer (apps/frontend, React 19 + Vite + Mantine 9 + TanStack Query)
   talks to http://127.0.0.1:{port}/api/... with Authorization: Bearer {token}
   apps/frontend/src/api.ts's `request()` is the one fetch wrapper everything goes through
 
-Backend (ASP.NET Core Minimal API, backend/Maktaba.sln)
-  Maktaba.Api       — HTTP endpoints (Endpoints/*.cs), DTOs (Dtos/*.cs), Program.cs wires
-                       CORS + bearer-token middleware + "library must be open" middleware
-  Maktaba.Core      — domain entities (Entities/*.cs), service interfaces (Services/I*.cs),
-                       Ids/IdCodec.cs (Sqids), Naming/ (title-sort, file-sanitizing helpers)
-  Maktaba.Data      — MaktabaDbContext (EF Core + SQLite), service implementations
-                       (Services/*.cs), CoverLocator, EbookFileHelpers
-  Maktaba.Metadata  — EPUB (VersOne.Epub) / PDF (PdfPig + PDFtoImage) metadata+cover extraction
-  Maktaba.Tests     — nearly empty (one placeholder test); this project has no real test suite,
-                       verification is build + live HTTP/UI smoke testing (see below)
+Backend (Rust workspace, backend-rust/ — see backend-rust/README.md for full detail)
+  maktaba-api       — axum HTTP server: routes/*.rs (endpoints), dtos.rs, auth.rs (bearer-token
+                       middleware), db_task.rs ("library must be open" + schema-check wrapper), main.rs
+  maktaba-core      — domain entities (entities.rs), ids.rs (Sqids), naming.rs (title-sort,
+                       file-sanitizing helpers), shared request/result types (services.rs)
+  maktaba-data      — SQLite schema + connection handling (db.rs, no ORM), service functions
+                       (services/*.rs), read-query repo (repo/*.rs), CoverLocator, file helpers
+  maktaba-metadata  — EPUB (manual zip+OPF XML parsing) / PDF (lopdf + pdfium-render) metadata+cover
+                       extraction
+  maktaba-tests     — integration tests that spawn the real maktaba-api binary and hit it over
+                       HTTP (tests/api_smoke.rs), plus unit tests inline in each crate
 ```
 
 Multiple **Electron windows** can be open at once: the main library window, and one reader
@@ -55,58 +62,70 @@ render just the reader instead of the full app). All windows share the one sidec
 
 `metadata.db` is a **rebuildable cache**, not canonical data — file layout + embedded metadata
 (OPF/PDF info dict) are the durable source. A "resync"/rescan operation
-(`LibraryRescanService.RescanAsync`) wipes and rebuilds it by walking these folders. Since Sept
-2026 (see `LibraryRescanService.cs`) rescan **snapshots and restores DB-only fields** per book id
-before rebuilding — `Rating`, `ReadingStatus`, `DateAdded`, tags, series, and collection
-membership all survive a rescan now; only file-derived fields (title/authors/description/etc.)
-are actually re-read from disk. Book ids are stable across rescans because they're decoded
-straight from the folder name (`IdCodec.TryDecode`), not reassigned.
+(`maktaba_data::services::rescan::rescan`, `backend-rust/maktaba-data/src/services/rescan.rs`)
+wipes and rebuilds it by walking these folders, **snapshotting and restoring DB-only fields** per
+book id before rebuilding — rating, reading status, date added, tags, series, collection
+membership, bookmarks, notes, and reading progress all survive a rescan; only file-derived fields
+(title/authors/description/etc.) are actually re-read from disk. Book ids are stable across
+rescans because they're decoded straight from the folder name (`maktaba_core::ids::try_decode`),
+not reassigned. This same mechanism is what transparently rebuilds a `metadata.db` left behind by
+the old .NET backend the first time a library is opened with the Rust one (its schema doesn't
+match, so it's treated as stale — see `backend-rust/README.md`'s "Database" section).
 
 ## Multi-library
 
-`LibraryService` (`Maktaba.Data/Services/LibraryService.cs`, singleton) owns a registry of every
-library ever opened — `{id, name, path}` — persisted to `%AppData%/Maktaba/config.json`. Exactly
-one is "active" at a time (`CurrentLibraryId`/`LibraryRootPath`); `MaktabaDbContextFactory`
-resolves the DB path from whichever is currently active, re-evaluated fresh per request scope, so
-switching libraries at runtime (no process restart) already works cleanly. Frontend surface:
-Settings → Libraries tab (`LibrariesSettings.tsx`) — switch/rename/relocate/resync/remove any
-registered library, only one active at a time.
+`LibraryService` (`backend-rust/maktaba-data/src/library_service.rs`, one instance shared via
+`Arc` in `AppState`) owns a registry of every library ever opened — `{id, name, path}` —
+persisted to `<OS config dir>/Maktaba/config.json` (`%AppData%` on Windows; overridable via the
+`MAKTABA_CONFIG_DIR` env var, used by the integration tests to avoid touching a real user's
+config). Exactly one is "active" at a time; every request re-resolves the current DB path fresh
+(`db_task::with_conn`, `backend-rust/maktaba-api/src/db_task.rs`), so switching libraries at
+runtime (no process restart) works cleanly. Frontend surface: Settings → Libraries tab
+(`LibrariesSettings.tsx`) — switch/rename/relocate/resync/remove any registered library, only one
+active at a time.
 
 ## IDs
 
-Every entity (`Book`, `Author`, `Series`, `Tag`, `BookFile`, `Identifier`, `Collection`) uses a
-plain auto-increment `int` primary key internally, **never exposed outside the DB**.
-`Maktaba.Core/Ids/IdCodec.cs` wraps a shared Sqids encoder to turn it into an opaque string
-(`UkLWZg9D`-style) for API bodies and the on-disk folder name. One shared alphabet is used for all
-entity types, so a Book and an Author *can* encode to the same string when their underlying ints
-match — that's fine, each id is only ever decoded against the one table it's looked up in. API
-routes take a plain `{id}` string and `IdCodec.TryDecode` it, returning 404 on failure rather than
-throwing.
+Every entity (Book, Author, Series, Tag, BookFile, Identifier, Collection) uses a plain
+auto-increment `i64` primary key internally, **never exposed outside the DB**.
+`backend-rust/maktaba-core/src/ids.rs` wraps a shared Sqids encoder to turn it into an opaque
+string (`UkLWZg9D`-style) for API bodies and the on-disk folder name. One shared alphabet is used
+for all entity types, so a Book and an Author *can* encode to the same string when their
+underlying ints match — that's fine, each id is only ever decoded against the one table it's
+looked up in. API routes take a plain `{id}` string and `ids::try_decode` it, returning 404 on
+failure rather than erroring.
 
 ## Backend conventions
 
-- **Find-or-create by name**: `Maktaba.Data/Services/EntityResolvers.cs` (`ResolveAuthorsAsync`/
-  `ResolveSeriesAsync`/`ResolveTagsAsync`) is the one place Authors/Series/Tags get created,
-  case-insensitively matched against existing rows first. Both `ImportService` and
-  `BookEditService` go through it — don't hand-roll a second lookup path.
+- **Find-or-create by name**: `backend-rust/maktaba-data/src/resolvers.rs`
+  (`resolve_authors`/`resolve_series`/`resolve_tags`) is the one place Authors/Series/Tags get
+  created, case-insensitively matched (`LOWER(name) = LOWER(?)`) against existing rows first. Both
+  `services::import` and `services::book_edit` go through it — don't hand-roll a second lookup path.
 - **Collections are different**: user-created only (via the Collections tab, not find-or-create
   from free text), never auto-derived from file metadata, and — unlike Tags/Series — the
-  `Collections` table itself is *not* wiped by a rescan (only per-book membership is).
-- **EF change-tracker gotcha**: when doing a bulk delete-then-rebuild in one DbContext (rescan),
-  `SaveChangesAsync` must run *before* the next `EntityResolvers` lookup that needs to see what
-  was just created — those lookups are plain DB queries and are blind to unflushed inserts. This
-  bit us once already (duplicate Author rows on every rescan); rescan now flushes per book inside
-  one open transaction rather than once at the very end.
-- **No EF Core migrations** — schema changes use `EnsureCreatedAsync`/`EnsureDeletedAsync`
-  (`LibraryService.EnsureCurrentSchemaAsync` auto-rebuilds `metadata.db` if it detects a stale
-  schema, since the DB is a disposable cache — see above). A genuinely breaking schema change still
-  means existing users lose DB-only data (ratings/tags/etc., though now less than before given the
-  rescan preservation fix) unless they'd already been rescanned onto the new schema.
-- Minimal-API JSON defaults to **camelCase** (no explicit `JsonSerializerOptions` — that's
-  ASP.NET Core's own minimal-API default), so C# `PascalCase` record properties become
-  `camelCase` on the wire; `apps/frontend/src/api.ts` types match that directly.
-- 404-vs-throw convention: service methods return `null`/`false` for "not found", endpoints map
-  that to `Results.NotFound()`. No exception-based not-found flow anywhere in `Endpoints/*.cs`.
+  `collections` table itself is *not* wiped by a rescan (only per-book membership is).
+- **No ORM, no migrations** — plain `rusqlite` with hand-written SQL; schema is
+  `CREATE TABLE IF NOT EXISTS` in `backend-rust/maktaba-data/src/db.rs`, gated behind a
+  `schema_meta` version check (`db::ensure_current_schema`) that wipes and recreates the whole
+  file when the version (or a foreign/absent schema, e.g. one left by the old .NET backend) doesn't
+  match, since the DB is a disposable cache — see above. A genuinely breaking schema change means
+  existing users lose DB-only data (ratings/tags/etc.) on their next open, same tradeoff as before.
+- **`db_task::with_conn`** (`backend-rust/maktaba-api/src/db_task.rs`) is the one path every
+  DB-touching route handler goes through: it verifies a library is open (`ApiError::LibraryNotOpen`
+  → 400 if not), rebuilds+rescans a stale `metadata.db` if needed, then runs the handler's closure
+  against a fresh `rusqlite::Connection` inside `spawn_blocking` (rusqlite is synchronous). Don't
+  open a `Connection` directly in a route handler — go through this so the schema-check/rescan
+  behavior stays centralized.
+- Axum's `Json<T>` extractor/response defaults to **camelCase** via `#[serde(rename_all =
+  "camelCase")]` on every DTO in `dtos.rs` (Rust structs are `snake_case`, matching the C#
+  backend's own camelCase wire format), so `apps/frontend/src/api.ts` types didn't need to change.
+  `chrono_utc.rs` formats/parses `NaiveDateTime` with an explicit trailing "Z" to match the old
+  System.Text.Json output — the frontend's `new Date(...)` calls rely on that to avoid
+  misinterpreting a timestamp as local time.
+- 404-vs-error convention: service functions in `maktaba-data` return `Option`/`bool` for "not
+  found" (mirroring the old `null`/`false` C# convention); route handlers in `maktaba-api` map
+  that to `ApiError::NotFound` (`error.rs`), which serializes as a plain 404. No panic/exception-
+  based not-found flow anywhere in `routes/*.rs`.
 
 ## Frontend conventions
 
@@ -156,13 +175,15 @@ throwing.
 
 ## Build & verification
 
-No CI, no test suite worth running (`Maktaba.Tests` is a placeholder). Verification is:
+The Rust backend has a real test suite (`backend-rust/maktaba-tests`, plus unit tests inline in
+each crate) — unlike the old C# `Maktaba.Tests` placeholder, this is worth actually running:
 
 ```
-dotnet build backend/Maktaba.sln     # backend compiles
-dotnet test backend/Maktaba.sln      # runs the ~1 placeholder test, not real coverage
-npm run build:frontend               # tsc -b && vite build — run from repo root
-npm run build:desktop                # Electron main/preload tsc
+cd backend-rust && cargo build --workspace   # whole Rust workspace compiles
+cd backend-rust && cargo test --workspace    # unit tests + tests/api_smoke.rs (spawns the real
+                                              # binary, exercises it over HTTP end-to-end)
+npm run build:frontend                       # tsc -b && vite build — run from repo root
+npm run build:desktop                        # Electron main/preload tsc
 ```
 
 `npm run build:frontend` / `build:desktop` must be run from the **repo root** — they're
@@ -171,28 +192,43 @@ composite workspace scripts (`npm run build --workspace maktaba-frontend`, etc.)
 script" since the Bash tool's cwd persists across calls — `cd` back to repo root, or run
 `npm run build` directly from inside that workspace directory instead.
 
-**This sandbox cannot launch a real Electron GUI** (`ELECTRON_RUN_AS_NODE=1` is forced) — every
-milestone in this project's history was verified via `dotnet build`/`tsc`/`vite build` passing,
-plus live HTTP smoke tests (`dotnet run` the API standalone, `curl` it) for backend behavior, and
-a Vite dev-server module-transform check for frontend changes. Actual GUI/rendering verification
-needs the user to run `npm run dev` themselves — say explicitly what was and wasn't visually
-confirmed rather than implying the UI was seen working.
+**Windows toolchain note**: this environment has no admin rights, so the usual MSVC linker
+(`link.exe`, from Visual Studio Build Tools, which requires elevation) isn't available. The Rust
+toolchain here is set up against the **GNU** target instead (`rustup default
+stable-x86_64-pc-windows-gnu`), linked via a portable MinGW-w64 GCC that needs no install
+(extracted to `%USERPROFILE%\mingw64-portable\`, added to `PATH`). If a `cargo build` fails with
+"linker `link.exe` not found" or similar, that toolchain/PATH setup is missing in the current
+shell — re-add `mingw64-portable\mingw64\bin` to `PATH` rather than trying to install MSVC Build
+Tools (it'll silently hang waiting on a UAC prompt nobody can answer). Also: run cargo from
+**PowerShell**, not the Bash tool — Git Bash's own `/usr/bin/link` shadows the real linker on
+`PATH` there and produces a confusing unrelated error.
+
+**This sandbox cannot launch a real Electron GUI** (`ELECTRON_RUN_AS_NODE=1` is forced) — backend
+changes are verified via `cargo build`/`cargo test` (which includes live HTTP smoke tests against
+the real binary) and frontend/desktop changes via `tsc`/`vite build` passing. Actual GUI/rendering
+verification needs the user to run `npm run dev` themselves (after `cargo build` in
+`backend-rust/` — see its README) — say explicitly what was and wasn't visually confirmed rather
+than implying the UI was seen working.
 
 **Gotcha**: if a live `npm run dev` Electron session is already running (check `Get-Process -Name
-"Maktaba.Api","electron"` — several `electron.exe` + one `Maktaba.Api.exe` together means it's a
-real dev session, not a stray leftover), its running `Maktaba.Api.exe` locks
-`backend/*/bin/Debug/net9.0/*.dll`, so a plain `dotnet build` fails with `MSB3027`/file-in-use
-errors. **Don't kill that process** — it's the user's active session. Build to an isolated output
-dir instead: `dotnet build backend/Maktaba.Api/Maktaba.Api.csproj -o <temp-dir>`. Only kill a
-`Maktaba.Api.exe` if it's a lone orphan with no accompanying `electron.exe` processes (a leftover
-from a previous standalone smoke test).
+"maktaba-api","electron"` — several `electron.exe` + one `maktaba-api.exe` together means it's a
+real dev session, not a stray leftover), its running `maktaba-api.exe` locks
+`backend-rust/target/debug/maktaba-api.exe`, so a plain `cargo build` there can fail with a
+file-in-use error. **Don't kill that process** — it's the user's active session; either wait for
+them to stop it, or build to an isolated target dir (`cargo build --target-dir <temp-dir>`).
 
 ## Desktop packaging
 
-`scripts/publish-backend.mjs` publishes the self-contained backend per RID into
-`apps/desktop/resources/backend/<rid>/`; `electron-builder` (config in `apps/desktop/package.json`)
-bundles the matching RID folder as `extraResources` per platform. `npm run package:win/mac/linux`
-at the repo root chains build → publish-backend → electron-builder. Known past issue: pin
-`electron-builder` ≥ 26 (25.x pulled a broken `app-builder-bin` prerelease) and keep the root
-`package.json` `overrides.@noble/hashes: ^1.8.0` (electron-builder's blockmap step needs the
-dual-CJS/ESM major; 2.x is ESM-only and breaks under `require()`).
+`scripts/publish-backend.mjs` builds the Rust backend in release mode (`cargo build --release`)
+for the **host** RID only — Rust needs a matching linker/SDK per *target OS*, unlike
+`dotnet publish -r <rid>`, so cross-OS packaging isn't automated (build each platform's release on
+that platform; see `backend-rust/README.md`'s "Cross-platform packaging" section for the mac
+x64/arm64 nuance). It also stages the vendored pdfium shared library
+(`backend-rust/vendor/pdfium/<rid>/`) alongside the binary — required for PDF cover thumbnails,
+missing it just means those are silently skipped, not a hard failure. `electron-builder` (config
+in `apps/desktop/package.json`) bundles `resources/backend/<rid>/` as `extraResources` per
+platform. `npm run package:win/mac/linux` at the repo root chains build → publish-backend →
+electron-builder. Known past issue: pin `electron-builder` ≥ 26 (25.x pulled a broken
+`app-builder-bin` prerelease) and keep the root `package.json` `overrides.@noble/hashes: ^1.8.0`
+(electron-builder's blockmap step needs the dual-CJS/ESM major; 2.x is ESM-only and breaks under
+`require()`).

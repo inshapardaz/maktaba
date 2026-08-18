@@ -82,8 +82,13 @@ export interface SidecarOptions {
 }
 
 function packagedExecutablePath(resourcesPath: string): string {
-  const exeName = process.platform === "win32" ? "Maktaba.Api.exe" : "Maktaba.Api";
+  const exeName = process.platform === "win32" ? "maktaba-api.exe" : "maktaba-api";
   return path.join(resourcesPath, "backend", exeName);
+}
+
+function devExecutablePath(): string {
+  const exeName = process.platform === "win32" ? "maktaba-api.exe" : "maktaba-api";
+  return path.join(__dirname, "..", "..", "..", "backend-rust", "target", "debug", exeName);
 }
 
 /**
@@ -92,38 +97,26 @@ function packagedExecutablePath(resourcesPath: string): string {
  * Splitting these lets the Electron window appear (and the frontend show its own loading
  * state) immediately instead of the whole app staying window-less during backend startup.
  *
- * Dev mode: `dotnet run` against the backend project directly.
- * Packaged mode: spawn the self-contained published executable bundled as an
- * electron-builder extraResource under `resources/backend/` (see
- * apps/desktop/package.json's `build.win/mac/linux.extraResources` and
- * scripts/publish-backend.mjs).
- *
- * `windowsHide: true` is required on Windows: Maktaba.Api is a console-subsystem executable
- * (ASP.NET Core apphost), so without it Windows pops up a visible console window alongside the
- * Electron app for the lifetime of the process.
+ * Dev mode: the `cargo build`-produced debug binary at backend-rust/target/debug/ - run
+ * `cargo build` (or `cargo run`, which also builds) in backend-rust/ before `npm run dev` so this
+ * exists.
+ * Packaged mode: spawn the release binary bundled as an electron-builder extraResource under
+ * `resources/backend/` (see apps/desktop/package.json's `build.win/mac/linux.extraResources` and
+ * scripts/publish-backend.mjs), alongside its bundled pdfium shared library (needed for PDF cover
+ * rendering - see backend-rust/README.md).
  */
 export async function startSidecar(options: SidecarOptions): Promise<SidecarHandle> {
   const port = await getFreePort();
   const token = crypto.randomBytes(24).toString("hex");
 
-  const child = options.isPackaged
-    ? spawn(packagedExecutablePath(options.resourcesPath), [`--port=${port}`, `--token=${token}`], {
-      stdio: "inherit",
-      windowsHide: true,
-    })
-    : spawn(
-      "dotnet",
-      [
-        "run",
-        "--no-launch-profile",
-        "--project",
-        path.join(__dirname, "..", "..", "..", "backend", "Maktaba.Api"),
-        "--",
-        `--port=${port}`,
-        `--token=${token}`,
-      ],
-      { stdio: "inherit", windowsHide: true },
-    );
+  const exePath = options.isPackaged
+    ? packagedExecutablePath(options.resourcesPath)
+    : devExecutablePath();
+
+  const child = spawn(exePath, [`--port=${port}`, `--token=${token}`], {
+    stdio: "inherit",
+    windowsHide: true,
+  });
 
   child.on("error", (err) => {
     console.error("Failed to start Maktaba.Api sidecar:", err);

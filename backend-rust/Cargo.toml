@@ -1,0 +1,44 @@
+[workspace]
+resolver = "2"
+members = [
+    "maktaba-core",
+    "maktaba-metadata",
+    "maktaba-data",
+    "maktaba-api",
+    "maktaba-tests",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+
+[workspace.dependencies]
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", features = ["serde"] }
+thiserror = "1"
+anyhow = "1"
+sqids = "0.4"
+rusqlite = { version = "0.31", features = ["bundled", "chrono"] }
+axum = { version = "0.7", features = ["multipart"] }
+tower = "0.4"
+tower-http = { version = "0.5", features = ["cors", "trace"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+sha2 = "0.10"
+regex = "1"
+zip = { version = "0.6", default-features = false, features = ["deflate"] }
+quick-xml = "0.31"
+uuid = { version = "1", features = ["v4"] }
+clap = { version = "4", features = ["derive"] }
+dirs = "5"
+
+maktaba-core = { path = "maktaba-core" }
+maktaba-metadata = { path = "maktaba-metadata" }
+maktaba-data = { path = "maktaba-data" }
+
+[profile.release]
+opt-level = 3
+lto = true
+strip = true
