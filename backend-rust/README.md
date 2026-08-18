@@ -24,6 +24,15 @@ vendor/pdfium/     vendored pdfium shared library per platform (see "PDF covers"
 2. **Windows only**: install the MSVC linker - `winget install Microsoft.VisualStudio.2022.BuildTools`
    with the "Desktop development with C++" workload (`--add Microsoft.VisualStudio.Workload.VCTools`).
    Rust on Windows needs `link.exe` from this even though the code itself has no C++ in it.
+   - **No admin rights available** (that installer needs elevation, and will hang silently on an
+     unanswerable UAC prompt in a non-interactive session rather than failing loudly): use the GNU
+     target instead, which needs no elevation - fetch a portable MinGW-w64 build (e.g. from
+     https://github.com/niXman/mingw-builds-binaries - the **posix**-threading variant; the
+     **mcf**-threading one is ABI-incompatible with rustc's prebuilt GNU std and fails to link),
+     extract it anywhere, add its `bin/` to `PATH`, then
+     `rustup target add x86_64-pc-windows-gnu && rustup default stable-x86_64-pc-windows-gnu`.
+     `scripts/publish-backend.mjs` detects and builds against whichever Windows target is actually
+     active, so packaging works either way without further changes.
 3. `cd backend-rust && cargo build` - the workspace, in debug mode.
 
 ## Running standalone (no Electron)
