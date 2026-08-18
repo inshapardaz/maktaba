@@ -1,0 +1,16 @@
+[package]
+name = "maktaba-metadata"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+maktaba-core.workspace = true
+anyhow.workspace = true
+chrono.workspace = true
+zip.workspace = true
+quick-xml.workspace = true
+lopdf = "0.32"
+pdfium-render = { version = "0.8", features = ["image"] }
+image = { version = "0.25", default-features = false, features = ["jpeg"] }
+tracing.workspace = true
+regex.workspace = true
