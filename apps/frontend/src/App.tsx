@@ -284,7 +284,14 @@ function App() {
             {libraryQuery.isLoading ? (
               <LoadingContent message={t("app.loading")} />
             ) : !hasLibrary ? (
-              <LibraryPicker onOpened={() => void queryClient.invalidateQueries({ queryKey: ["library"] })} />
+              <LibraryPicker
+                onOpened={(_path, filesToImport) => {
+                  void queryClient.invalidateQueries({ queryKey: ["library"] });
+                  if (filesToImport.length > 0) {
+                    setImportFiles(filesToImport);
+                  }
+                }}
+              />
             ) : mainView === "home" ? (
               <HomeView onSelectBook={setSelectedBookId} />
             ) : mainView === "authors" ? (

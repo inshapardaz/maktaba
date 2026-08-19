@@ -1,11 +1,14 @@
 import { useState } from "react";
 import { Alert, Button, Stack, Text, Title } from "@mantine/core";
 import { IconAlertCircle, IconFolderOpen } from "@tabler/icons-react";
-import { openLibrary } from "../api";
+import { listLibraries, openLibrary, resyncLibrary } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
 
 interface LibraryPickerProps {
-  onOpened: (path: string) => void;
+  // filesToImport is non-empty when the picked folder turned out to have loose ebook files
+  // Maktaba should offer to import (see below) - App.tsx opens ImportDialog pre-populated with
+  // them when that happens, otherwise just refreshes as before.
+  onOpened: (path: string, filesToImport: string[]) => void;
 }
 
 export function LibraryPicker({ onOpened }: LibraryPickerProps) {
@@ -23,7 +26,27 @@ export function LibraryPicker({ onOpened }: LibraryPickerProps) {
     setError(null);
     try {
       const info = await openLibrary(folder);
-      onOpened(info.path);
+
+      // The folder just picked may already hold books from a previous run of Maktaba (or a
+      // restored backup) laid out in the on-disk "{Author}/{Title} (id)" structure, or it may
+      // just be a plain folder of loose ebook files, or genuinely empty. Try the cheap,
+      // no-file-copying path first (resync recognizes the existing structure in place); only if
+      // that finds nothing does this fall back to scanning for loose files to hand to the
+      // ImportDialog. Either half failing (a folder with unreadable permissions, etc.) shouldn't
+      // block the library from opening - it just means nothing gets auto-imported this time.
+      let filesToImport: string[] = [];
+      try {
+        const libraries = await listLibraries();
+        const active = libraries.find((entry) => entry.isActive);
+        const bookCount = active ? (await resyncLibrary(active.id)).bookCount : 0;
+        if (bookCount === 0) {
+          filesToImport = await window.maktaba.resolveEbookPaths([folder]);
+        }
+      } catch {
+        // Best-effort - the library is already open at this point regardless.
+      }
+
+      onOpened(info.path, filesToImport);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
