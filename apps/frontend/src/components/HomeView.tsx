@@ -1,9 +1,10 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Box, Button, Center, Group, Image, Progress, Stack, Text, UnstyledButton } from "@mantine/core";
-import { IconPlayerPlay } from "@tabler/icons-react";
-import { coverUrl, listContinueReading, type ContinueReadingBook } from "../api";
+import { IconCircleCheck, IconPlayerPlay } from "@tabler/icons-react";
+import { coverUrl, listContinueReading, updateBookStatus, type ContinueReadingBook } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
 import { useReaderLauncher } from "../ReaderLauncherContext";
+import { invalidateLibraryQueries } from "../queries";
 import { SpineCover } from "./SpineCover";
 
 function SectionLabel({ children }: { children: string }) {
@@ -24,6 +25,7 @@ interface HomeViewProps {
 // requests, so there's a single loading/empty state to handle.
 export function HomeView({ onSelectBook }: HomeViewProps) {
   const { t } = useLanguage();
+  const queryClient = useQueryClient();
   const launchReader = useReaderLauncher();
   const continueReadingQuery = useQuery({ queryKey: ["continueReading"], queryFn: () => listContinueReading(20) });
 
@@ -36,6 +38,18 @@ export function HomeView({ onSelectBook }: HomeViewProps) {
       readingStatus: book.readingStatus,
     });
   };
+
+  // Manual escape hatch alongside the reader's own auto-complete-at-100% (see backend
+  // ReaderDataEndpoints.cs's /progress handler) - for a book the reader considers "done enough"
+  // without ever reporting a clean 100% (e.g. skipping the last page, or a format where percentage
+  // tracking is approximate).
+  const markFinishedMutation = useMutation({
+    mutationFn: (bookId: string) => updateBookStatus(bookId, "Finished"),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["continueReading"] });
+      invalidateLibraryQueries(queryClient);
+    },
+  });
 
   const items = continueReadingQuery.data ?? [];
   const [lastRead, ...rest] = items;
@@ -102,14 +116,21 @@ export function HomeView({ onSelectBook }: HomeViewProps) {
                     {Math.round(lastRead.percentage)}%
                   </Text>
                 </Group>
-                <Button
-                  leftSection={<IconPlayerPlay size={16} />}
-                  onClick={() => resumeBook(lastRead)}
-                  style={{ alignSelf: "flex-start" }}
-                  mt="xs"
-                >
-                  {t("home.resume")}
-                </Button>
+                <Group gap="xs" mt="xs">
+                  <Button leftSection={<IconPlayerPlay size={16} />} onClick={() => resumeBook(lastRead)}>
+                    {t("home.resume")}
+                  </Button>
+                  {lastRead.readingStatus === "Reading" && (
+                    <Button
+                      variant="light"
+                      leftSection={<IconCircleCheck size={16} />}
+                      onClick={() => markFinishedMutation.mutate(lastRead.id)}
+                      loading={markFinishedMutation.isPending && markFinishedMutation.variables === lastRead.id}
+                    >
+                      {t("home.markAsFinished")}
+                    </Button>
+                  )}
+                </Group>
               </Stack>
             </Group>
           </Box>
@@ -160,6 +181,16 @@ export function HomeView({ onSelectBook }: HomeViewProps) {
                     <Progress value={book.percentage} size="sm" w={80} />
                     <Button size="xs" variant="light" leftSection={<IconPlayerPlay size={14} />} onClick={() => resumeBook(book)}>
                       {t("home.resume")}
+                    </Button>
+                    <Button
+                      size="xs"
+                      variant="light"
+                      color="gray"
+                      leftSection={<IconCircleCheck size={14} />}
+                      onClick={() => markFinishedMutation.mutate(book.id)}
+                      loading={markFinishedMutation.isPending && markFinishedMutation.variables === book.id}
+                    >
+                      {t("home.markAsFinished")}
                     </Button>
                   </Group>
                 </Group>

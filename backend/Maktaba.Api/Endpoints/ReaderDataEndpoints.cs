@@ -147,7 +147,13 @@ public static class ReaderDataEndpoints
         group.MapPut("/progress", async (
             string id, SaveReadingProgressRequestDto request, MaktabaDbContext db, CancellationToken ct) =>
         {
-            if (!IdCodec.TryDecode(id, out var bookId) || !await db.Books.AnyAsync(b => b.Id == bookId, ct))
+            if (!IdCodec.TryDecode(id, out var bookId))
+            {
+                return Results.NotFound();
+            }
+
+            var book = await db.Books.FirstOrDefaultAsync(b => b.Id == bookId, ct);
+            if (book is null)
             {
                 return Results.NotFound();
             }
@@ -172,6 +178,16 @@ public static class ReaderDataEndpoints
             if (request.ChapterId is not null) progress.ChapterId = request.ChapterId;
             if (request.Position is { } position) progress.Position = position;
             progress.UpdatedAt = DateTime.UtcNow;
+
+            // Reaching the end of the book marks it Finished automatically, same end state as
+            // picking "Finished" by hand in BookDetailPanel's status dropdown. One-way only: a
+            // later progress ping reporting <100% (e.g. the reader recomputing percentage after a
+            // resize, or the reader reopening at the start) never un-marks a book the user (or
+            // this same check) already finished.
+            if (request.Percentage is >= 100 && book.ReadingStatus != ReadingStatus.Finished)
+            {
+                book.ReadingStatus = ReadingStatus.Finished;
+            }
 
             await db.SaveChangesAsync(ct);
             return Results.NoContent();
