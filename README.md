@@ -70,7 +70,12 @@ App icon: `apps/desktop/build/icon.png` (the Maktaba logo). electron-builder aut
 ## Known issues
 
 - **In-app reader (`@inshapardaz/qari`) needs internet access for two things**, even though everything else in Maktaba is local-first: its PDF rendering loads the `pdf.js` worker script from a jsDelivr CDN by default (override via the `pdfWorkerSrc` prop on `Reader` if self-hosting is needed), and its Nastaliq/Urdu font options load live from `github.com/inshapardaz/urdu-web-fonts`. Both degrade gracefully (EPUB reading and non-Nastaliq fonts still work offline) rather than breaking the reader entirely, but a fully offline setup would need to self-host both.
-- **Apple error message Maktaba is damaged and can't be opened**: On apple silicon running AMD64 build causes to show error message that the "Maktaba is damaged and can't be opened". This is caused by the non-signing of the app with Apple Id. Workaround to that is the run the following command in Terminal after completing installation:
+- **Apple error message "Maktaba is damaged and can't be opened"**: caused by the dmg being unsigned/unnotarized (Gatekeeper quarantines anything downloaded from outside the App Store that isn't signed with an Apple Developer ID). `apps/desktop/package.json`'s `mac` build config and `.github/workflows/release.yml` are already wired up to sign and notarize automatically ​— electron-builder just needs an Apple Developer ID certificate and notarization credentials, which aren't included in this repo. To make future releases signed (and permanently resolve this warning), add these as GitHub Actions repo secrets:
+  - `MAC_CERTIFICATE` — a Developer ID Application certificate exported as a base64-encoded `.p12`
+  - `MAC_CERTIFICATE_PASSWORD` — the `.p12`'s export password
+  - `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` — for notarization (an [app-specific password](https://support.apple.com/en-us/102654), not your Apple ID password)
+
+  Until those secrets are added, releases stay unsigned and the workaround is to run this in Terminal after installing:
 ```sh
 xattr -cr /Applications/Maktaba.app
 ```

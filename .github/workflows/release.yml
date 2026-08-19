@@ -138,10 +138,18 @@ jobs:
       - name: Build and package
         run: npm run ${{ matrix.package_script }}
         env:
-          # No Apple Developer identity is configured for CI dmg builds; skip
-          # electron-builder's automatic keychain signing-identity lookup so
-          # the build doesn't fail trying to find one.
-          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          # Signs + notarizes the mac dmg when an Apple Developer ID certificate and
+          # notarization credentials are configured as repo secrets (see README's "Known
+          # issues" section) - without them, electron-builder falls back to an unsigned
+          # build (same as before) rather than failing, since CSC_IDENTITY_AUTO_DISCOVERY
+          # is only turned on when a cert is actually present. These are scoped to the
+          # macos leg only so a mac cert is never handed to the windows/linux signers.
+          CSC_IDENTITY_AUTO_DISCOVERY: ${{ matrix.platform == 'macos' && secrets.MAC_CERTIFICATE != '' }}
+          CSC_LINK: ${{ matrix.platform == 'macos' && secrets.MAC_CERTIFICATE || '' }}
+          CSC_KEY_PASSWORD: ${{ matrix.platform == 'macos' && secrets.MAC_CERTIFICATE_PASSWORD || '' }}
+          APPLE_ID: ${{ matrix.platform == 'macos' && secrets.APPLE_ID || '' }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ matrix.platform == 'macos' && secrets.APPLE_APP_SPECIFIC_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ matrix.platform == 'macos' && secrets.APPLE_TEAM_ID || '' }}
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4

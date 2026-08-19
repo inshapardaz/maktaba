@@ -74,7 +74,11 @@
           "from": "resources/backend/osx-${arch}",
           "to": "backend"
         }
-      ]
+      ],
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist"
     },
     "dmg": {
       "artifactName": "${productName}-${version}-${arch}.${ext}"
