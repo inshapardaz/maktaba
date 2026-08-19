@@ -1,8 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppShell, Box, Center, Loader, Overlay, Text, Group } from "@mantine/core";
+import { notifications } from "@mantine/notifications";
 import { IconUpload } from "@tabler/icons-react";
-import { getCurrentLibrary, listBooks, updateBookStatus, type BookFilters, type BookSummary } from "./api";
+import {
+  getBook,
+  getCurrentLibrary,
+  listBooks,
+  updateBook,
+  updateBookStatus,
+  type BookEditRequest,
+  type BookFilters,
+  type BookSummary,
+} from "./api";
+import { isBookDrag } from "./bookDrag";
+import type { TranslationKey } from "./i18n/translations";
 import { LibraryPicker } from "./components/LibraryPicker";
 import { LoadingContent } from "./components/BackendGate";
 import { LibrarySpotlight } from "./components/LibrarySpotlight";
@@ -76,6 +88,11 @@ function App() {
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null);
+  // Multi-select for issue #10's drag-onto-sidebar feature - Ctrl/Cmd+click toggles a book in/out,
+  // Shift+click selects the range since lastClickedIndex, a plain click (no modifier) replaces the
+  // selection with just that book and opens it as before (see handleBookClick below).
+  const [selectedBookIds, setSelectedBookIds] = useState<Set<string>>(new Set());
+  const [lastClickedIndex, setLastClickedIndex] = useState<number | null>(null);
   const [isDragActive, setDragActive] = useState(false);
   const [importFiles, setImportFiles] = useState<string[] | null>(null);
   const [inlineReader, setInlineReader] = useState<ReaderRequest | null>(null);
@@ -148,6 +165,109 @@ function App() {
     setGroupFilter(null);
     setMainView("library");
     applyDefaultSort(null);
+  };
+
+  // Ctrl/Cmd+click toggles a book in/out of the multi-selection (used by issue #10's drag-onto-
+  // sidebar feature - see handleDropBooksOnGroup below); Shift+click selects the range since
+  // lastClickedIndex; a plain click replaces the selection with just this book and opens it, same
+  // as every click did before this feature existed.
+  const handleBookClick = (id: string, index: number, event: React.MouseEvent) => {
+    if (event.shiftKey && lastClickedIndex !== null) {
+      const [start, end] = [lastClickedIndex, index].sort((a, b) => a - b);
+      const rangeIds = sortedBooks.slice(start, end + 1).map((b) => b.id);
+      setSelectedBookIds((prev) => new Set([...prev, ...rangeIds]));
+      return;
+    }
+    if (event.ctrlKey || event.metaKey) {
+      setSelectedBookIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(id)) {
+          next.delete(id);
+        } else {
+          next.add(id);
+        }
+        return next;
+      });
+      setLastClickedIndex(index);
+      return;
+    }
+    setSelectedBookIds(new Set());
+    setLastClickedIndex(index);
+    setSelectedBookId(id);
+  };
+
+  const dragDropMessageKey: Record<
+    "authorId" | "seriesId" | "tagId" | "collectionId",
+    { one: TranslationKey; other: TranslationKey }
+  > = {
+    authorId: { one: "dragDrop.author_one", other: "dragDrop.author_other" },
+    seriesId: { one: "dragDrop.series_one", other: "dragDrop.series_other" },
+    tagId: { one: "dragDrop.tag_one", other: "dragDrop.tag_other" },
+    collectionId: { one: "dragDrop.collection_one", other: "dragDrop.collection_other" },
+  };
+
+  // Drop-to-edit (issue #10): dragging a book (or the active multi-selection) from the grid/list
+  // onto a sidebar Authors/Series/Tags/Collections row applies that edit to every dropped book.
+  // Fetches each book's current full detail first and PUTs it back with just the one field
+  // changed, since the edit endpoint (same one BookEditForm uses) is a full replace, not an
+  // incremental patch. Author adds alongside existing authors (a book can have co-authors);
+  // series replaces (a book has at most one); tag/collection both add.
+  const handleDropBooksOnGroup = async (
+    kind: "authorId" | "seriesId" | "tagId" | "collectionId",
+    target: { id: string; name: string },
+    bookIds: string[],
+  ) => {
+    const results = await Promise.allSettled(
+      bookIds.map(async (bookId) => {
+        const book = await getBook(bookId);
+        const edit: BookEditRequest = {
+          title: book.title,
+          authors: book.authors,
+          language: book.language,
+          publisher: book.publisher,
+          publishedDate: book.datePublished,
+          description: book.description,
+          rating: book.rating,
+          seriesName: book.seriesName,
+          seriesIndex: book.seriesIndex,
+          tags: book.tags,
+          collectionIds: book.collections.map((c) => c.id),
+        };
+
+        if (kind === "authorId") {
+          if (!edit.authors.includes(target.name)) edit.authors = [...edit.authors, target.name];
+        } else if (kind === "seriesId") {
+          // Only reset when actually changing series - re-dropping a book onto the series it's
+          // already in would otherwise silently wipe its existing seriesIndex for no reason.
+          if (edit.seriesName !== target.name) {
+            edit.seriesName = target.name;
+            edit.seriesIndex = null;
+          }
+        } else if (kind === "tagId") {
+          if (!edit.tags.includes(target.name)) edit.tags = [...edit.tags, target.name];
+        } else {
+          if (!edit.collectionIds.includes(target.id)) edit.collectionIds = [...edit.collectionIds, target.id];
+        }
+
+        await updateBook(bookId, edit);
+      }),
+    );
+
+    invalidateLibraryQueries(queryClient);
+    void queryClient.invalidateQueries({ queryKey: ["book"] });
+    setSelectedBookIds(new Set());
+
+    const failed = results.filter((r) => r.status === "rejected").length;
+    const succeeded = bookIds.length - failed;
+    const keys = dragDropMessageKey[kind];
+    notifications.show({
+      color: failed > 0 ? "yellow" : "green",
+      title: target.name,
+      message:
+        failed > 0
+          ? t("dragDrop.partialFailure", { done: succeeded, total: bookIds.length })
+          : t(succeeded === 1 ? keys.one : keys.other, { count: succeeded, name: target.name }),
+    });
   };
 
   // The Spotlight's "Search for '…'" action - a full-text search is a fresh start, so it clears
@@ -229,13 +349,26 @@ function App() {
       onDragOver={
         hasLibrary
           ? (e) => {
+              // A book being dragged onto a sidebar group row (issue #10) is not a file import -
+              // skip so the "Drop EPUB/PDF files to import" overlay doesn't cover the sidebar
+              // while that drag is in progress. Sidebar's own rows still get their drop handling
+              // independently (each nested element's dragover/drop fires regardless of what an
+              // ancestor's handler does).
+              if (isBookDrag(e)) return;
               e.preventDefault();
               setDragActive(true);
             }
           : undefined
       }
       onDragLeave={hasLibrary ? () => setDragActive(false) : undefined}
-      onDrop={hasLibrary ? handleDrop : undefined}
+      onDrop={
+        hasLibrary
+          ? (e) => {
+              if (isBookDrag(e)) return;
+              handleDrop(e);
+            }
+          : undefined
+      }
     >
       <ReaderLauncherProvider launch={launchReader}>
         {/* AppShell.Navbar positions itself relative to the viewport (fixed), not to whatever DOM
@@ -276,6 +409,7 @@ function App() {
                 onOpenPublishers={() => setMainView("publishers")}
                 onOpenSettings={() => setSettingsOpen(true)}
                 onLibraryChanged={handleLibraryChanged}
+                onDropBooks={handleDropBooksOnGroup}
               />
             </AppShell.Navbar>
           )}
@@ -339,9 +473,9 @@ function App() {
 
                 {sortedBooks.length > 0 &&
                   (viewMode === "grid" ? (
-                    <BookGrid books={sortedBooks} onSelect={setSelectedBookId} />
+                    <BookGrid books={sortedBooks} selectedIds={selectedBookIds} onSelect={handleBookClick} />
                   ) : (
-                    <BookList books={sortedBooks} onSelect={setSelectedBookId} />
+                    <BookList books={sortedBooks} selectedIds={selectedBookIds} onSelect={handleBookClick} />
                   ))}
               </>
             )}

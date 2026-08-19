@@ -85,6 +85,16 @@ const en = {
   "collectionsView.bookCount_one": "{count} book",
   "collectionsView.bookCount_other": "{count} books",
 
+  "dragDrop.author_one": '"{name}" added as author to {count} book',
+  "dragDrop.author_other": '"{name}" added as author to {count} books',
+  "dragDrop.series_one": 'Series set to "{name}" for {count} book',
+  "dragDrop.series_other": 'Series set to "{name}" for {count} books',
+  "dragDrop.tag_one": 'Tag "{name}" added to {count} book',
+  "dragDrop.tag_other": 'Tag "{name}" added to {count} books',
+  "dragDrop.collection_one": 'Added {count} book to "{name}"',
+  "dragDrop.collection_other": 'Added {count} books to "{name}"',
+  "dragDrop.partialFailure": "Updated {done} of {total} books - some failed",
+
   "filterBar.allFormats": "All formats",
   "filterBar.anyRating": "Any rating",
   "filterBar.searchTerm": 'Search: "{query}"',
@@ -329,6 +339,16 @@ const ur: TranslationDict = {
   "collectionsView.confirmDelete": "یہ مجموعہ حذف کریں؟ کتابیں آپ کی لائبریری میں رہیں گی۔",
   "collectionsView.bookCount_one": "{count} کتاب",
   "collectionsView.bookCount_other": "{count} کتابیں",
+
+  "dragDrop.author_one": '"{name}" کو {count} کتاب کے مصنف کے طور پر شامل کر دیا گیا',
+  "dragDrop.author_other": '"{name}" کو {count} کتابوں کے مصنف کے طور پر شامل کر دیا گیا',
+  "dragDrop.series_one": '{count} کتاب کے لیے سیریز "{name}" مقرر کر دی گئی',
+  "dragDrop.series_other": '{count} کتابوں کے لیے سیریز "{name}" مقرر کر دی گئی',
+  "dragDrop.tag_one": 'ٹیگ "{name}" کو {count} کتاب میں شامل کر دیا گیا',
+  "dragDrop.tag_other": 'ٹیگ "{name}" کو {count} کتابوں میں شامل کر دیا گیا',
+  "dragDrop.collection_one": '{count} کتاب "{name}" میں شامل کر دی گئی',
+  "dragDrop.collection_other": '{count} کتابیں "{name}" میں شامل کر دی گئیں',
+  "dragDrop.partialFailure": "{total} میں سے {done} کتابیں اپ ڈیٹ ہوئیں - کچھ ناکام رہیں",
 
   "filterBar.allFormats": "تمام فارمیٹس",
   "filterBar.anyRating": "کوئی بھی درجہ بندی",

@@ -38,6 +38,7 @@ import {
   listTags,
   type BrowseGroup,
 } from "../api";
+import { isBookDrag, readBookDragIds } from "../bookDrag";
 import { useLanguage } from "../i18n/LanguageContext";
 import { LANGUAGES } from "../i18n/translations";
 import { LibrarySwitcher } from "./LibrarySwitcher";
@@ -75,13 +76,23 @@ interface SidebarProps {
   onOpenPublishers: () => void;
   onOpenSettings: () => void;
   onLibraryChanged: () => void;
+  // Issue #10: dragging a book (or the active multi-selection) from the grid/list onto an
+  // Author/Series/Tag/Collection row here applies that edit - see App.tsx's
+  // handleDropBooksOnGroup, which is what actually calls the edit endpoint per book.
+  onDropBooks: (
+    kind: "authorId" | "seriesId" | "tagId" | "collectionId",
+    target: { id: string; name: string },
+    bookIds: string[],
+  ) => void;
 }
 
-function sectionRowStyles(isActive: boolean) {
+function sectionRowStyles(isActive: boolean, dragOver = false) {
   return {
     root: {
       borderRadius: "var(--mantine-radius-sm)",
-      ...(isActive
+      outline: dragOver ? "2px solid var(--mantine-primary-color-6)" : "2px solid transparent",
+      outlineOffset: -2,
+      ...(isActive || dragOver
         ? {
           backgroundColor: "var(--mantine-primary-color-0)",
           color: "var(--mantine-primary-color-7)",
@@ -111,6 +122,7 @@ function GroupSection({
   onSelect,
   groups,
   action,
+  onDropBooks,
 }: {
   title: string;
   kind: GroupFilterKind;
@@ -119,7 +131,13 @@ function GroupSection({
   onSelect: (filter: GroupFilter | null) => void;
   groups: BrowseGroup[] | undefined;
   action?: React.ReactNode;
+  // Only passed for Authors/Series/Tags/Collections (see Sidebar's own onDropBooks prop) - issue
+  // #10's "drag a book from the grid/list onto a sidebar row to edit it" feature. Undefined here
+  // (Publishers/reading-status rows don't get one) just means these rows aren't drop targets.
+  onDropBooks?: (target: { id: string; name: string }, bookIds: string[]) => void;
 }) {
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+
   return (
     <Box py="sm" px={4}>
       <SectionTitle action={action}>{title}</SectionTitle>
@@ -132,6 +150,27 @@ function GroupSection({
             leftSection={<RowIcon size={16} stroke={1.5} />}
             active={isActive}
             onClick={() => onSelect(isActive ? null : { kind, id: group.id, name: group.name })}
+            onDragOver={
+              onDropBooks &&
+              ((event) => {
+                if (!isBookDrag(event)) return;
+                event.preventDefault();
+                event.dataTransfer.dropEffect = "copy";
+                setDragOverId(group.id);
+              })
+            }
+            onDragLeave={onDropBooks && (() => setDragOverId((id) => (id === group.id ? null : id)))}
+            onDrop={
+              onDropBooks &&
+              ((event) => {
+                event.preventDefault();
+                setDragOverId(null);
+                const bookIds = readBookDragIds(event);
+                if (bookIds && bookIds.length > 0) {
+                  onDropBooks({ id: group.id, name: group.name }, bookIds);
+                }
+              })
+            }
             rightSection={
               <Badge size="sm" variant="light" color="gray">
                 {group.bookCount}
@@ -139,7 +178,7 @@ function GroupSection({
             }
             px="md"
             py={5}
-            styles={sectionRowStyles(isActive)}
+            styles={sectionRowStyles(isActive, dragOverId === group.id)}
           />
         );
       })}
@@ -159,6 +198,7 @@ export function Sidebar({
   onOpenPublishers,
   onOpenSettings,
   onLibraryChanged,
+  onDropBooks,
 }: SidebarProps) {
   const { t, language, setLanguage } = useLanguage();
   const { setColorScheme } = useMantineColorScheme();
@@ -311,6 +351,7 @@ export function Sidebar({
                   {seeAllAction(onOpenCollections)}
                 </Group>
               }
+              onDropBooks={(target, bookIds) => onDropBooks("collectionId", target, bookIds)}
             />
           )}
           {browseSection === "authors" && (
@@ -322,6 +363,7 @@ export function Sidebar({
               onSelect={onSelect}
               groups={byBookCount(authorsQuery.data)}
               action={seeAllAction(onOpenAuthors)}
+              onDropBooks={(target, bookIds) => onDropBooks("authorId", target, bookIds)}
             />
           )}
           {browseSection === "series" && (
@@ -333,6 +375,7 @@ export function Sidebar({
               onSelect={onSelect}
               groups={byBookCount(seriesQuery.data)}
               action={seeAllAction(onOpenSeries)}
+              onDropBooks={(target, bookIds) => onDropBooks("seriesId", target, bookIds)}
             />
           )}
           {browseSection === "tags" && (
@@ -344,6 +387,7 @@ export function Sidebar({
               onSelect={onSelect}
               groups={byBookCount(tagsQuery.data)}
               action={seeAllAction(onOpenTags)}
+              onDropBooks={(target, bookIds) => onDropBooks("tagId", target, bookIds)}
             />
           )}
           {browseSection === "publishers" && (

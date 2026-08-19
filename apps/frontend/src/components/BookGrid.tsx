@@ -3,6 +3,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { ActionIcon, Badge, Box, Group, Image, Loader, Text, Tooltip, UnstyledButton } from "@mantine/core";
 import { IconBook2, IconEdit, IconInfoCircle } from "@tabler/icons-react";
 import { coverUrl, getBook, pickPreferredReadFile, type BookSummary } from "../api";
+import { setBookDragData } from "../bookDrag";
 import { useLanguage } from "../i18n/LanguageContext";
 import { useReaderLauncher } from "../ReaderLauncherContext";
 import { READING_STATUS_COLOR, READING_STATUS_LABEL_KEY } from "../readingStatus";
@@ -11,7 +12,8 @@ import { SpineCover } from "./SpineCover";
 
 interface BookGridProps {
   books: BookSummary[];
-  onSelect: (id: string) => void;
+  selectedIds: Set<string>;
+  onSelect: (id: string, index: number, event: React.MouseEvent) => void;
 }
 
 const CARD_WIDTH = 160;
@@ -21,11 +23,17 @@ const GAP = 20;
 
 interface BookCardProps {
   book: BookSummary;
-  onSelect: (id: string) => void;
+  index: number;
+  selected: boolean;
+  // The full multi-selection to drag when this card is part of it (see App.tsx's handleBookClick) -
+  // dragging a card that isn't currently selected drags just that one book instead, regardless of
+  // whatever else happens to be selected.
+  selectedIds: Set<string>;
+  onSelect: (id: string, index: number, event: React.MouseEvent) => void;
   onEdit: (id: string) => void;
 }
 
-function BookCard({ book, onSelect, onEdit }: BookCardProps) {
+function BookCard({ book, index, selected, selectedIds, onSelect, onEdit }: BookCardProps) {
   const { t } = useLanguage();
   const launchReader = useReaderLauncher();
   const [hovered, setHovered] = useState(false);
@@ -54,9 +62,19 @@ function BookCard({ book, onSelect, onEdit }: BookCardProps) {
   return (
     <UnstyledButton
       w={CARD_WIDTH}
-      onClick={() => onSelect(book.id)}
+      draggable
+      onDragStart={(event) => {
+        const ids = selected && selectedIds.size > 1 ? Array.from(selectedIds) : [book.id];
+        setBookDragData(event, ids);
+      }}
+      onClick={(event) => onSelect(book.id, index, event)}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      style={{
+        borderRadius: "var(--mantine-radius-sm)",
+        outline: selected ? "2px solid var(--mantine-primary-color-6)" : "2px solid transparent",
+        outlineOffset: 2,
+      }}
     >
       <Box pos="relative">
         {book.hasCover ? (
@@ -121,7 +139,7 @@ function BookCard({ book, onSelect, onEdit }: BookCardProps) {
                 color="gray"
                 onClick={(event) => {
                   event.stopPropagation();
-                  onSelect(book.id);
+                  onSelect(book.id, index, event);
                 }}
               >
                 <IconInfoCircle size={18} />
@@ -154,7 +172,7 @@ function BookCard({ book, onSelect, onEdit }: BookCardProps) {
   );
 }
 
-export function BookGrid({ books, onSelect }: BookGridProps) {
+export function BookGrid({ books, selectedIds, onSelect }: BookGridProps) {
   const parentRef = useRef<HTMLDivElement>(null);
   const [columnCount, setColumnCount] = useState(1);
   const [editingBookId, setEditingBookId] = useState<string | null>(null);
@@ -204,8 +222,16 @@ export function BookGrid({ books, onSelect }: BookGridProps) {
                 gap: GAP,
               }}
             >
-              {rowBooks.map((book) => (
-                <BookCard key={book.id} book={book} onSelect={onSelect} onEdit={setEditingBookId} />
+              {rowBooks.map((book, colIndex) => (
+                <BookCard
+                  key={book.id}
+                  book={book}
+                  index={rowStart + colIndex}
+                  selected={selectedIds.has(book.id)}
+                  selectedIds={selectedIds}
+                  onSelect={onSelect}
+                  onEdit={setEditingBookId}
+                />
               ))}
             </Box>
           );

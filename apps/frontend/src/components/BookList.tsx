@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ActionIcon, Badge, Box, Group, Image, Loader, Table, Tooltip } from "@mantine/core";
 import { IconBook2, IconEdit } from "@tabler/icons-react";
 import { coverUrl, getBook, pickPreferredReadFile, type BookSummary } from "../api";
+import { setBookDragData } from "../bookDrag";
 import { useLanguage } from "../i18n/LanguageContext";
 import { useReaderLauncher } from "../ReaderLauncherContext";
 import { READING_STATUS_COLOR, READING_STATUS_LABEL_KEY } from "../readingStatus";
@@ -13,19 +14,25 @@ const THUMB_HEIGHT = 40;
 
 interface BookListProps {
   books: BookSummary[];
-  onSelect: (id: string) => void;
+  selectedIds: Set<string>;
+  onSelect: (id: string, index: number, event: React.MouseEvent) => void;
 }
 
 interface BookRowProps {
   book: BookSummary;
-  onSelect: (id: string) => void;
+  index: number;
+  selected: boolean;
+  // See BookGrid.tsx's BookCard - the full multi-selection drags together only when this row is
+  // part of it, otherwise dragging a row drags just that one book.
+  selectedIds: Set<string>;
+  onSelect: (id: string, index: number, event: React.MouseEvent) => void;
   onEdit: (id: string) => void;
 }
 
 // A row's own component (rather than inlining the .map body) so its Read action can hold its own
 // loading state, same reasoning as BookGrid.tsx's BookCard - fetching the book detail to resolve
 // which file to open is async, and without a per-row flag a rapid double-click would fire it twice.
-function BookRow({ book, onSelect, onEdit }: BookRowProps) {
+function BookRow({ book, index, selected, selectedIds, onSelect, onEdit }: BookRowProps) {
   const { t, language } = useLanguage();
   const launchReader = useReaderLauncher();
   const [loadingRead, setLoadingRead] = useState(false);
@@ -51,7 +58,18 @@ function BookRow({ book, onSelect, onEdit }: BookRowProps) {
   };
 
   return (
-    <Table.Tr onClick={() => onSelect(book.id)} style={{ cursor: "pointer" }}>
+    <Table.Tr
+      draggable
+      onDragStart={(event) => {
+        const ids = selected && selectedIds.size > 1 ? Array.from(selectedIds) : [book.id];
+        setBookDragData(event, ids);
+      }}
+      onClick={(event) => onSelect(book.id, index, event)}
+      style={{
+        cursor: "pointer",
+        backgroundColor: selected ? "var(--mantine-primary-color-light)" : undefined,
+      }}
+    >
       <Table.Td fw={600}>
         <Group gap="sm" wrap="nowrap">
           {book.hasCover ? (
@@ -119,7 +137,7 @@ function BookRow({ book, onSelect, onEdit }: BookRowProps) {
   );
 }
 
-export function BookList({ books, onSelect }: BookListProps) {
+export function BookList({ books, selectedIds, onSelect }: BookListProps) {
   const { t } = useLanguage();
   const [editingBookId, setEditingBookId] = useState<string | null>(null);
 
@@ -145,8 +163,16 @@ export function BookList({ books, onSelect }: BookListProps) {
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
-          {books.map((book) => (
-            <BookRow key={book.id} book={book} onSelect={onSelect} onEdit={setEditingBookId} />
+          {books.map((book, index) => (
+            <BookRow
+              key={book.id}
+              book={book}
+              index={index}
+              selected={selectedIds.has(book.id)}
+              selectedIds={selectedIds}
+              onSelect={onSelect}
+              onEdit={setEditingBookId}
+            />
           ))}
         </Table.Tbody>
       </Table>
