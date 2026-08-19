@@ -165,6 +165,7 @@ const en = {
   "app.noResults": "No books match these filters.",
   "app.emptyLibrary": 'No books yet. Click "Import Book(s)" or drag EPUB/PDF files onto this window.',
   "app.dropToImport": "Drop EPUB/PDF files to import",
+  "app.loading": "Loading…",
 
   "settings.title": "Settings",
   "settings.libraries": "Libraries",
@@ -393,6 +394,7 @@ const ur: TranslationDict = {
   "app.noResults": "کوئی کتاب ان فلٹرز سے مطابقت نہیں رکھتی۔",
   "app.emptyLibrary": '"کتاب درآمد کریں" پر کلک کریں یا EPUB/PDF فائلیں اس ونڈو پر گھسیٹ لائیں۔ ابھی کوئی کتاب موجود نہیں۔',
   "app.dropToImport": "درآمد کرنے کے لیے EPUB/PDF فائلیں یہاں چھوڑیں",
+  "app.loading": "لوڈ ہو رہا ہے…",
 
   "settings.title": "ترتیبات",
   "settings.libraries": "لائبریریاں",

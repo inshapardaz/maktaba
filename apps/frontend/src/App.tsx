@@ -4,6 +4,7 @@ import { AppShell, Box, Center, Loader, Overlay, Text, Group } from "@mantine/co
 import { IconUpload } from "@tabler/icons-react";
 import { getCurrentLibrary, listBooks, updateBookStatus, type BookFilters, type BookSummary } from "./api";
 import { LibraryPicker } from "./components/LibraryPicker";
+import { LoadingContent } from "./components/BackendGate";
 import { LibrarySpotlight } from "./components/LibrarySpotlight";
 import { BookGrid } from "./components/BookGrid";
 import { BookList } from "./components/BookList";
@@ -278,9 +279,7 @@ function App() {
 
           <AppShell.Main style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
             {libraryQuery.isLoading ? (
-              <Center style={{ flex: 1 }}>
-                <Loader />
-              </Center>
+              <LoadingContent message={t("app.loading")} />
             ) : !hasLibrary ? (
               <LibraryPicker onOpened={() => void queryClient.invalidateQueries({ queryKey: ["library"] })} />
             ) : mainView === "home" ? (

@@ -35,6 +35,21 @@ function LoadingTitleBar() {
   );
 }
 
+// The logo + spinner + message look used for every full-screen "the app is doing something before
+// there's anything to show yet" state - the starting state below, and App.tsx's own library-check
+// spinner (shown right after this component hands off to it). Factored out so those two moments
+// look like one continuous loading sequence instead of a branded screen suddenly dropping to a
+// bare spinner.
+export function LoadingContent({ message }: { message: string }) {
+  return (
+    <Stack align="center" justify="center" style={{ flex: 1 }} gap="md">
+      <img src="icon.png" alt="" width={72} height={72} style={{ borderRadius: 16 }} />
+      <Loader />
+      <Text c="dimmed">{message}</Text>
+    </Stack>
+  );
+}
+
 // Gates rendering of the real app (or reader window) until the Maktaba.Api sidecar (spawned by
 // Electron's main process alongside this window — see apps/desktop/src/main.ts's initSidecar)
 // answers its health check. Every window queries the current status on mount and subscribes to
@@ -86,11 +101,7 @@ export function BackendGate({ children, showTitleBar }: { children: ReactNode; s
     return (
       <Stack h="100vh" gap={0}>
         {showTitleBar && <LoadingTitleBar />}
-        <Stack align="center" justify="center" style={{ flex: 1 }} gap="md">
-          <img src="icon.png" alt="" width={72} height={72} style={{ borderRadius: 16 }} />
-          <Loader />
-          <Text c="dimmed">{t("backend.starting")}</Text>
-        </Stack>
+        <LoadingContent message={t("backend.starting")} />
       </Stack>
     );
   }
