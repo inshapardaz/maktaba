@@ -16,6 +16,7 @@ import {
 } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  IconBuildingStore,
   IconCheck,
   IconFolder,
   IconFolderOpen,
@@ -28,12 +29,20 @@ import {
   IconUser,
 } from "@tabler/icons-react";
 import type { Icon } from "@tabler/icons-react";
-import { createCollection, listAuthors, listCollections, listSeries, listTags, type BrowseGroup } from "../api";
+import {
+  createCollection,
+  listAuthors,
+  listCollections,
+  listPublisherGroups,
+  listSeries,
+  listTags,
+  type BrowseGroup,
+} from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
 import { LANGUAGES } from "../i18n/translations";
 import { LibrarySwitcher } from "./LibrarySwitcher";
 
-export type GroupFilterKind = "authorId" | "seriesId" | "tagId" | "collectionId" | "readingStatus";
+export type GroupFilterKind = "authorId" | "seriesId" | "tagId" | "collectionId" | "publisher" | "readingStatus";
 
 export interface GroupFilter {
   kind: GroupFilterKind;
@@ -41,9 +50,9 @@ export interface GroupFilter {
   name: string;
 }
 
-export type MainView = "home" | "library" | "authors" | "collections" | "tags" | "series";
+export type MainView = "home" | "library" | "authors" | "collections" | "tags" | "series" | "publishers";
 
-type BrowseSection = "collections" | "authors" | "series" | "tags";
+type BrowseSection = "collections" | "authors" | "series" | "tags" | "publishers";
 
 // Sorted, uncapped — the sidebar's own ScrollArea (see the `browseSection` ScrollArea below)
 // handles a library with hundreds of authors/collections by scrolling rather than truncating.
@@ -63,6 +72,7 @@ interface SidebarProps {
   onOpenCollections: () => void;
   onOpenTags: () => void;
   onOpenSeries: () => void;
+  onOpenPublishers: () => void;
   onOpenSettings: () => void;
   onLibraryChanged: () => void;
 }
@@ -146,6 +156,7 @@ export function Sidebar({
   onOpenCollections,
   onOpenTags,
   onOpenSeries,
+  onOpenPublishers,
   onOpenSettings,
   onLibraryChanged,
 }: SidebarProps) {
@@ -154,6 +165,7 @@ export function Sidebar({
   const computedColorScheme = useComputedColorScheme("light");
   const queryClient = useQueryClient();
   const authorsQuery = useQuery({ queryKey: ["authors"], queryFn: listAuthors });
+  const publishersQuery = useQuery({ queryKey: ["publisherGroups"], queryFn: listPublisherGroups });
   const seriesQuery = useQuery({ queryKey: ["series"], queryFn: listSeries });
   const tagsQuery = useQuery({ queryKey: ["tags"], queryFn: listTags });
   const collectionsQuery = useQuery({ queryKey: ["collections"], queryFn: listCollections });
@@ -245,6 +257,7 @@ export function Sidebar({
     collections: "collectionId",
     series: "seriesId",
     tags: "tagId",
+    publishers: "publisher",
   };
 
   const sections: { key: BrowseSection; icon: Icon; label: string; active: boolean }[] = [
@@ -252,6 +265,7 @@ export function Sidebar({
     { key: "collections", icon: IconFolder, label: t("sidebar.collections"), active: activeFilter?.kind === sectionFilterKind.collections },
     { key: "series", icon: IconStack2, label: t("sidebar.series"), active: activeFilter?.kind === sectionFilterKind.series },
     { key: "tags", icon: IconTag, label: t("sidebar.tags"), active: activeFilter?.kind === sectionFilterKind.tags },
+    { key: "publishers", icon: IconBuildingStore, label: t("sidebar.publishers"), active: activeFilter?.kind === sectionFilterKind.publishers },
   ];
 
   return (
@@ -330,6 +344,17 @@ export function Sidebar({
               onSelect={onSelect}
               groups={byBookCount(tagsQuery.data)}
               action={seeAllAction(onOpenTags)}
+            />
+          )}
+          {browseSection === "publishers" && (
+            <GroupSection
+              title={t("sidebar.publishers")}
+              kind="publisher"
+              icon={IconBuildingStore}
+              activeFilter={activeFilter}
+              onSelect={onSelect}
+              groups={byBookCount(publishersQuery.data)}
+              action={seeAllAction(onOpenPublishers)}
             />
           )}
         </ScrollArea>

@@ -74,6 +74,7 @@ export interface BookFilters {
   seriesId?: string;
   tagId?: string;
   collectionId?: string;
+  publisher?: string;
   readingStatus?: ReadingStatus;
   format?: string;
   minRating?: number;
@@ -192,6 +193,7 @@ export function listBooks(filters: BookFilters = {}): Promise<BookSummary[]> {
   if (filters.seriesId) params.set("seriesId", filters.seriesId);
   if (filters.tagId) params.set("tagId", filters.tagId);
   if (filters.collectionId) params.set("collectionId", filters.collectionId);
+  if (filters.publisher) params.set("publisher", filters.publisher);
   if (filters.readingStatus) params.set("readingStatus", filters.readingStatus);
   if (filters.format) params.set("format", filters.format);
   if (filters.minRating) params.set("minRating", String(filters.minRating));
@@ -319,6 +321,12 @@ export function listCollections(): Promise<BrowseGroup[]> {
 // unlike Authors/Series/Tags, Publisher isn't its own entity, so there's no BrowseGroup id/count.
 export function listPublishers(): Promise<string[]> {
   return request<string[]>("/api/publishers");
+}
+
+// Same publishers, grouped with book counts for the sidebar's "browse by publisher" section - the
+// publisher name itself doubles as the BrowseGroup's id (see backend BrowseEndpoints.cs).
+export function listPublisherGroups(): Promise<BrowseGroup[]> {
+  return request<BrowseGroup[]>("/api/publishers/grouped");
 }
 
 export function createCollection(name: string): Promise<BrowseGroup> {

@@ -17,6 +17,7 @@ import { AuthorsView } from "./components/AuthorsView";
 import { CollectionsView } from "./components/CollectionsView";
 import { TagsView } from "./components/TagsView";
 import { SeriesView } from "./components/SeriesView";
+import { PublishersView } from "./components/PublishersView";
 import { FilterBar, type SortDirection, type SortKey, type ViewMode } from "./components/FilterBar";
 import { ImportDialog } from "./components/ImportDialog";
 import { SettingsScreen } from "./components/SettingsScreen";
@@ -93,6 +94,7 @@ function App() {
     seriesId: groupFilter?.kind === "seriesId" ? groupFilter.id : undefined,
     tagId: groupFilter?.kind === "tagId" ? groupFilter.id : undefined,
     collectionId: groupFilter?.kind === "collectionId" ? groupFilter.id : undefined,
+    publisher: groupFilter?.kind === "publisher" ? groupFilter.id : undefined,
     readingStatus: groupFilter?.kind === "readingStatus" ? (groupFilter.id as BookFilters["readingStatus"]) : undefined,
   };
 
@@ -271,6 +273,7 @@ function App() {
                 onOpenCollections={() => setMainView("collections")}
                 onOpenTags={() => setMainView("tags")}
                 onOpenSeries={() => setMainView("series")}
+                onOpenPublishers={() => setMainView("publishers")}
                 onOpenSettings={() => setSettingsOpen(true)}
                 onLibraryChanged={handleLibraryChanged}
               />
@@ -292,6 +295,8 @@ function App() {
               <TagsView onSelect={handleSelectFilter} onBack={() => setMainView("library")} />
             ) : mainView === "series" ? (
               <SeriesView onSelect={handleSelectFilter} onBack={() => setMainView("library")} />
+            ) : mainView === "publishers" ? (
+              <PublishersView onSelect={handleSelectFilter} onBack={() => setMainView("library")} />
             ) : (
               <>
                 <FilterBar

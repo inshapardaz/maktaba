@@ -77,7 +77,9 @@ export function FilterBar({
           ? t("sidebar.tags")
           : groupFilter.kind === "collectionId"
             ? t("sidebar.collections")
-            : t("sidebar.readingStatus"));
+            : groupFilter.kind === "publisher"
+              ? t("sidebar.publishers")
+              : t("sidebar.readingStatus"));
 
   const formatOptions = [
     { value: "", label: t("filterBar.allFormats") },

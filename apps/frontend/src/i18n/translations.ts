@@ -47,6 +47,7 @@ const en = {
   "sidebar.series": "Series",
   "sidebar.tags": "Tags",
   "sidebar.collections": "Collections",
+  "sidebar.publishers": "Publishers",
   "sidebar.seeAll": "See all",
   "sidebar.readingStatus": "Reading status",
   "sidebar.collapse": "Collapse sidebar",
@@ -60,6 +61,10 @@ const en = {
   "authorsView.searchPlaceholder": "Search authors…",
   "authorsView.empty": "No authors found.",
   "authorsView.rename": "Rename author",
+
+  "publishersView.title": "Publishers",
+  "publishersView.searchPlaceholder": "Search publishers…",
+  "publishersView.empty": "No publishers found.",
 
   "tagsView.title": "Tags",
   "tagsView.searchPlaceholder": "Search tags…",
@@ -280,6 +285,7 @@ const ur: TranslationDict = {
   "sidebar.series": "سیریز",
   "sidebar.tags": "ٹیگز",
   "sidebar.collections": "مجموعے",
+  "sidebar.publishers": "ناشرین",
   "sidebar.seeAll": "سب دیکھیں",
   "sidebar.readingStatus": "مطالعے کی حیثیت",
   "sidebar.collapse": "سائیڈبار سکیڑیں",
@@ -293,6 +299,10 @@ const ur: TranslationDict = {
   "authorsView.searchPlaceholder": "مصنفین تلاش کریں…",
   "authorsView.empty": "کوئی مصنف نہیں ملا۔",
   "authorsView.rename": "مصنف کا نام تبدیل کریں",
+
+  "publishersView.title": "ناشرین",
+  "publishersView.searchPlaceholder": "ناشرین تلاش کریں…",
+  "publishersView.empty": "کوئی ناشر نہیں ملا۔",
 
   "tagsView.title": "ٹیگز",
   "tagsView.searchPlaceholder": "ٹیگز تلاش کریں…",

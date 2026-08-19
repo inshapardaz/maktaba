@@ -23,7 +23,8 @@ public static class BookEndpoints
             string? collectionId,
             string? readingStatus,
             string? format,
-            int? minRating) =>
+            int? minRating,
+            string? publisher) =>
         {
             var root = libraryPath.LibraryRootPath!;
 
@@ -60,6 +61,13 @@ public static class BookEndpoints
             {
                 var cId = IdCodec.TryDecode(collectionId, out var decoded) ? decoded : -1;
                 query = query.Where(b => b.BookCollections.Any(bc => bc.CollectionId == cId));
+            }
+
+            // Unlike authorId/seriesId/etc., Publisher is a plain string column (see
+            // BrowseEndpoints.cs's /api/publishers) - matched directly rather than decoded via IdCodec.
+            if (!string.IsNullOrEmpty(publisher))
+            {
+                query = query.Where(b => b.Publisher == publisher);
             }
 
             if (Enum.TryParse<ReadingStatus>(readingStatus, ignoreCase: true, out var parsedStatus))

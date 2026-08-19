@@ -59,6 +59,22 @@ public static class BrowseEndpoints
             return Results.Ok(publishers);
         });
 
+        // Distinct publishers with book counts, for the sidebar's "browse by publisher" section -
+        // same shape as authors/series/tags above so the frontend can treat it as just another
+        // BrowseGroup, but grouped straight off the string column rather than a join table. The
+        // publisher name itself doubles as the "id" (there's no int primary key to encode/decode),
+        // which is why /api/books' publisher filter matches it directly rather than via IdCodec.
+        app.MapGet("/api/publishers/grouped", async (MaktabaDbContext db) =>
+        {
+            var publishers = await db.Books
+                .Where(b => b.Publisher != null && b.Publisher != "")
+                .GroupBy(b => b.Publisher!)
+                .Select(g => new { Name = g.Key, Count = g.Count() })
+                .OrderBy(p => p.Name)
+                .ToListAsync();
+            return Results.Ok(publishers.Select(p => new BrowseGroupDto(p.Name, p.Name, p.Count)));
+        });
+
         app.MapGet("/api/reading-statuses", async (MaktabaDbContext db) =>
         {
             var counts = await db.Books
