@@ -200,6 +200,13 @@ export function listBooks(filters: BookFilters = {}): Promise<BookSummary[]> {
   return request<BookSummary[]>(`/api/books${query ? `?${query}` : ""}`);
 }
 
+// Newest books by DateAdded, independent of reading progress - see backend BookEndpoints.cs's
+// /recently-added (a freshly imported library has nothing in listContinueReading yet, since that
+// feed requires a ReadingProgress row).
+export function listRecentlyAdded(limit?: number): Promise<BookSummary[]> {
+  return request<BookSummary[]>(`/api/books/recently-added${limit ? `?limit=${limit}` : ""}`);
+}
+
 export function getBook(id: string): Promise<BookDetail> {
   return request<BookDetail>(`/api/books/${id}`);
 }

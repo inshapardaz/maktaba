@@ -205,9 +205,9 @@ const en = {
 
   "home.continueReading": "Continue Reading",
   "home.currentlyReading": "Currently Reading",
+  "home.recentlyAdded": "Recently Added",
   "home.resume": "Resume",
   "home.markAsFinished": "Mark as finished",
-  "home.empty": "No books in progress yet. Open a book and start reading to see it here.",
 
   "importDialog.title": "Import books",
   "importDialog.dropzoneTitle": "Drag EPUB/PDF files or folders here",
@@ -435,9 +435,9 @@ const ur: TranslationDict = {
 
   "home.continueReading": "مطالعہ جاری رکھیں",
   "home.currentlyReading": "زیرِ مطالعہ کتابیں",
+  "home.recentlyAdded": "حال ہی میں شامل کی گئیں",
   "home.resume": "پڑھنا جاری رکھیں",
   "home.markAsFinished": "مکمل شدہ کے طور پر نشان زد کریں",
-  "home.empty": "ابھی کوئی کتاب زیرِ مطالعہ نہیں۔ کوئی کتاب کھول کر پڑھنا شروع کریں تو وہ یہاں نظر آئے گی۔",
 
   "importDialog.title": "کتابیں درآمد کریں",
   "importDialog.dropzoneTitle": "EPUB/PDF فائلیں یا فولڈرز یہاں گھسیٹ لائیں",

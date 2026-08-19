@@ -1,7 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Box, Button, Center, Group, Image, Progress, Stack, Text, UnstyledButton } from "@mantine/core";
+import { Badge, Box, Button, Center, Group, Image, Progress, Stack, Text, UnstyledButton } from "@mantine/core";
 import { IconCircleCheck, IconPlayerPlay } from "@tabler/icons-react";
-import { coverUrl, listContinueReading, updateBookStatus, type ContinueReadingBook } from "../api";
+import {
+  coverUrl,
+  listContinueReading,
+  listRecentlyAdded,
+  updateBookStatus,
+  type ContinueReadingBook,
+} from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
 import { useReaderLauncher } from "../ReaderLauncherContext";
 import { invalidateLibraryQueries } from "../queries";
@@ -19,15 +25,19 @@ interface HomeViewProps {
   onSelectBook: (id: string) => void;
 }
 
-// The Home view: a "continue reading" hero for the most recently read book, plus a compact list
-// of every other book currently in progress. Both come from one ordered feed (see
-// listContinueReading / backend BookEndpoints.cs's /continue-reading) rather than two separate
-// requests, so there's a single loading/empty state to handle.
+// The Home view: a "continue reading" hero for the most recently read book, a compact list of
+// every other book currently in progress, and a "recently added" shelf. The first two come from
+// one ordered feed (see listContinueReading / backend BookEndpoints.cs's /continue-reading)
+// rather than two separate requests; the shelf is a second, independent feed (listRecentlyAdded /
+// /recently-added) since a freshly imported library has nothing in the first feed at all.
 export function HomeView({ onSelectBook }: HomeViewProps) {
   const { t } = useLanguage();
   const queryClient = useQueryClient();
   const launchReader = useReaderLauncher();
   const continueReadingQuery = useQuery({ queryKey: ["continueReading"], queryFn: () => listContinueReading(20) });
+  // Independent of continueReadingQuery - a freshly imported library has nothing in progress yet,
+  // but there's still plenty to show here (see backend BookEndpoints.cs's /recently-added).
+  const recentlyAddedQuery = useQuery({ queryKey: ["recentlyAdded"], queryFn: () => listRecentlyAdded(12) });
 
   const resumeBook = (book: ContinueReadingBook) => {
     launchReader({
@@ -54,12 +64,16 @@ export function HomeView({ onSelectBook }: HomeViewProps) {
   const items = continueReadingQuery.data ?? [];
   const [lastRead, ...rest] = items;
   const inProgress = rest.filter((book) => book.readingStatus === "Reading");
+  const recentBooks = recentlyAddedQuery.data ?? [];
 
-  if (!continueReadingQuery.isLoading && !lastRead) {
+  // Only reachable when the whole library is empty (no books at all) - a library with books but
+  // none in progress still has the Recently Added shelf below to show.
+  const stillLoading = continueReadingQuery.isLoading || recentlyAddedQuery.isLoading;
+  if (!stillLoading && !lastRead && recentBooks.length === 0) {
     return (
       <Center style={{ flex: 1 }} p="xl">
         <Text c="dimmed" ta="center">
-          {t("home.empty")}
+          {t("app.emptyLibrary")}
         </Text>
       </Center>
     );
@@ -73,12 +87,14 @@ export function HomeView({ onSelectBook }: HomeViewProps) {
             <SectionLabel>{t("home.continueReading")}</SectionLabel>
             <Group
               align="stretch"
-              gap="lg"
-              p="lg"
+              gap="xl"
+              p="xl"
               wrap="nowrap"
               style={{
                 border: "1px solid var(--mantine-color-default-border)",
-                borderRadius: "var(--mantine-radius-md)",
+                borderRadius: "var(--mantine-radius-lg)",
+                background:
+                  "linear-gradient(135deg, var(--mantine-primary-color-light) 0%, var(--mantine-color-body) 55%)",
               }}
             >
               <UnstyledButton onClick={() => onSelectBook(lastRead.id)} style={{ flexShrink: 0 }}>
@@ -86,37 +102,37 @@ export function HomeView({ onSelectBook }: HomeViewProps) {
                   <Image
                     src={coverUrl(lastRead.id)}
                     alt=""
-                    w={120}
-                    h={180}
+                    w={150}
+                    h={225}
                     fit="cover"
-                    radius="sm"
-                    style={{ border: "1px solid var(--mantine-color-default-border)", boxShadow: "var(--mantine-shadow-sm)" }}
+                    radius="md"
+                    style={{ border: "1px solid var(--mantine-color-default-border)", boxShadow: "var(--mantine-shadow-md)" }}
                   />
                 ) : (
                   <SpineCover
                     id={lastRead.id}
                     title={lastRead.title}
                     author={lastRead.authors.join(", ") || t("common.unknownAuthor")}
-                    width={120}
-                    height={180}
+                    width={150}
+                    height={225}
                   />
                 )}
               </UnstyledButton>
 
-              <Stack gap={6} justify="center" style={{ flex: 1, minWidth: 0 }}>
-                <Text fw={700} fz="lg" lineClamp={2}>
+              <Stack gap={8} justify="center" style={{ flex: 1, minWidth: 0 }}>
+                <Text fw={700} fz={22} lineClamp={2}>
                   {lastRead.title}
                 </Text>
                 <Text c="dimmed" size="sm" truncate="end">
                   {lastRead.authors.join(", ") || t("common.unknownAuthor")}
                 </Text>
-                <Group gap="xs" align="center" mt={4}>
-                  <Progress value={lastRead.percentage} size="sm" style={{ flex: 1 }} />
-                  <Text size="xs" c="dimmed" style={{ flexShrink: 0 }}>
+                <Group gap="xs" align="center" mt={8}>
+                  <Progress value={lastRead.percentage} size="md" radius="xl" style={{ flex: 1 }} />
+                  <Badge size="md" variant="light">
                     {Math.round(lastRead.percentage)}%
-                  </Text>
+                  </Badge>
                 </Group>
-                <Group gap="xs" mt="xs">
+                <Group gap="xs" mt="sm">
                   <Button leftSection={<IconPlayerPlay size={16} />} onClick={() => resumeBook(lastRead)}>
                     {t("home.resume")}
                   </Button>
@@ -196,6 +212,43 @@ export function HomeView({ onSelectBook }: HomeViewProps) {
                 </Group>
               ))}
             </Stack>
+          </Box>
+        )}
+
+        {recentBooks.length > 0 && (
+          <Box>
+            <SectionLabel>{t("home.recentlyAdded")}</SectionLabel>
+            <Group gap="md" wrap="nowrap" style={{ overflowX: "auto", paddingBottom: 4 }}>
+              {recentBooks.map((book) => (
+                <UnstyledButton key={book.id} onClick={() => onSelectBook(book.id)} style={{ flexShrink: 0, width: 110 }}>
+                  {book.hasCover ? (
+                    <Image
+                      src={coverUrl(book.id)}
+                      alt=""
+                      w={110}
+                      h={165}
+                      fit="cover"
+                      radius="sm"
+                      style={{ border: "1px solid var(--mantine-color-default-border)", boxShadow: "var(--mantine-shadow-sm)" }}
+                    />
+                  ) : (
+                    <SpineCover
+                      id={book.id}
+                      title={book.title}
+                      author={book.authors.join(", ") || t("common.unknownAuthor")}
+                      width={110}
+                      height={165}
+                    />
+                  )}
+                  <Text size="xs" fw={600} mt={6} lineClamp={1}>
+                    {book.title}
+                  </Text>
+                  <Text size="xs" c="dimmed" lineClamp={1}>
+                    {book.authors.join(", ") || t("common.unknownAuthor")}
+                  </Text>
+                </UnstyledButton>
+              ))}
+            </Group>
           </Box>
         )}
       </Stack>

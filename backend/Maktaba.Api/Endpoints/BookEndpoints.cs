@@ -156,6 +156,38 @@ public static class BookEndpoints
             return Results.Ok(dtos);
         });
 
+        // Backs the Home view's "Recently Added" shelf - the newest books by DateAdded, regardless of
+        // reading progress. Deliberately separate from /continue-reading: that feed only includes
+        // books with a ReadingProgress row, so a freshly imported library (nothing opened yet) would
+        // show nothing there even though there's plenty to display here.
+        group.MapGet("/recently-added", async (MaktabaDbContext db, ILibraryPathProvider libraryPath, int? limit) =>
+        {
+            var root = libraryPath.LibraryRootPath!;
+
+            var books = await db.Books
+                .Include(b => b.BookAuthors).ThenInclude(ba => ba.Author)
+                .AsNoTracking()
+                .OrderByDescending(b => b.DateAdded)
+                .Take(limit is > 0 ? limit.Value : 12)
+                .ToListAsync();
+
+            var dtos = books
+                .Select(b => new BookSummaryDto(
+                    IdCodec.Encode(b.Id),
+                    b.Title,
+                    b.SortTitle,
+                    b.BookAuthors.OrderBy(ba => ba.Order).Select(ba => ba.Author.Name).ToArray(),
+                    b.Rating,
+                    b.DateAdded,
+                    CoverLocator.Find(root, b.FolderPath) is not null,
+                    b.ReadingStatus.ToString(),
+                    null,
+                    null))
+                .ToList();
+
+            return Results.Ok(dtos);
+        });
+
         group.MapGet("/{id}", async (string id, MaktabaDbContext db, ILibraryPathProvider libraryPath) =>
         {
             if (!IdCodec.TryDecode(id, out var bookId))
