@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ActionIcon, Box, Button, Group, NavLink, Stack, Text, TextInput } from "@mantine/core";
+import { ActionIcon, Badge, Box, Button, Group, NavLink, Stack, Text, TextInput } from "@mantine/core";
 import { IconSearch, IconTrash } from "@tabler/icons-react";
 import { createCollection, deleteCollection, listCollections } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
@@ -108,12 +108,12 @@ export function CollectionsView({ onSelect, onBack }: CollectionsViewProps) {
                 py={6}
                 styles={{ root: { borderRadius: "var(--mantine-radius-sm)" } }}
                 rightSection={
-                  <Text size="xs" c="dimmed">
+                  <Badge size="sm" variant="light" color="gray" tt="none">
                     {t(
                       collection.bookCount === 1 ? "collectionsView.bookCount_one" : "collectionsView.bookCount_other",
                       { count: collection.bookCount },
                     )}
-                  </Text>
+                  </Badge>
                 }
               />
               {confirmingDeleteId === collection.id ? (

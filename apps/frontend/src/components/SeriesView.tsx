@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ActionIcon, Box, Group, NavLink, Stack, Text, TextInput, Tooltip } from "@mantine/core";
+import { ActionIcon, Badge, Box, Group, NavLink, Stack, Text, TextInput, Tooltip } from "@mantine/core";
 import { IconCheck, IconPencil, IconSearch, IconX } from "@tabler/icons-react";
 import { listSeries, renameSeries } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
@@ -122,9 +122,9 @@ export function SeriesView({ onSelect, onBack }: SeriesViewProps) {
                     onBack();
                   }}
                   rightSection={
-                    <Text size="xs" c="dimmed">
+                    <Badge size="sm" variant="light" color="gray">
                       {series.bookCount}
-                    </Text>
+                    </Badge>
                   }
                   style={{ flex: 1 }}
                   px="sm"

@@ -137,11 +137,11 @@ throwing.
 - **`window.maktaba`** (typed in `maktaba.d.ts`) is the only bridge to Electron — file pickers,
   drag-and-drop path resolution, trash/open/reveal, and `openReaderWindow`. Never reach for
   Node/Electron APIs directly from renderer code.
-- Sidebar (`Sidebar.tsx`) shows only the top 5 (by book count) Authors/Collections/Tags, each with
-  a chevron "see all" icon button opening the corresponding full-list view
-  (`AuthorsView`/`CollectionsView`/`TagsView`) — this cap exists so a library with hundreds of
-  authors doesn't turn the navbar into an unusable scroll. Series has no full-list view (never
-  built, no cap applied). Settings is a `Modal` (not a routed view) — see `SettingsScreen.tsx` /
+- Sidebar (`Sidebar.tsx`) shows every Authors/Collections/Series/Tags group, sorted by book count,
+  scrolling within its own `ScrollArea` rather than truncating — each section also has a chevron
+  "see all" icon button opening the corresponding full-list view (`AuthorsView`/`CollectionsView`/
+  `SeriesView`/`TagsView`) for search/rename/management UI the sidebar itself doesn't have.
+  Settings is a `Modal` (not a routed view) — see `SettingsScreen.tsx` /
   `App.tsx`'s `settingsOpen` state.
 - Search is global via `@mantine/spotlight` (`LibrarySpotlight.tsx`, `Ctrl/Cmd+K` from anywhere,
   triggerable from the sidebar's search-box-styled button) — sectioned instant results (Books via

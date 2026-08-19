@@ -1,6 +1,7 @@
 import { useState } from "react";
 import {
   ActionIcon,
+  Badge,
   Box,
   Group,
   NavLink,
@@ -44,14 +45,13 @@ export type MainView = "home" | "library" | "authors" | "collections" | "tags" |
 
 type BrowseSection = "collections" | "authors" | "series" | "tags";
 
-// Sidebar lists for these groups are capped so a library with hundreds of authors or collections
-// doesn't turn a single section into an unusable scroll — the full list lives in AuthorsView/
-// CollectionsView/TagsView, opened via the chevron.
-const SIDEBAR_GROUP_LIMIT = 5;
-
-function topByBookCount(groups: BrowseGroup[] | undefined): BrowseGroup[] {
+// Sorted, uncapped — the sidebar's own ScrollArea (see the `browseSection` ScrollArea below)
+// handles a library with hundreds of authors/collections by scrolling rather than truncating.
+// AuthorsView/CollectionsView/TagsView/SeriesView (opened via the "see all" chevron) still exist
+// alongside this for their own search/rename/management UI, not as the only way to see everything.
+function byBookCount(groups: BrowseGroup[] | undefined): BrowseGroup[] {
   if (!groups) return [];
-  return [...groups].sort((a, b) => b.bookCount - a.bookCount).slice(0, SIDEBAR_GROUP_LIMIT);
+  return [...groups].sort((a, b) => b.bookCount - a.bookCount);
 }
 
 interface SidebarProps {
@@ -123,9 +123,9 @@ function GroupSection({
             active={isActive}
             onClick={() => onSelect(isActive ? null : { kind, id: group.id, name: group.name })}
             rightSection={
-              <Text size="xs" c="dimmed">
+              <Badge size="sm" variant="light" color="gray">
                 {group.bookCount}
-              </Text>
+              </Badge>
             }
             px="md"
             py={5}
@@ -290,7 +290,7 @@ export function Sidebar({
               icon={IconFolder}
               activeFilter={activeFilter}
               onSelect={onSelect}
-              groups={topByBookCount(collectionsQuery.data)}
+              groups={byBookCount(collectionsQuery.data)}
               action={
                 <Group gap={6} wrap="nowrap">
                   {addCollectionAction}
@@ -306,7 +306,7 @@ export function Sidebar({
               icon={IconUser}
               activeFilter={activeFilter}
               onSelect={onSelect}
-              groups={topByBookCount(authorsQuery.data)}
+              groups={byBookCount(authorsQuery.data)}
               action={seeAllAction(onOpenAuthors)}
             />
           )}
@@ -317,7 +317,7 @@ export function Sidebar({
               icon={IconStack2}
               activeFilter={activeFilter}
               onSelect={onSelect}
-              groups={topByBookCount(seriesQuery.data)}
+              groups={byBookCount(seriesQuery.data)}
               action={seeAllAction(onOpenSeries)}
             />
           )}
@@ -328,7 +328,7 @@ export function Sidebar({
               icon={IconTag}
               activeFilter={activeFilter}
               onSelect={onSelect}
-              groups={topByBookCount(tagsQuery.data)}
+              groups={byBookCount(tagsQuery.data)}
               action={seeAllAction(onOpenTags)}
             />
           )}
