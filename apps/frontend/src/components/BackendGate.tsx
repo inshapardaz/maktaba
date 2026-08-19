@@ -87,7 +87,7 @@ export function BackendGate({ children, showTitleBar }: { children: ReactNode; s
       <Stack h="100vh" gap={0}>
         {showTitleBar && <LoadingTitleBar />}
         <Stack align="center" justify="center" style={{ flex: 1 }} gap="md">
-          <img src="/icon.png" alt="" width={72} height={72} style={{ borderRadius: 16 }} />
+          <img src="icon.png" alt="" width={72} height={72} style={{ borderRadius: 16 }} />
           <Loader />
           <Text c="dimmed">{t("backend.starting")}</Text>
         </Stack>

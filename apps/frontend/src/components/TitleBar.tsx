@@ -92,7 +92,7 @@ export function TitleBarBrand() {
   const { t } = useLanguage();
   return (
     <Group gap={8} wrap="nowrap" ms={8} style={{ flexShrink: 0 }}>
-      <img src="/icon.png" alt="" width={20} height={20} style={{ borderRadius: 4, flexShrink: 0 }} />
+      <img src="icon.png" alt="" width={20} height={20} style={{ borderRadius: 4, flexShrink: 0 }} />
       <Text ff="var(--mantine-font-family-headings)" fw={600} fz={16} style={{ flexShrink: 0 }}>
         {t("app.name")}
       </Text>
