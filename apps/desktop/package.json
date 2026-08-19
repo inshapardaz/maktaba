@@ -8,10 +8,10 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "start": "electron .",
-    "package:win": "electron-builder --win",
-    "package:mac": "electron-builder --mac",
-    "package:linux": "electron-builder --linux",
-    "package": "electron-builder"
+    "package:win": "electron-builder --win --publish never",
+    "package:mac": "electron-builder --mac --publish never",
+    "package:linux": "electron-builder --linux --publish never",
+    "package": "electron-builder --publish never"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
@@ -26,6 +26,11 @@
     "directories": {
       "output": "release",
       "buildResources": "build"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "inshapardaz",
+      "repo": "maktab"
     },
     "files": [
       "dist/**/*",
@@ -96,5 +101,8 @@
         }
       ]
     }
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
   }
 }

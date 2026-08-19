@@ -197,6 +197,14 @@ const en = {
   "settings.rescanStarting": "Starting…",
   "settings.rescanProgress": "{processed} / {total} books scanned",
 
+  "update.availableTitle": "Maktaba {version} is available",
+  "update.download": "Download",
+  "update.viewOnGithub": "View on GitHub",
+  "update.downloadingTitle": "Downloading update… {percent}%",
+  "update.readyTitle": "Maktaba {version} is ready to install",
+  "update.restartNow": "Restart now",
+  "update.errorTitle": "Couldn't check for updates",
+
   "settings.reading": "Reading",
   "settings.readerWindow": "Open reader in",
   "settings.readerWindowPopout": "Pop-out window",
@@ -448,6 +456,14 @@ const ur: TranslationDict = {
   "settings.defaultConvertFormat": "نئی درآمدات کے لیے پہلے سے طے شدہ \"تبدیل کریں\" فارمیٹ",
   "settings.rescanStarting": "شروع ہو رہا ہے…",
   "settings.rescanProgress": "{processed} / {total} کتابیں اسکین ہوئیں",
+
+  "update.availableTitle": "مکتبہ {version} دستیاب ہے",
+  "update.download": "ڈاؤن لوڈ کریں",
+  "update.viewOnGithub": "گٹ ہب پر دیکھیں",
+  "update.downloadingTitle": "اپ ڈیٹ ڈاؤن لوڈ ہو رہی ہے… {percent}%",
+  "update.readyTitle": "مکتبہ {version} انسٹال کے لیے تیار ہے",
+  "update.restartNow": "ابھی دوبارہ شروع کریں",
+  "update.errorTitle": "اپ ڈیٹس چیک نہیں ہو سکیں",
 
   "settings.reading": "مطالعہ",
   "settings.readerWindow": "ریڈر کہاں کھلے",

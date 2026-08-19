@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { SidecarStatus } from "./sidecar";
+import type { UpdateStatus } from "./updater";
 
 function getArg(name: string): string | undefined {
   const prefix = `--${name}=`;
@@ -92,4 +93,25 @@ contextBridge.exposeInMainWorld("maktaba", {
   // (Window Controls Overlay reserves that whole strip for the custom draggable title bar).
   showAppMenu: (position: { x: number; y: number }): Promise<void> =>
     ipcRenderer.invoke("maktaba:show-app-menu", position),
+
+  // Issue #5: update notification, driven by updater.ts's autoUpdater wiring (main-process-only -
+  // electron-updater talks to the OS filesystem/installer directly, nothing here does that work).
+  // getUpdateStatus() gives the renderer its current state on mount, onUpdateStatus() delivers
+  // later transitions, same "get current + subscribe to later" pairing as getSidecarStatus/
+  // onSidecarStatus above.
+  getUpdateStatus: (): Promise<UpdateStatus> => ipcRenderer.invoke("maktaba:get-update-status"),
+
+  onUpdateStatus: (callback: (status: UpdateStatus) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, status: UpdateStatus) => callback(status);
+    ipcRenderer.on("maktaba:update-status", listener);
+    return () => ipcRenderer.removeListener("maktaba:update-status", listener);
+  },
+
+  checkForUpdates: (): Promise<void> => ipcRenderer.invoke("maktaba:check-for-updates"),
+
+  // On mac (no signed build to silently install - see updater.ts), this opens the GitHub releases
+  // page in the default browser instead of actually downloading anything in-app.
+  downloadUpdate: (): Promise<void> => ipcRenderer.invoke("maktaba:download-update"),
+
+  quitAndInstall: (): Promise<void> => ipcRenderer.invoke("maktaba:quit-and-install"),
 });

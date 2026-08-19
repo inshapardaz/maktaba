@@ -62,6 +62,10 @@ Each of these builds the frontend and desktop TypeScript, publishes the matching
 
 App icon: `apps/desktop/build/icon.png` (the Maktaba logo). electron-builder auto-derives `.ico`/`.icns` from this single PNG.
 
+## Auto-update
+
+Packaged builds check GitHub Releases for a newer version shortly after launch (and on demand via Help → "Check for Updates…"), using [`electron-updater`](https://www.electron.build/auto-update) — see `apps/desktop/src/updater.ts`. On Windows and Linux this can download and silently install the update on restart; on macOS (unsigned — see "Known issues" below) it just opens the release page in your browser instead, since a silent install needs a signed build. The `package:*` scripts build with `--publish never` (nothing is auto-published from a local/CI build), but electron-builder still writes the `latest*.yml` update-metadata files `electron-updater` reads as its feed, and `.github/workflows/release.yml` uploads those alongside each installer.
+
 ## CI / releases
 
 - **`.github/workflows/ci.yml`** — runs on every push and pull request: `dotnet build`/`dotnet test` for the backend, and `tsc`/`vite build` for the frontend and desktop TypeScript, as two parallel jobs.

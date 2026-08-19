@@ -4,6 +4,7 @@ import * as fs from "node:fs";
 import { startSidecar, stopSidecar, waitForHealth, SidecarHandle, SidecarStatus } from "./sidecar";
 import { registerNativeHandlers } from "./native";
 import { buildAppMenu } from "./menu";
+import { checkForUpdates, initUpdater } from "./updater";
 
 let sidecar: SidecarHandle | null = null;
 let sidecarStatus: SidecarStatus = { state: "starting" };
@@ -32,6 +33,7 @@ app.setName("Maktaba");
 app.setAppUserModelId("com.inshapardaz.maktaba");
 
 registerNativeHandlers(() => mainWindow);
+initUpdater();
 
 // Whether the standard File/Edit/View/Window/Help app menu (menu.ts's buildAppMenu) is shown -
 // natively as each reader pop-out window's own menu bar (they use the default OS frame), and via
@@ -50,7 +52,7 @@ function loadMenuBarEnabled(): boolean {
 }
 
 let menuBarEnabled = loadMenuBarEnabled();
-const appMenu = buildAppMenu();
+const appMenu = buildAppMenu(checkForUpdates);
 
 // Applies the current on/off state to every already-open window (main + readers) plus the mac
 // global menu bar / the default new windows will otherwise inherit - called once at startup and

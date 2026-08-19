@@ -33,6 +33,7 @@ import { PublishersView } from "./components/PublishersView";
 import { FilterBar, type SortDirection, type SortKey, type ViewMode } from "./components/FilterBar";
 import { ImportDialog } from "./components/ImportDialog";
 import { SettingsScreen } from "./components/SettingsScreen";
+import { UpdateNotifier } from "./components/UpdateNotifier";
 import { invalidateLibraryQueries } from "./queries";
 import { useDebounced } from "./useDebounced";
 import { useLanguage } from "./i18n/LanguageContext";
@@ -370,6 +371,7 @@ function App() {
           : undefined
       }
     >
+      <UpdateNotifier />
       <ReaderLauncherProvider launch={launchReader}>
         {/* AppShell.Navbar positions itself relative to the viewport (fixed), not to whatever DOM
             parent renders it — so the title bar has to be its own AppShell.Header rather than a
