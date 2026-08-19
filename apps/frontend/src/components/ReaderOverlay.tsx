@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Alert, Box, Center, Loader, useComputedColorScheme } from "@mantine/core";
-import { IconAlertCircle } from "@tabler/icons-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Alert, Box, Button, Center, Loader, useComputedColorScheme } from "@mantine/core";
+import { notifications } from "@mantine/notifications";
+import { IconAlertCircle, IconCircleCheck } from "@tabler/icons-react";
 import {
   Reader,
   LOCALES,
@@ -22,8 +23,11 @@ import {
   deleteNote,
   getReadingProgress,
   saveReadingProgress,
+  updateBookStatus,
+  type ReadingStatus,
 } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
+import { getStoredAutoTagMode } from "../readerSettings";
 import { TITLEBAR_HEIGHT } from "./TitleBar";
 
 // ISO 639-1 codes (matches BookEditForm's language field) for languages conventionally written
@@ -101,6 +105,7 @@ function useDebouncedSave<T>(save: (value: T) => void, delayMs: number): (value:
 
 export function ReaderOverlay({ bookId, format, onClose, embedded }: ReaderOverlayProps) {
   const { t, language } = useLanguage();
+  const queryClient = useQueryClient();
   const colorScheme = useComputedColorScheme("light");
   const [readerError, setReaderError] = useState<ReaderError | null>(null);
 
@@ -134,15 +139,18 @@ export function ReaderOverlay({ bookId, format, onClose, embedded }: ReaderOverl
     refetchOnWindowFocus: false,
   });
 
-  // Only needed to pick a PDF's reading direction (see `direction` below) - EPUBs already carry
-  // their own page-progression-direction metadata that qari's "auto" detection reads directly, but
-  // PdfMetadataExtractor never populates Language (PDF info dicts don't reliably carry it), so a
-  // PDF's language is a case-by-case book-record field (often set by hand via BookEditForm) rather
-  // than something "auto" can detect from the file itself.
+  // Two independent uses: picking a PDF's reading direction (see `direction` below - EPUBs already
+  // carry their own page-progression-direction metadata that qari's "auto" detection reads
+  // directly, but PdfMetadataExtractor never populates Language, so a PDF's language is a
+  // case-by-case book-record field read from here instead), and reading the book's ReadingStatus
+  // at the moment maybeAutoTagStatus below needs to decide whether to tag it (this reader window
+  // has its own isolated React Query cache - see main.tsx - so there's no shared "book" query
+  // already warm from the main window to reuse). staleTime: Infinity is fine for both: language
+  // doesn't change mid-session, and the auto-tag decision only ever needs the *initial* status
+  // once (its own handledRef guards below track whatever this reader has since changed).
   const bookQuery = useQuery({
     queryKey: ["book", bookId],
     queryFn: () => getBook(bookId),
-    enabled: format === "Pdf",
     staleTime: Infinity,
   });
 
@@ -178,12 +186,83 @@ export function ReaderOverlay({ bookId, format, onClose, embedded }: ReaderOverl
     [bookId],
   );
 
+  const statusMutation = useMutation({
+    mutationFn: (status: ReadingStatus) => updateBookStatus(bookId, status),
+    onSuccess: () => {
+      // This reader window's own cache, not the main window's (separate process, separate
+      // QueryClient - see main.tsx) - the main window picks up the change next time it refetches
+      // (focus, navigation, etc.), same as any other cross-window edit today.
+      void queryClient.invalidateQueries({ queryKey: ["book", bookId] });
+    },
+  });
+
+  // Applies (or offers to apply) an automatic ReadingStatus transition - Unread -> Reading as soon
+  // as real progress is made, or -> Finished at 100% - governed by the user's auto-tag preference
+  // (Settings -> Reading; see readerSettings.ts's getStoredAutoTagMode). "auto" applies it
+  // silently, matching what used to be unconditional backend behavior; "ask" instead surfaces a
+  // dismissible notification with an explicit Apply action, so nothing changes without consent.
+  // handledRef guards against re-triggering on every subsequent debounced progress tick once this
+  // reader has already decided (applied, or shown/left the notification) for a given transition.
+  const handledRef = useRef({ reading: false, finished: false });
+
+  const applyOrAskStatus = useCallback(
+    (status: ReadingStatus) => {
+      if (getStoredAutoTagMode() === "auto") {
+        statusMutation.mutate(status);
+        return;
+      }
+
+      const notificationId = `auto-tag-${bookId}-${status}`;
+      notifications.show({
+        id: notificationId,
+        icon: <IconCircleCheck size={18} />,
+        title: status === "Finished" ? t("reader.autoTag.finishedTitle") : t("reader.autoTag.readingTitle"),
+        message: (
+          <Button
+            size="xs"
+            variant="light"
+            mt={6}
+            onClick={() => {
+              statusMutation.mutate(status);
+              notifications.hide(notificationId);
+            }}
+          >
+            {t("reader.autoTag.apply")}
+          </Button>
+        ),
+        autoClose: 10000,
+      });
+    },
+    [bookId, statusMutation, t],
+  );
+
+  const maybeAutoTagStatus = useCallback(
+    (percentage: number) => {
+      const status = bookQuery.data?.readingStatus;
+      if (!status) return;
+
+      if (percentage >= 100 && status !== "Finished") {
+        if (handledRef.current.finished) return;
+        handledRef.current.finished = true;
+        applyOrAskStatus("Finished");
+      } else if (status === "Unread" && percentage > 0) {
+        if (handledRef.current.reading) return;
+        handledRef.current.reading = true;
+        applyOrAskStatus("Reading");
+      }
+    },
+    [bookQuery.data?.readingStatus, applyOrAskStatus],
+  );
+
   // Display snapshot (currentChapter/totalChapters/currentPage/totalPages/chapterTitle/percentage)
   // shown in BookDetailPanel - fires on every page turn, so it's debounced the same way as the
   // resume anchor below. Distinct from progressAdapter: qari calls onProgressChange for display
   // purposes only, it doesn't drive resume-on-reopen (progressAdapter does that).
   const scheduleProgressSave = useDebouncedSave<QariReadingProgress>(
-    (progress) => void saveReadingProgress(bookId, progress),
+    (progress) => {
+      void saveReadingProgress(bookId, progress);
+      maybeAutoTagStatus(progress.percentage);
+    },
     PROGRESS_SAVE_DEBOUNCE_MS,
   );
 

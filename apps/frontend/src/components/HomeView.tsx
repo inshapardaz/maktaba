@@ -49,10 +49,11 @@ export function HomeView({ onSelectBook }: HomeViewProps) {
     });
   };
 
-  // Manual escape hatch alongside the reader's own auto-complete-at-100% (see backend
-  // ReaderDataEndpoints.cs's /progress handler) - for a book the reader considers "done enough"
-  // without ever reporting a clean 100% (e.g. skipping the last page, or a format where percentage
-  // tracking is approximate).
+  // Manual escape hatch alongside the reader's own auto-tag-at-100% (see ReaderOverlay.tsx's
+  // maybeAutoTagStatus / Settings -> Reading's "Reading status" preference) - for a book the reader
+  // considers "done enough" without ever reporting a clean 100% (e.g. skipping the last page, or a
+  // format where percentage tracking is approximate), or when the user has that preference set to
+  // "ask" and dismissed the notification instead of applying it.
   const markFinishedMutation = useMutation({
     mutationFn: (bookId: string) => updateBookStatus(bookId, "Finished"),
     onSuccess: () => {

@@ -6,10 +6,13 @@ import { getSystemCapabilities } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
 import { getStoredDefaultFormat, setStoredDefaultFormat, type ConvertFormat } from "../convertFormat";
 import {
+  getStoredAutoTagMode,
   getStoredReaderEngine,
   getStoredReaderOpenMode,
+  setStoredAutoTagMode,
   setStoredReaderEngine,
   setStoredReaderOpenMode,
+  type AutoTagMode,
   type ReaderEngine,
   type ReaderOpenMode,
 } from "../readerSettings";
@@ -41,6 +44,7 @@ export function SettingsScreen({ opened, onClose, onLibraryChanged }: SettingsSc
   const [readerOpenMode, setReaderOpenMode] = useState<ReaderOpenMode>(getStoredReaderOpenMode());
   const [epubEngine, setEpubEngine] = useState<ReaderEngine>(getStoredReaderEngine("Epub"));
   const [pdfEngine, setPdfEngine] = useState<ReaderEngine>(getStoredReaderEngine("Pdf"));
+  const [autoTagMode, setAutoTagMode] = useState<AutoTagMode>(getStoredAutoTagMode());
   const queryClient = useQueryClient();
 
   const capabilitiesQuery = useQuery({ queryKey: ["systemCapabilities"], queryFn: getSystemCapabilities });
@@ -71,6 +75,12 @@ export function SettingsScreen({ opened, onClose, onLibraryChanged }: SettingsSc
     const engine = value as ReaderEngine;
     (format === "Epub" ? setEpubEngine : setPdfEngine)(engine);
     setStoredReaderEngine(format, engine);
+  };
+
+  const handleAutoTagModeChange = (value: string) => {
+    const mode = value as AutoTagMode;
+    setAutoTagMode(mode);
+    setStoredAutoTagMode(mode);
   };
 
   return (
@@ -201,6 +211,23 @@ export function SettingsScreen({ opened, onClose, onLibraryChanged }: SettingsSc
                 {t("settings.externalReaderWarning")}
               </Alert>
             )}
+            <Stack gap={2}>
+              <Group justify="space-between">
+                <FieldLabel>{t("settings.autoTagStatus")}</FieldLabel>
+                <SegmentedControl
+                  size="sm"
+                  data={[
+                    { value: "auto", label: t("settings.autoTagAuto") },
+                    { value: "ask", label: t("settings.autoTagAsk") },
+                  ]}
+                  value={autoTagMode}
+                  onChange={handleAutoTagModeChange}
+                />
+              </Group>
+              <Text size="xs" c="dimmed">
+                {t("settings.autoTagStatusHint")}
+              </Text>
+            </Stack>
           </Stack>
         </Tabs.Panel>
 

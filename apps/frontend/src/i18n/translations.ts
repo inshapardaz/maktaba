@@ -196,6 +196,10 @@ const en = {
   "settings.readerEngineInternal": "Built-in reader",
   "settings.readerEngineExternal": "External app",
   "settings.externalReaderWarning": "Books opened in an external app won't have their reading progress tracked by Maktaba.",
+  "settings.autoTagStatus": "Reading status",
+  "settings.autoTagAuto": "Update automatically",
+  "settings.autoTagAsk": "Ask me first",
+  "settings.autoTagStatusHint": "When you start or finish a book in the reader, update its reading status automatically or show a notification with the option to apply it.",
 
   "librariesSettings.description": "Only one library is open at a time. Switch, rename, relocate, resync, or remove any of the libraries you've opened before.",
   "librariesSettings.addLibrary": "Add library…",
@@ -238,6 +242,9 @@ const en = {
   "reader.close": "Close reader",
   "reader.loadErrorTitle": "Couldn't load book",
   "reader.errorTitle": "Reader error",
+  "reader.autoTag.readingTitle": "Mark this book as Reading?",
+  "reader.autoTag.finishedTitle": "Mark this book as Finished?",
+  "reader.autoTag.apply": "Apply",
 };
 
 export type TranslationKey = keyof typeof en;
@@ -431,6 +438,10 @@ const ur: TranslationDict = {
   "settings.readerEngineInternal": "اندرونی ریڈر",
   "settings.readerEngineExternal": "بیرونی ایپ",
   "settings.externalReaderWarning": "بیرونی ایپ میں کھولی گئی کتابوں کی مطالعے کی پیش رفت مکتبہ میں محفوظ نہیں ہوگی۔",
+  "settings.autoTagStatus": "مطالعے کی حیثیت",
+  "settings.autoTagAuto": "خودکار طور پر اپ ڈیٹ کریں",
+  "settings.autoTagAsk": "پہلے مجھ سے پوچھیں",
+  "settings.autoTagStatusHint": "جب آپ ریڈر میں کوئی کتاب پڑھنا شروع یا مکمل کریں تو اس کی مطالعے کی حیثیت خودکار طور پر اپ ڈیٹ کریں یا اسے لاگو کرنے کے اختیار کے ساتھ ایک اطلاع دکھائیں۔",
 
   "librariesSettings.description": "ایک وقت میں صرف ایک لائبریری کھلی ہوتی ہے۔ اپنی پہلے کھولی گئی کسی بھی لائبریری کو تبدیل، نام تبدیل، مقام تبدیل، دوبارہ ہم آہنگ یا ہٹائیں۔",
   "librariesSettings.addLibrary": "لائبریری شامل کریں…",
@@ -473,6 +484,9 @@ const ur: TranslationDict = {
   "reader.close": "ریڈر بند کریں",
   "reader.loadErrorTitle": "کتاب لوڈ نہیں ہو سکی",
   "reader.errorTitle": "ریڈر میں خرابی",
+  "reader.autoTag.readingTitle": "کیا اس کتاب کو زیرِ مطالعہ نشان زد کریں؟",
+  "reader.autoTag.finishedTitle": "کیا اس کتاب کو مکمل شدہ نشان زد کریں؟",
+  "reader.autoTag.apply": "لاگو کریں",
 };
 
 export const translations: Record<Language, TranslationDict> = { en, ur };
