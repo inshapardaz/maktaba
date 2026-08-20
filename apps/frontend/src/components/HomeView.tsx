@@ -62,9 +62,13 @@ export function HomeView({ onSelectBook }: HomeViewProps) {
     },
   });
 
-  const items = continueReadingQuery.data ?? [];
+  // The /continue-reading feed is ordered purely by ReadingProgress.UpdatedAt, with no status
+  // filter server-side (see BookEndpoints.cs) - a book marked Finished still touches its progress
+  // row, so without this filter it could outrank actually-in-progress books and show as the
+  // "Continue Reading" hero (issue #17) instead of being excluded from this feed entirely.
+  const items = (continueReadingQuery.data ?? []).filter((book) => book.readingStatus === "Reading");
   const [lastRead, ...rest] = items;
-  const inProgress = rest.filter((book) => book.readingStatus === "Reading");
+  const inProgress = rest;
   const recentBooks = recentlyAddedQuery.data ?? [];
 
   // Only reachable when the whole library is empty (no books at all) - a library with books but
