@@ -124,6 +124,7 @@ const en = {
 
   "bookGrid.read": "Read",
   "bookGrid.viewDetails": "View details",
+  "bookGrid.renameTitle": "Rename title",
 
   "bookDetail.edit": "Edit",
   "bookDetail.remove": "Remove",
@@ -397,6 +398,7 @@ const ur: TranslationDict = {
 
   "bookGrid.read": "پڑھیں",
   "bookGrid.viewDetails": "تفصیلات دیکھیں",
+  "bookGrid.renameTitle": "عنوان تبدیل کریں",
 
   "bookDetail.edit": "ترمیم کریں",
   "bookDetail.remove": "ہٹا دیں",

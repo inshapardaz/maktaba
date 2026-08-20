@@ -1,9 +1,12 @@
 import { useState } from "react";
-import { ActionIcon, Badge, Box, Group, Image, Loader, Table, Tooltip } from "@mantine/core";
-import { IconBook2, IconEdit } from "@tabler/icons-react";
-import { coverUrl, getBook, pickPreferredReadFile, type BookSummary } from "../api";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { notifications } from "@mantine/notifications";
+import { ActionIcon, Badge, Box, Group, Image, Loader, Table, TextInput, Tooltip } from "@mantine/core";
+import { IconBook2, IconEdit, IconPencil } from "@tabler/icons-react";
+import { coverUrl, getBook, pickPreferredReadFile, updateBook, type BookEditRequest, type BookSummary } from "../api";
 import { setBookDragData } from "../bookDrag";
 import { useLanguage } from "../i18n/LanguageContext";
+import { invalidateLibraryQueries } from "../queries";
 import { useReaderLauncher } from "../ReaderLauncherContext";
 import { READING_STATUS_COLOR, READING_STATUS_LABEL_KEY } from "../readingStatus";
 import { BookEditForm } from "./BookEditForm";
@@ -35,7 +38,62 @@ interface BookRowProps {
 function BookRow({ book, index, selected, selectedIds, onSelect, onEdit }: BookRowProps) {
   const { t, language } = useLanguage();
   const launchReader = useReaderLauncher();
+  const queryClient = useQueryClient();
   const [loadingRead, setLoadingRead] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState(book.title);
+
+  // Book.title has no dedicated rename endpoint (unlike Author/Series/Tag) - the edit endpoint is
+  // a full replace, so the current full detail is fetched first and PUT back with just title
+  // changed, same two-step pattern as App.tsx's handleDropBooksOnGroup.
+  const renameMutation = useMutation({
+    mutationFn: async (title: string) => {
+      const detail = await getBook(book.id);
+      const edit: BookEditRequest = {
+        title,
+        authors: detail.authors,
+        language: detail.language,
+        publisher: detail.publisher,
+        publishedDate: detail.datePublished,
+        description: detail.description,
+        rating: detail.rating,
+        seriesName: detail.seriesName,
+        seriesIndex: detail.seriesIndex,
+        tags: detail.tags,
+        collectionIds: detail.collections.map((c) => c.id),
+      };
+      await updateBook(book.id, edit);
+    },
+    onSuccess: () => {
+      invalidateLibraryQueries(queryClient);
+      void queryClient.invalidateQueries({ queryKey: ["book", book.id] });
+      setEditingTitle(false);
+    },
+    onError: (err) => {
+      // Left open (rather than reverting) so the attempted title isn't lost - the user can just
+      // retry or press Escape to give up.
+      notifications.show({ color: "red", title: book.title, message: err instanceof Error ? err.message : String(err) });
+    },
+  });
+
+  const commitTitle = () => {
+    // Disabling the input while the mutation is in flight (below) can itself force a native blur,
+    // which would otherwise re-enter here and fire a second mutate for the same edit.
+    if (renameMutation.isPending) return;
+    const trimmed = titleDraft.trim();
+    if (trimmed.length === 0 || trimmed === book.title) {
+      setTitleDraft(book.title);
+      setEditingTitle(false);
+      return;
+    }
+    renameMutation.mutate(trimmed);
+  };
+
+  const cancelTitleEdit = () => {
+    setTitleDraft(book.title);
+    setEditingTitle(false);
+  };
 
   const handleRead = async () => {
     if (loadingRead) return;
@@ -65,6 +123,8 @@ function BookRow({ book, index, selected, selectedIds, onSelect, onEdit }: BookR
         setBookDragData(event, ids);
       }}
       onClick={(event) => onSelect(book.id, index, event)}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
         cursor: "pointer",
         backgroundColor: selected ? "var(--mantine-primary-color-light)" : undefined,
@@ -86,7 +146,49 @@ function BookRow({ book, index, selected, selectedIds, onSelect, onEdit }: BookR
           ) : (
             <SpineCover id={book.id} title={book.title} width={THUMB_WIDTH} height={THUMB_HEIGHT} titleSize={6} padding={3} />
           )}
-          {book.title}
+          {editingTitle ? (
+            <TextInput
+              size="xs"
+              autoFocus
+              value={titleDraft}
+              disabled={renameMutation.isPending}
+              style={{ flex: 1 }}
+              onClick={(event) => event.stopPropagation()}
+              onChange={(event) => setTitleDraft(event.currentTarget.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") commitTitle();
+                if (event.key === "Escape") cancelTitleEdit();
+              }}
+              onBlur={commitTitle}
+            />
+          ) : (
+            <Group gap={4} wrap="nowrap">
+              <Box
+                component="span"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setEditingTitle(true);
+                }}
+                style={{ cursor: "text" }}
+              >
+                {book.title}
+              </Box>
+              {hovered && (
+                <ActionIcon
+                  size="xs"
+                  variant="subtle"
+                  color="gray"
+                  aria-label={t("bookGrid.renameTitle")}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setEditingTitle(true);
+                  }}
+                >
+                  <IconPencil size={12} />
+                </ActionIcon>
+              )}
+            </Group>
+          )}
         </Group>
       </Table.Td>
       <Table.Td>{book.authors.join(", ") || t("common.unknownAuthor")}</Table.Td>

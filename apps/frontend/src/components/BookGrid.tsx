@@ -162,6 +162,12 @@ function BookCard({ book, index, selected, selectedIds, onSelect, onEdit }: Book
           </Group>
         )}
       </Box>
+      {/* Inline title editing was tried here (click/hover-pencil -> TextInput) but proved flaky:
+          the card is a real <button>, and an <input> nested inside a native button is invalid
+          HTML that fights the button's own keyboard-activation behavior (e.g. Space bubbling as
+          "activate the button" even with stopPropagation on the input). Disabled for card view -
+          use the pencil-edit affordance in list view (BookList.tsx), or the full edit form
+          (onEdit, above), to rename a title instead. */}
       <Text size="sm" fw={600} mt={8} lineClamp={2} title={book.title}>
         {book.title}
       </Text>
