@@ -77,12 +77,15 @@ interface SidebarProps {
   onOpenSettings: () => void;
   onLibraryChanged: () => void;
   // Issue #10: dragging a book (or the active multi-selection) from the grid/list onto an
-  // Author/Series/Tag/Collection row here applies that edit - see App.tsx's
-  // handleDropBooksOnGroup, which is what actually calls the edit endpoint per book.
+  // Author/Series/Tag/Collection/Publisher row here applies that edit - see App.tsx's
+  // handleDropBooksOnGroup, which is what actually calls the edit endpoint per book. Dropping
+  // onto Author normally replaces the book's author(s); holding Shift while dropping appends
+  // instead (`shiftKey`, read from the native DragEvent in GroupSection's onDrop below).
   onDropBooks: (
-    kind: "authorId" | "seriesId" | "tagId" | "collectionId",
+    kind: "authorId" | "seriesId" | "tagId" | "collectionId" | "publisher",
     target: { id: string; name: string },
     bookIds: string[],
+    shiftKey: boolean,
   ) => void;
 }
 
@@ -131,10 +134,10 @@ function GroupSection({
   onSelect: (filter: GroupFilter | null) => void;
   groups: BrowseGroup[] | undefined;
   action?: React.ReactNode;
-  // Only passed for Authors/Series/Tags/Collections (see Sidebar's own onDropBooks prop) - issue
-  // #10's "drag a book from the grid/list onto a sidebar row to edit it" feature. Undefined here
-  // (Publishers/reading-status rows don't get one) just means these rows aren't drop targets.
-  onDropBooks?: (target: { id: string; name: string }, bookIds: string[]) => void;
+  // Only passed for Authors/Series/Tags/Collections/Publishers (see Sidebar's own onDropBooks
+  // prop) - issue #10's "drag a book from the grid/list onto a sidebar row to edit it" feature.
+  // Undefined here (reading-status rows don't get one) just means those rows aren't drop targets.
+  onDropBooks?: (target: { id: string; name: string }, bookIds: string[], shiftKey: boolean) => void;
 }) {
   const [dragOverId, setDragOverId] = useState<string | null>(null);
 
@@ -167,7 +170,7 @@ function GroupSection({
                 setDragOverId(null);
                 const bookIds = readBookDragIds(event);
                 if (bookIds && bookIds.length > 0) {
-                  onDropBooks({ id: group.id, name: group.name }, bookIds);
+                  onDropBooks({ id: group.id, name: group.name }, bookIds, event.shiftKey);
                 }
               })
             }
@@ -351,7 +354,7 @@ export function Sidebar({
                   {seeAllAction(onOpenCollections)}
                 </Group>
               }
-              onDropBooks={(target, bookIds) => onDropBooks("collectionId", target, bookIds)}
+              onDropBooks={(target, bookIds, shiftKey) => onDropBooks("collectionId", target, bookIds, shiftKey)}
             />
           )}
           {browseSection === "authors" && (
@@ -363,7 +366,7 @@ export function Sidebar({
               onSelect={onSelect}
               groups={byBookCount(authorsQuery.data)}
               action={seeAllAction(onOpenAuthors)}
-              onDropBooks={(target, bookIds) => onDropBooks("authorId", target, bookIds)}
+              onDropBooks={(target, bookIds, shiftKey) => onDropBooks("authorId", target, bookIds, shiftKey)}
             />
           )}
           {browseSection === "series" && (
@@ -375,7 +378,7 @@ export function Sidebar({
               onSelect={onSelect}
               groups={byBookCount(seriesQuery.data)}
               action={seeAllAction(onOpenSeries)}
-              onDropBooks={(target, bookIds) => onDropBooks("seriesId", target, bookIds)}
+              onDropBooks={(target, bookIds, shiftKey) => onDropBooks("seriesId", target, bookIds, shiftKey)}
             />
           )}
           {browseSection === "tags" && (
@@ -387,7 +390,7 @@ export function Sidebar({
               onSelect={onSelect}
               groups={byBookCount(tagsQuery.data)}
               action={seeAllAction(onOpenTags)}
-              onDropBooks={(target, bookIds) => onDropBooks("tagId", target, bookIds)}
+              onDropBooks={(target, bookIds, shiftKey) => onDropBooks("tagId", target, bookIds, shiftKey)}
             />
           )}
           {browseSection === "publishers" && (
@@ -399,6 +402,7 @@ export function Sidebar({
               onSelect={onSelect}
               groups={byBookCount(publishersQuery.data)}
               action={seeAllAction(onOpenPublishers)}
+              onDropBooks={(target, bookIds, shiftKey) => onDropBooks("publisher", target, bookIds, shiftKey)}
             />
           )}
         </ScrollArea>

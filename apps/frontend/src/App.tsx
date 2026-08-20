@@ -198,25 +198,30 @@ function App() {
   };
 
   const dragDropMessageKey: Record<
-    "authorId" | "seriesId" | "tagId" | "collectionId",
+    "authorId" | "authorIdAppend" | "seriesId" | "tagId" | "collectionId" | "publisher",
     { one: TranslationKey; other: TranslationKey }
   > = {
-    authorId: { one: "dragDrop.author_one", other: "dragDrop.author_other" },
+    authorId: { one: "dragDrop.authorSet_one", other: "dragDrop.authorSet_other" },
+    authorIdAppend: { one: "dragDrop.author_one", other: "dragDrop.author_other" },
     seriesId: { one: "dragDrop.series_one", other: "dragDrop.series_other" },
     tagId: { one: "dragDrop.tag_one", other: "dragDrop.tag_other" },
     collectionId: { one: "dragDrop.collection_one", other: "dragDrop.collection_other" },
+    publisher: { one: "dragDrop.publisher_one", other: "dragDrop.publisher_other" },
   };
 
   // Drop-to-edit (issue #10): dragging a book (or the active multi-selection) from the grid/list
-  // onto a sidebar Authors/Series/Tags/Collections row applies that edit to every dropped book.
-  // Fetches each book's current full detail first and PUTs it back with just the one field
-  // changed, since the edit endpoint (same one BookEditForm uses) is a full replace, not an
-  // incremental patch. Author adds alongside existing authors (a book can have co-authors);
-  // series replaces (a book has at most one); tag/collection both add.
+  // onto a sidebar Authors/Series/Tags/Collections/Publisher row applies that edit to every
+  // dropped book. Fetches each book's current full detail first and PUTs it back with just the
+  // one field changed, since the edit endpoint (same one BookEditForm uses) is a full replace,
+  // not an incremental patch. Author *replaces* the book's author(s) by default (a plain drop);
+  // holding Shift while dropping appends instead, alongside any existing authors (a book can have
+  // co-authors) - see Sidebar.tsx's GroupSection onDrop, which reads the native DragEvent's
+  // shiftKey. Series/publisher replace (a book has at most one of each); tag/collection both add.
   const handleDropBooksOnGroup = async (
-    kind: "authorId" | "seriesId" | "tagId" | "collectionId",
+    kind: "authorId" | "seriesId" | "tagId" | "collectionId" | "publisher",
     target: { id: string; name: string },
     bookIds: string[],
+    shiftKey: boolean,
   ) => {
     const results = await Promise.allSettled(
       bookIds.map(async (bookId) => {
@@ -236,7 +241,11 @@ function App() {
         };
 
         if (kind === "authorId") {
-          if (!edit.authors.includes(target.name)) edit.authors = [...edit.authors, target.name];
+          if (shiftKey) {
+            if (!edit.authors.includes(target.name)) edit.authors = [...edit.authors, target.name];
+          } else {
+            edit.authors = [target.name];
+          }
         } else if (kind === "seriesId") {
           // Only reset when actually changing series - re-dropping a book onto the series it's
           // already in would otherwise silently wipe its existing seriesIndex for no reason.
@@ -246,6 +255,8 @@ function App() {
           }
         } else if (kind === "tagId") {
           if (!edit.tags.includes(target.name)) edit.tags = [...edit.tags, target.name];
+        } else if (kind === "publisher") {
+          edit.publisher = target.name;
         } else {
           if (!edit.collectionIds.includes(target.id)) edit.collectionIds = [...edit.collectionIds, target.id];
         }
@@ -260,7 +271,7 @@ function App() {
 
     const failed = results.filter((r) => r.status === "rejected").length;
     const succeeded = bookIds.length - failed;
-    const keys = dragDropMessageKey[kind];
+    const keys = dragDropMessageKey[kind === "authorId" && shiftKey ? "authorIdAppend" : kind];
     notifications.show({
       color: failed > 0 ? "yellow" : "green",
       title: target.name,
