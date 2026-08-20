@@ -10,7 +10,6 @@ import {
   type ReaderSource,
   type ReadingProgress as QariReadingProgress,
 } from "@inshapardaz/qari";
-import { THEMES } from "@inshapardaz/qari/services/theme-engine";
 import type { ReaderError, FontFamily, ReadingProgressRecord } from "@inshapardaz/qari/models";
 import type { CustomStoreAdapter, CustomNoteStoreAdapter, CustomProgressStoreAdapter } from "@inshapardaz/qari/interfaces";
 import {
@@ -64,19 +63,7 @@ const SETTINGS_STORAGE_KEY = "maktaba-reader-settings";
 function loadStoredSettings(): ReaderSettings {
   try {
     const raw = window.localStorage.getItem(SETTINGS_STORAGE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw) as ReaderSettings;
-    // qari's own theme catalog isn't guaranteed stable across versions - e.g. "sepia" was renamed
-    // to "calm" between the qari version this key may have last been written under and the one
-    // currently installed (see qari's ThemeEngine/THEMES). A theme name that's no longer in THEMES
-    // crashes ThemeEngine.applyThemeColors (issue #16 - "reader hangs/doesn't show", actually a
-    // silent render crash with no error boundary around <Reader>) since it's passed straight
-    // through as a fully-controlled prop. Drop it instead - the `theme` default computed below
-    // (from the current color scheme) wins once this key is absent from the spread.
-    if (parsed.theme && !(parsed.theme in THEMES)) {
-      delete parsed.theme;
-    }
-    return parsed;
+    return raw ? (JSON.parse(raw) as ReaderSettings) : {};
   } catch {
     return {};
   }
