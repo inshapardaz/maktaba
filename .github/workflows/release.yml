@@ -150,21 +150,38 @@ jobs:
       - name: Set package version
         run: node scripts/set-version.mjs ${{ needs.determine-version.outputs.version }}
 
+      # electron-builder's own CSC_LINK/CSC_KEY_PASSWORD/APPLE_* handling treats an env var that's
+      # merely *present but empty* as "this was explicitly configured" (its source even comments
+      # "allow to specify as empty string" - the null-checks it does are `== null`, which an empty
+      # string fails) rather than "not configured". Setting CSC_LINK: '' when MAC_CERTIFICATE isn't
+      # a repo secret therefore isn't a no-op: electron-builder tries to import a certificate from
+      # that empty path, which resolves relative to the project dir and crashes with
+      # "<projectDir> not a file" - exactly what broke the mac leg of the release build. The only
+      # way to make an env var truly absent (not just empty) in Actions is to never emit the
+      # GITHUB_ENV line at all, so the export below is gated on a plain shell `[ -n ... ]` check
+      # (secrets aren't usable in a step `if:` condition) rather than skipping the whole step.
+      # CSC_IDENTITY_AUTO_DISCOVERY is exported unconditionally (true/false) from here rather than
+      # set on the "Build and package" step's own `env:` - a step's `env:` would take precedence
+      # over (and silently undo) whatever this step exports via GITHUB_ENV, so it has to live here,
+      # next to the condition that decides it, not on the step that consumes it.
+      - name: Configure mac signing
+        if: matrix.platform == 'macos'
+        run: |
+          if [ -n "${{ secrets.MAC_CERTIFICATE }}" ]; then
+            {
+              echo "CSC_IDENTITY_AUTO_DISCOVERY=true"
+              echo "CSC_LINK=${{ secrets.MAC_CERTIFICATE }}"
+              echo "CSC_KEY_PASSWORD=${{ secrets.MAC_CERTIFICATE_PASSWORD }}"
+              echo "APPLE_ID=${{ secrets.APPLE_ID }}"
+              echo "APPLE_APP_SPECIFIC_PASSWORD=${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}"
+              echo "APPLE_TEAM_ID=${{ secrets.APPLE_TEAM_ID }}"
+            } >> "$GITHUB_ENV"
+          else
+            echo "CSC_IDENTITY_AUTO_DISCOVERY=false" >> "$GITHUB_ENV"
+          fi
+
       - name: Build and package
         run: npm run ${{ matrix.package_script }}
-        env:
-          # Signs + notarizes the mac dmg when an Apple Developer ID certificate and
-          # notarization credentials are configured as repo secrets (see README's "Known
-          # issues" section) - without them, electron-builder falls back to an unsigned
-          # build (same as before) rather than failing, since CSC_IDENTITY_AUTO_DISCOVERY
-          # is only turned on when a cert is actually present. These are scoped to the
-          # macos leg only so a mac cert is never handed to the windows/linux signers.
-          CSC_IDENTITY_AUTO_DISCOVERY: ${{ matrix.platform == 'macos' && secrets.MAC_CERTIFICATE != '' }}
-          CSC_LINK: ${{ matrix.platform == 'macos' && secrets.MAC_CERTIFICATE || '' }}
-          CSC_KEY_PASSWORD: ${{ matrix.platform == 'macos' && secrets.MAC_CERTIFICATE_PASSWORD || '' }}
-          APPLE_ID: ${{ matrix.platform == 'macos' && secrets.APPLE_ID || '' }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ matrix.platform == 'macos' && secrets.APPLE_APP_SPECIFIC_PASSWORD || '' }}
-          APPLE_TEAM_ID: ${{ matrix.platform == 'macos' && secrets.APPLE_TEAM_ID || '' }}
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
