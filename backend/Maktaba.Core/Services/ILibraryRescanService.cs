@@ -4,9 +4,13 @@ namespace Maktaba.Core.Services;
 /// Rebuilds metadata.db from the on-disk library folder, per the "the DB is a rebuildable index"
 /// design (see docs/SPEC.md §4). Only recognizes folders following Maktaba's own
 /// "{Author}/{Title} ({BookId})" layout; files dropped into the library outside that convention are
-/// not picked up. Metadata is re-derived from each file's embedded metadata, so any DB-only edits
-/// (rating, tags, series, or a title/author correction that isn't reflected in the file itself) are
-/// lost - this is an intentional tradeoff of treating the DB purely as a rebuildable cache.
+/// not picked up. A rescan only adds books for folders with no matching existing book id, and
+/// removes books whose folder is gone - for a book id that already exists, its row (both DB-only
+/// fields like rating/tags/series and file-derived metadata like title/authors/description) is left
+/// untouched rather than re-read from the file's embedded metadata, so edits made in the app always
+/// survive a rescan (see LibraryRescanService's PreviousBookState / issue #15). Only a genuinely new
+/// book has its metadata extracted from the file; BookFiles (format/size/hash) are still refreshed
+/// for every book on every rescan, since that legitimately tracks whatever is on disk right now.
 /// </summary>
 public interface ILibraryRescanService
 {

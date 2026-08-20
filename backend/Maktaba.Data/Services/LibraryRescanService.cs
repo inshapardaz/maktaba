@@ -21,6 +21,8 @@ public partial class LibraryRescanService(
 
     private sealed record SeriesInfo(string Name, double Index);
 
+    private sealed record IdentifierInfo(string Scheme, string Value);
+
     private sealed record BookmarkInfo(
         string ClientId, string ChapterId, double Position, string Name, DateTime CreatedAt, DateTime? UpdatedAt);
 
@@ -32,11 +34,26 @@ public partial class LibraryRescanService(
         int CurrentChapter, int TotalChapters, int CurrentPage, int TotalPages, string? ChapterTitle,
         double Percentage, string? ChapterId, double? Position, DateTime UpdatedAt);
 
-    // Everything here is DB-only state a rescan can't re-derive from the file itself (see
-    // ILibraryRescanService docs) - captured per book id before the wipe below, and reapplied to
-    // the rebuilt row for any book whose folder (and therefore id) still exists, rather than
-    // silently resetting it on every rescan.
+    // Captured per book id before the wipe below, and reapplied to the rebuilt row for any book
+    // whose folder (and therefore id) still exists, rather than silently resetting it on every
+    // rescan. This covers two different kinds of state: DB-only fields a rescan can't re-derive
+    // from the file at all (Rating/ReadingStatus/DateAdded/tags/series/collections/bookmarks/
+    // notes/progress), and - since issue #15 - file-derived metadata too (Title/SortTitle/
+    // Description/Language/Publisher/DatePublished/Authors/Identifiers). The latter *could* be
+    // re-extracted from the file, but deliberately isn't: embedded EPUB/PDF metadata is often
+    // stale or wrong compared to what the user has since edited in the app (title corrections,
+    // fixed author names, ...), and a rescan silently clobbering those edits on every run was
+    // exactly the bug report. Only a genuinely new book (no previous state) has its metadata
+    // extracted from the file - see TryIndexBookFolderAsync.
     private sealed record PreviousBookState(
+        string Title,
+        string SortTitle,
+        string? Description,
+        string? Language,
+        string? Publisher,
+        DateOnly? DatePublished,
+        List<string> AuthorNames,
+        List<IdentifierInfo> Identifiers,
         int Rating,
         ReadingStatus ReadingStatus,
         DateTime DateAdded,
@@ -142,7 +159,28 @@ public partial class LibraryRescanService(
     private async Task<Dictionary<int, PreviousBookState>> LoadPreviousBookStatesAsync(CancellationToken ct)
     {
         var books = await db.Books
-            .Select(b => new { b.Id, b.Rating, b.ReadingStatus, b.DateAdded })
+            .Select(b => new
+            {
+                b.Id,
+                b.Title,
+                b.SortTitle,
+                b.Description,
+                b.Language,
+                b.Publisher,
+                b.DatePublished,
+                b.Rating,
+                b.ReadingStatus,
+                b.DateAdded,
+            })
+            .ToListAsync(ct);
+
+        var authors = await db.BookAuthors
+            .OrderBy(ba => ba.Order)
+            .Select(ba => new { ba.BookId, AuthorName = ba.Author.Name })
+            .ToListAsync(ct);
+
+        var identifiers = await db.Identifiers
+            .Select(i => new { i.BookId, i.Scheme, i.Value })
             .ToListAsync(ct);
 
         var tags = await db.BookTags
@@ -172,6 +210,14 @@ public partial class LibraryRescanService(
         return books.ToDictionary(
             b => b.Id,
             b => new PreviousBookState(
+                b.Title,
+                b.SortTitle,
+                b.Description,
+                b.Language,
+                b.Publisher,
+                b.DatePublished,
+                authors.Where(a => a.BookId == b.Id).Select(a => a.AuthorName).ToList(),
+                identifiers.Where(i => i.BookId == b.Id).Select(i => new IdentifierInfo(i.Scheme, i.Value)).ToList(),
                 b.Rating,
                 b.ReadingStatus,
                 b.DateAdded,
@@ -203,120 +249,24 @@ public partial class LibraryRescanService(
         }
 
         var relativeFolder = Path.GetRelativePath(libraryRoot, bookDir);
-        Book? book = null;
+
+        // issue #15: a book id already present before this rescan keeps its existing metadata
+        // untouched (built straight from previousStates, no file extraction) - only a genuinely
+        // new id gets its metadata read from the file, lazily on the first recognized file below.
+        var book = previousStates.TryGetValue(bookId, out var previous)
+            ? await BuildExistingBookAsync(bookId, relativeFolder, previous, ct)
+            : null;
 
         foreach (var filePath in ebookFiles)
         {
-            var extractor = extractors.First(e => e.CanHandle(filePath));
-            var metadata = await extractor.ExtractAsync(filePath, ct);
             var hash = await EbookFileHelpers.ComputeSha256Async(filePath, ct);
             var format = EbookFileHelpers.DetectFormat(filePath);
 
             if (book is null)
             {
-                var authors = await EntityResolvers.ResolveAuthorsAsync(db, metadata.Authors, ct);
-                book = new Book
-                {
-                    Id = bookId,
-                    Title = metadata.Title,
-                    SortTitle = TitleSorting.ComputeSortTitle(metadata.Title),
-                    Description = metadata.Description,
-                    Language = metadata.Language,
-                    Publisher = metadata.Publisher,
-                    DatePublished = metadata.PublishedDate,
-                    FolderPath = relativeFolder,
-                };
-
-                for (var i = 0; i < authors.Count; i++)
-                {
-                    book.BookAuthors.Add(new BookAuthor { BookId = bookId, Author = authors[i], Order = i });
-                }
-
-                foreach (var identifier in metadata.Identifiers)
-                {
-                    book.Identifiers.Add(new Identifier
-                    {
-                        BookId = bookId,
-                        Scheme = identifier.Scheme,
-                        Value = identifier.Value,
-                    });
-                }
-
-                if (previousStates.TryGetValue(bookId, out var previous))
-                {
-                    book.DateAdded = previous.DateAdded;
-                    book.Rating = previous.Rating;
-                    book.ReadingStatus = previous.ReadingStatus;
-
-                    var tags = await EntityResolvers.ResolveTagsAsync(db, previous.TagNames, ct);
-                    foreach (var tag in tags)
-                    {
-                        book.BookTags.Add(new BookTag { BookId = bookId, Tag = tag });
-                    }
-
-                    if (previous.Series is { } previousSeries)
-                    {
-                        var series = await EntityResolvers.ResolveSeriesAsync(db, previousSeries.Name, ct);
-                        if (series is not null)
-                        {
-                            book.BookSeries.Add(new BookSeries { BookId = bookId, Series = series, SeriesIndex = previousSeries.Index });
-                        }
-                    }
-
-                    foreach (var collectionId in previous.CollectionIds)
-                    {
-                        book.BookCollections.Add(new BookCollection { BookId = bookId, CollectionId = collectionId });
-                    }
-
-                    foreach (var bookmark in previous.Bookmarks)
-                    {
-                        db.Bookmarks.Add(new Bookmark
-                        {
-                            BookId = bookId,
-                            ClientId = bookmark.ClientId,
-                            ChapterId = bookmark.ChapterId,
-                            Position = bookmark.Position,
-                            Name = bookmark.Name,
-                            CreatedAt = bookmark.CreatedAt,
-                            UpdatedAt = bookmark.UpdatedAt,
-                        });
-                    }
-
-                    foreach (var note in previous.Notes)
-                    {
-                        db.Notes.Add(new Note
-                        {
-                            BookId = bookId,
-                            ClientId = note.ClientId,
-                            ChapterId = note.ChapterId,
-                            StartOffset = note.StartOffset,
-                            EndOffset = note.EndOffset,
-                            Text = note.Text,
-                            Comment = note.Comment,
-                            CreatedAt = note.CreatedAt,
-                            UpdatedAt = note.UpdatedAt,
-                        });
-                    }
-
-                    if (previous.Progress is { } previousProgress)
-                    {
-                        db.ReadingProgress.Add(new ReadingProgress
-                        {
-                            BookId = bookId,
-                            CurrentChapter = previousProgress.CurrentChapter,
-                            TotalChapters = previousProgress.TotalChapters,
-                            CurrentPage = previousProgress.CurrentPage,
-                            TotalPages = previousProgress.TotalPages,
-                            ChapterTitle = previousProgress.ChapterTitle,
-                            Percentage = previousProgress.Percentage,
-                            ChapterId = previousProgress.ChapterId,
-                            Position = previousProgress.Position,
-                            UpdatedAt = previousProgress.UpdatedAt,
-                        });
-                    }
-                }
-
-                db.Books.Add(book);
+                var extractor = extractors.First(e => e.CanHandle(filePath));
+                var metadata = await extractor.ExtractAsync(filePath, ct);
+                book = await BuildNewBookAsync(bookId, relativeFolder, metadata, ct);
             }
 
             book.Files.Add(new BookFile
@@ -329,6 +279,155 @@ public partial class LibraryRescanService(
             });
         }
 
+        db.Books.Add(book!);
         return true;
+    }
+
+    // Rebuilds an already-known book's row entirely from its own previously-saved state (issue
+    // #15) - no file I/O, no metadata extraction, so embedded EPUB/PDF metadata can never
+    // overwrite an edit the user made in the app. Structural bookkeeping (FolderPath) still tracks
+    // wherever the folder currently sits, since that's a location detail, not user-editable
+    // metadata; BookFiles are added by the caller from a fresh per-file read regardless (a
+    // format/size/hash change on disk is exactly what a rescan should notice, even for a book
+    // whose metadata is left alone).
+    private async Task<Book> BuildExistingBookAsync(int bookId, string relativeFolder, PreviousBookState previous, CancellationToken ct)
+    {
+        var book = new Book
+        {
+            Id = bookId,
+            Title = previous.Title,
+            SortTitle = previous.SortTitle,
+            Description = previous.Description,
+            Language = previous.Language,
+            Publisher = previous.Publisher,
+            DatePublished = previous.DatePublished,
+            FolderPath = relativeFolder,
+            DateAdded = previous.DateAdded,
+            Rating = previous.Rating,
+            ReadingStatus = previous.ReadingStatus,
+        };
+
+        // previous.AuthorNames is already in credit order (loaded via OrderBy(ba => ba.Order) in
+        // LoadPreviousBookStatesAsync), so re-assigning Order from the resolved list's index below
+        // reproduces the original order without needing to carry the raw Order value separately.
+        var authors = await EntityResolvers.ResolveAuthorsAsync(db, previous.AuthorNames, ct);
+        for (var i = 0; i < authors.Count; i++)
+        {
+            book.BookAuthors.Add(new BookAuthor { BookId = bookId, Author = authors[i], Order = i });
+        }
+
+        foreach (var identifier in previous.Identifiers)
+        {
+            book.Identifiers.Add(new Identifier { BookId = bookId, Scheme = identifier.Scheme, Value = identifier.Value });
+        }
+
+        await RestorePreviousDbOnlyStateAsync(book, bookId, previous, ct);
+        return book;
+    }
+
+    private async Task<Book> BuildNewBookAsync(int bookId, string relativeFolder, ExtractedBookMetadata metadata, CancellationToken ct)
+    {
+        var authors = await EntityResolvers.ResolveAuthorsAsync(db, metadata.Authors, ct);
+        var book = new Book
+        {
+            Id = bookId,
+            Title = metadata.Title,
+            SortTitle = TitleSorting.ComputeSortTitle(metadata.Title),
+            Description = metadata.Description,
+            Language = metadata.Language,
+            Publisher = metadata.Publisher,
+            DatePublished = metadata.PublishedDate,
+            FolderPath = relativeFolder,
+        };
+
+        for (var i = 0; i < authors.Count; i++)
+        {
+            book.BookAuthors.Add(new BookAuthor { BookId = bookId, Author = authors[i], Order = i });
+        }
+
+        foreach (var identifier in metadata.Identifiers)
+        {
+            book.Identifiers.Add(new Identifier
+            {
+                BookId = bookId,
+                Scheme = identifier.Scheme,
+                Value = identifier.Value,
+            });
+        }
+
+        return book;
+    }
+
+    // The DB-only fields a rescan can't re-derive from the file at all (tags/series/collections/
+    // bookmarks/notes/reading progress) - only ever called for a bookId that has a previous state,
+    // i.e. from BuildExistingBookAsync above, kept as its own method purely for readability.
+    private async Task RestorePreviousDbOnlyStateAsync(Book book, int bookId, PreviousBookState previous, CancellationToken ct)
+    {
+        var tags = await EntityResolvers.ResolveTagsAsync(db, previous.TagNames, ct);
+        foreach (var tag in tags)
+        {
+            book.BookTags.Add(new BookTag { BookId = bookId, Tag = tag });
+        }
+
+        if (previous.Series is { } previousSeries)
+        {
+            var series = await EntityResolvers.ResolveSeriesAsync(db, previousSeries.Name, ct);
+            if (series is not null)
+            {
+                book.BookSeries.Add(new BookSeries { BookId = bookId, Series = series, SeriesIndex = previousSeries.Index });
+            }
+        }
+
+        foreach (var collectionId in previous.CollectionIds)
+        {
+            book.BookCollections.Add(new BookCollection { BookId = bookId, CollectionId = collectionId });
+        }
+
+        foreach (var bookmark in previous.Bookmarks)
+        {
+            db.Bookmarks.Add(new Bookmark
+            {
+                BookId = bookId,
+                ClientId = bookmark.ClientId,
+                ChapterId = bookmark.ChapterId,
+                Position = bookmark.Position,
+                Name = bookmark.Name,
+                CreatedAt = bookmark.CreatedAt,
+                UpdatedAt = bookmark.UpdatedAt,
+            });
+        }
+
+        foreach (var note in previous.Notes)
+        {
+            db.Notes.Add(new Note
+            {
+                BookId = bookId,
+                ClientId = note.ClientId,
+                ChapterId = note.ChapterId,
+                StartOffset = note.StartOffset,
+                EndOffset = note.EndOffset,
+                Text = note.Text,
+                Comment = note.Comment,
+                CreatedAt = note.CreatedAt,
+                UpdatedAt = note.UpdatedAt,
+            });
+        }
+
+        if (previous.Progress is { } previousProgress)
+        {
+            db.ReadingProgress.Add(new ReadingProgress
+            {
+                BookId = bookId,
+                CurrentChapter = previousProgress.CurrentChapter,
+                TotalChapters = previousProgress.TotalChapters,
+                CurrentPage = previousProgress.CurrentPage,
+                TotalPages = previousProgress.TotalPages,
+                ChapterTitle = previousProgress.ChapterTitle,
+                Percentage = previousProgress.Percentage,
+                ChapterId = previousProgress.ChapterId,
+                Position = previousProgress.Position,
+                UpdatedAt = previousProgress.UpdatedAt,
+            });
+        }
     }
 }

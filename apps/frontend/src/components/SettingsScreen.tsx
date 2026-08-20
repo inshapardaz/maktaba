@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, ColorSwatch, Group, Modal, Select, SegmentedControl, Stack, Switch, Tabs, Text, Tooltip, UnstyledButton } from "@mantine/core";
 import { IconAlertTriangle, IconBook2, IconBooks, IconCheck, IconFileImport, IconSettings } from "@tabler/icons-react";
@@ -23,10 +23,17 @@ import { ColorSchemeToggle } from "./ColorSchemeToggle";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { LibrariesSettings } from "./LibrariesSettings";
 
+export type SettingsTab = "general" | "libraries" | "reading" | "import";
+
 interface SettingsScreenProps {
   opened: boolean;
   onClose: () => void;
   onLibraryChanged: () => void;
+  // Which tab to land on when the modal opens - e.g. Sidebar's "Manage Libraries" jumps straight
+  // to "libraries" instead of always opening on General (issue #15). Defaults to "general" and is
+  // re-applied every time the modal transitions to opened, not just on first mount, since Modal
+  // stays mounted (just hidden) between opens.
+  initialTab?: SettingsTab;
 }
 
 function FieldLabel({ children }: { children: string }) {
@@ -37,9 +44,10 @@ function FieldLabel({ children }: { children: string }) {
   );
 }
 
-export function SettingsScreen({ opened, onClose, onLibraryChanged }: SettingsScreenProps) {
+export function SettingsScreen({ opened, onClose, onLibraryChanged, initialTab }: SettingsScreenProps) {
   const { t, urduFont, setUrduFont } = useLanguage();
   const { themeColor, setThemeColor } = useThemeColor();
+  const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab ?? "general");
   const [defaultFormat, setDefaultFormat] = useState<ConvertFormat>(getStoredDefaultFormat());
   const [readerOpenMode, setReaderOpenMode] = useState<ReaderOpenMode>(getStoredReaderOpenMode());
   const [epubEngine, setEpubEngine] = useState<ReaderEngine>(getStoredReaderEngine("Epub"));
@@ -83,9 +91,15 @@ export function SettingsScreen({ opened, onClose, onLibraryChanged }: SettingsSc
     setStoredAutoTagMode(mode);
   };
 
+  // Re-applied on every open (not just first mount) - the Modal/Tabs stay mounted between opens,
+  // so without this a "Manage Libraries" open would only land on the libraries tab the first time.
+  useEffect(() => {
+    if (opened) setActiveTab(initialTab ?? "general");
+  }, [opened, initialTab]);
+
   return (
     <Modal opened={opened} onClose={onClose} title={t("settings.title")} size="xl" centered>
-      <Tabs defaultValue="general" keepMounted={false}>
+      <Tabs value={activeTab} onChange={(value) => setActiveTab((value as SettingsTab | null) ?? "general")} keepMounted={false}>
         <Tabs.List>
           <Tabs.Tab value="general" leftSection={<IconSettings size={14} />}>
             {t("settings.general")}

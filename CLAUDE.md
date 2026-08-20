@@ -53,14 +53,20 @@ render just the reader instead of the full app). All windows share the one sidec
       {Book Title}.epub / .pdf
 ```
 
-`metadata.db` is a **rebuildable cache**, not canonical data — file layout + embedded metadata
-(OPF/PDF info dict) are the durable source. A "resync"/rescan operation
-(`LibraryRescanService.RescanAsync`) wipes and rebuilds it by walking these folders. Since Sept
-2026 (see `LibraryRescanService.cs`) rescan **snapshots and restores DB-only fields** per book id
-before rebuilding — `Rating`, `ReadingStatus`, `DateAdded`, tags, series, and collection
-membership all survive a rescan now; only file-derived fields (title/authors/description/etc.)
-are actually re-read from disk. Book ids are stable across rescans because they're decoded
-straight from the folder name (`IdCodec.TryDecode`), not reassigned.
+`metadata.db` is a **rebuildable cache**, not canonical data — file layout is the durable source
+for *which* books exist, but not for their metadata once a book has been indexed at least once. A
+"resync"/rescan operation (`LibraryRescanService.RescanAsync`) walks these folders and only ever
+adds a book for a folder with no matching existing id, or removes one whose folder is gone; for a
+book id that already exists, its row — DB-only fields (`Rating`, `ReadingStatus`, `DateAdded`,
+tags, series, collection membership) *and* file-derived fields (title/authors/description/
+publisher/language/etc.) alike — is left completely untouched rather than re-read from the file's
+embedded (OPF/PDF info dict) metadata. This was a deliberate fix (issue #15): re-extracting
+file-derived fields on every rescan used to silently overwrite any in-app title/author/etc.
+correction the moment someone rescanned. Only a genuinely new book has its metadata read from the
+file at all; per-file `BookFiles` rows (format/size/hash) are still refreshed for every book on
+every rescan, since that legitimately tracks whatever's on disk right now. Book ids are stable
+across rescans because they're decoded straight from the folder name (`IdCodec.TryDecode`), not
+reassigned.
 
 ## Multi-library
 

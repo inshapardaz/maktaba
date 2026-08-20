@@ -33,7 +33,7 @@ import { PublishersView } from "./components/PublishersView";
 import { LanguagesView } from "./components/LanguagesView";
 import { FilterBar, type SortDirection, type SortKey, type ViewMode } from "./components/FilterBar";
 import { ImportDialog } from "./components/ImportDialog";
-import { SettingsScreen } from "./components/SettingsScreen";
+import { SettingsScreen, type SettingsTab } from "./components/SettingsScreen";
 import { UpdateNotifier } from "./components/UpdateNotifier";
 import { invalidateLibraryQueries } from "./queries";
 import { useDebounced } from "./useDebounced";
@@ -85,6 +85,7 @@ function App() {
 
   const [mainView, setMainView] = useState<MainView>("home");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<SettingsTab | undefined>(undefined);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT_WIDTH);
   const [sortKey, setSortKeyState] = useState<SortKey>("title");
@@ -442,7 +443,10 @@ function App() {
                 onOpenSeries={() => setMainView("series")}
                 onOpenPublishers={() => setMainView("publishers")}
                 onOpenLanguages={() => setMainView("languages")}
-                onOpenSettings={() => setSettingsOpen(true)}
+                onOpenSettings={(tab) => {
+                  setSettingsTab(tab);
+                  setSettingsOpen(true);
+                }}
                 onLibraryChanged={handleLibraryChanged}
                 onDropBooks={handleDropBooksOnGroup}
               />
@@ -531,6 +535,7 @@ function App() {
               opened={settingsOpen}
               onClose={() => setSettingsOpen(false)}
               onLibraryChanged={handleLibraryChanged}
+              initialTab={settingsTab}
             />
 
             {selectedBookId && (

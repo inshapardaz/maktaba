@@ -45,6 +45,7 @@ import { isBookDrag, readBookDragIds } from "../bookDrag";
 import { useLanguage } from "../i18n/LanguageContext";
 import { LANGUAGES, type TranslationKey } from "../i18n/translations";
 import { LibrarySwitcher } from "./LibrarySwitcher";
+import type { SettingsTab } from "./SettingsScreen";
 
 export type GroupFilterKind =
   | "authorId"
@@ -117,7 +118,10 @@ interface SidebarProps {
   onOpenSeries: () => void;
   onOpenPublishers: () => void;
   onOpenLanguages: () => void;
-  onOpenSettings: () => void;
+  // Optional tab (see SettingsScreen.tsx's SettingsTab) to land on when Settings opens - the
+  // footer gear button opens on whatever the default is, while "Manage Libraries" below jumps
+  // straight to "libraries" (issue #15).
+  onOpenSettings: (tab?: SettingsTab) => void;
   onLibraryChanged: () => void;
   // Issue #10: dragging a book (or the active multi-selection) from the grid/list onto an
   // Author/Series/Tag/Collection/Publisher/Language row here applies that edit - see App.tsx's
@@ -524,7 +528,7 @@ export function Sidebar({
 
       <Box p={4} style={{ borderTop: "1px solid var(--mantine-color-default-border)" }}>
         <Group gap={4} wrap="wrap" align="center">
-          <LibrarySwitcher onLibraryChanged={onLibraryChanged} onManage={onOpenSettings} compact={collapsed} />
+          <LibrarySwitcher onLibraryChanged={onLibraryChanged} onManage={() => onOpenSettings("libraries")} compact={collapsed} />
           <Tooltip label={t("toolbar.colorSchemeToggle")}>
             <ActionIcon
               variant="subtle"
@@ -554,7 +558,7 @@ export function Sidebar({
               variant={settingsOpen ? "light" : "subtle"}
               color="gray"
               size="lg"
-              onClick={onOpenSettings}
+              onClick={() => onOpenSettings()}
               aria-label={t("settings.title")}
             >
               <IconSettings size={17} />
