@@ -104,6 +104,15 @@ function App() {
   const [groupFilter, setGroupFilter] = useState<GroupFilter | null>(null);
   const debouncedSearch = useDebounced(search, 300);
 
+  // Multi-selection is scoped to whatever book list is currently on screen - switching views
+  // (library/authors/collections/...) or changing the active group filter shows a different set
+  // of books entirely, so a selection carried over from before would silently apply drag/drop or
+  // other multi-select actions to books the user can no longer even see.
+  useEffect(() => {
+    setSelectedBookIds(new Set());
+    setLastClickedIndex(null);
+  }, [mainView, groupFilter]);
+
   const filters: BookFilters = {
     search: debouncedSearch || undefined,
     format: format || undefined,
