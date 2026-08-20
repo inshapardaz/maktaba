@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   ActionIcon,
   Badge,
@@ -12,6 +12,7 @@ import {
   Tooltip,
   UnstyledButton,
   useComputedColorScheme,
+  useDirection,
   useMantineColorScheme,
 } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -20,6 +21,7 @@ import {
   IconCheck,
   IconFolder,
   IconFolderOpen,
+  IconLanguage,
   IconMoon,
   IconPlus,
   IconSettings,
@@ -33,6 +35,7 @@ import {
   createCollection,
   listAuthors,
   listCollections,
+  listLanguageGroups,
   listPublisherGroups,
   listSeries,
   listTags,
@@ -40,10 +43,17 @@ import {
 } from "../api";
 import { isBookDrag, readBookDragIds } from "../bookDrag";
 import { useLanguage } from "../i18n/LanguageContext";
-import { LANGUAGES } from "../i18n/translations";
+import { LANGUAGES, type TranslationKey } from "../i18n/translations";
 import { LibrarySwitcher } from "./LibrarySwitcher";
 
-export type GroupFilterKind = "authorId" | "seriesId" | "tagId" | "collectionId" | "publisher" | "readingStatus";
+export type GroupFilterKind =
+  | "authorId"
+  | "seriesId"
+  | "tagId"
+  | "collectionId"
+  | "publisher"
+  | "language"
+  | "readingStatus";
 
 export interface GroupFilter {
   kind: GroupFilterKind;
@@ -51,9 +61,36 @@ export interface GroupFilter {
   name: string;
 }
 
-export type MainView = "home" | "library" | "authors" | "collections" | "tags" | "series" | "publishers";
+export type MainView =
+  | "home"
+  | "library"
+  | "authors"
+  | "collections"
+  | "tags"
+  | "series"
+  | "publishers"
+  | "languages";
 
-type BrowseSection = "collections" | "authors" | "series" | "tags" | "publishers";
+type BrowseSection = "collections" | "authors" | "series" | "tags" | "publishers" | "languages";
+
+// Drag-to-resize (via the handle rendered at the sidebar's inline-end edge below) is clamped to
+// this range - narrow enough to still fit as an icon rail, wide enough that a long author/series
+// name doesn't get truncated into uselessness.
+export const SIDEBAR_MIN_WIDTH = 180;
+export const SIDEBAR_MAX_WIDTH = 480;
+// Wide enough that all six view-bar icons (Authors/Collections/Series/Tags/Publishers/Languages)
+// fit on one row without wrapping at the default width - narrower drag-resized widths still wrap.
+export const SIDEBAR_DEFAULT_WIDTH = 264;
+
+// Book.Language is stored as a raw ISO 639-1 code (see BookEditForm.tsx's LANGUAGE_CODES), so the
+// sidebar/LanguagesView show a translated display name instead of the bare code wherever possible
+// - falling back to the code itself for anything outside the known set (e.g. a regional code like
+// "en-US" found during import), since t() would otherwise just echo the untranslated key back.
+export function languageDisplayName(code: string, t: (key: TranslationKey) => string): string {
+  const key = `language.${code}` as TranslationKey;
+  const label = t(key);
+  return label === key ? code : label;
+}
 
 // Sorted, uncapped — the sidebar's own ScrollArea (see the `browseSection` ScrollArea below)
 // handles a library with hundreds of authors/collections by scrolling rather than truncating.
@@ -69,20 +106,26 @@ interface SidebarProps {
   onSelect: (filter: GroupFilter | null) => void;
   settingsOpen: boolean;
   collapsed: boolean;
+  // Current expanded-state width in px and its setter, for the drag handle at the sidebar's
+  // inline-end edge (see the resize handling below) - ignored while collapsed (fixed at the
+  // 56px icon rail instead, see App.tsx's AppShell navbar width).
+  width: number;
+  onWidthChange: (width: number) => void;
   onOpenAuthors: () => void;
   onOpenCollections: () => void;
   onOpenTags: () => void;
   onOpenSeries: () => void;
   onOpenPublishers: () => void;
+  onOpenLanguages: () => void;
   onOpenSettings: () => void;
   onLibraryChanged: () => void;
   // Issue #10: dragging a book (or the active multi-selection) from the grid/list onto an
-  // Author/Series/Tag/Collection/Publisher row here applies that edit - see App.tsx's
+  // Author/Series/Tag/Collection/Publisher/Language row here applies that edit - see App.tsx's
   // handleDropBooksOnGroup, which is what actually calls the edit endpoint per book. Dropping
   // onto Author normally replaces the book's author(s); holding Shift while dropping appends
   // instead (`shiftKey`, read from the native DragEvent in GroupSection's onDrop below).
   onDropBooks: (
-    kind: "authorId" | "seriesId" | "tagId" | "collectionId" | "publisher",
+    kind: "authorId" | "seriesId" | "tagId" | "collectionId" | "publisher" | "language",
     target: { id: string; name: string },
     bookIds: string[],
     shiftKey: boolean,
@@ -194,24 +237,55 @@ export function Sidebar({
   onSelect,
   settingsOpen,
   collapsed,
+  width,
+  onWidthChange,
   onOpenAuthors,
   onOpenCollections,
   onOpenTags,
   onOpenSeries,
   onOpenPublishers,
+  onOpenLanguages,
   onOpenSettings,
   onLibraryChanged,
   onDropBooks,
 }: SidebarProps) {
   const { t, language, setLanguage } = useLanguage();
+  const { dir } = useDirection();
   const { setColorScheme } = useMantineColorScheme();
   const computedColorScheme = useComputedColorScheme("light");
   const queryClient = useQueryClient();
   const authorsQuery = useQuery({ queryKey: ["authors"], queryFn: listAuthors });
   const publishersQuery = useQuery({ queryKey: ["publisherGroups"], queryFn: listPublisherGroups });
+  const languagesQuery = useQuery({ queryKey: ["languageGroups"], queryFn: listLanguageGroups });
   const seriesQuery = useQuery({ queryKey: ["series"], queryFn: listSeries });
   const tagsQuery = useQuery({ queryKey: ["tags"], queryFn: listTags });
   const collectionsQuery = useQuery({ queryKey: ["collections"], queryFn: listCollections });
+
+  // Drag-to-resize: pointer capture on the handle itself means move/up keep firing on it even
+  // once the cursor leaves its thin hit area mid-drag, so a fast drag can't "escape" the handle
+  // and get stuck. The ref (rather than state) holds the drag-start snapshot since it only needs
+  // to be read inside the same gesture's move/up handlers, never rendered.
+  const resizeStart = useRef<{ pointerX: number; width: number } | null>(null);
+
+  const handleResizePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    resizeStart.current = { pointerX: event.clientX, width };
+  };
+
+  const handleResizePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!resizeStart.current) return;
+    const rawDelta = event.clientX - resizeStart.current.pointerX;
+    // In RTL the sidebar sits on the right with its resize handle on its left (inline-end) edge,
+    // so dragging left (negative delta) is what grows it - the sign flips relative to LTR.
+    const delta = dir === "rtl" ? -rawDelta : rawDelta;
+    const next = Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, resizeStart.current.width + delta));
+    onWidthChange(next);
+  };
+
+  const handleResizePointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+    resizeStart.current = null;
+    event.currentTarget.releasePointerCapture(event.pointerId);
+  };
 
   const otherLanguage = LANGUAGES.find((option) => option.value !== language)!;
   const currentLanguage = LANGUAGES.find((option) => option.value === language)!;
@@ -301,6 +375,7 @@ export function Sidebar({
     series: "seriesId",
     tags: "tagId",
     publishers: "publisher",
+    languages: "language",
   };
 
   const sections: { key: BrowseSection; icon: Icon; label: string; active: boolean }[] = [
@@ -309,17 +384,41 @@ export function Sidebar({
     { key: "series", icon: IconStack2, label: t("sidebar.series"), active: activeFilter?.kind === sectionFilterKind.series },
     { key: "tags", icon: IconTag, label: t("sidebar.tags"), active: activeFilter?.kind === sectionFilterKind.tags },
     { key: "publishers", icon: IconBuildingStore, label: t("sidebar.publishers"), active: activeFilter?.kind === sectionFilterKind.publishers },
+    { key: "languages", icon: IconLanguage, label: t("sidebar.languages"), active: activeFilter?.kind === sectionFilterKind.languages },
   ];
 
   return (
     <Box
       h="100%"
       display="flex"
-      style={{ flexDirection: "column", borderInlineEnd: "1px solid var(--mantine-color-default-border)" }}
+      style={{ position: "relative", flexDirection: "column", borderInlineEnd: "1px solid var(--mantine-color-default-border)" }}
     >
+      {/* Drag-to-resize handle - a thin invisible strip along the sidebar's inline-end edge
+          (right in LTR, left in RTL - see handleResizePointerMove's dir handling above). Only
+          shown expanded; the collapsed rail is a fixed 56px, not user-resizable. */}
+      {!collapsed && (
+        <Box
+          onPointerDown={handleResizePointerDown}
+          onPointerMove={handleResizePointerMove}
+          onPointerUp={handleResizePointerUp}
+          style={{
+            position: "absolute",
+            top: 0,
+            bottom: 0,
+            insetInlineEnd: 0,
+            width: 6,
+            cursor: "ew-resize",
+            touchAction: "none",
+            zIndex: 100,
+          }}
+        />
+      )}
+
       {/* View bar - which browse section (Collections/Authors/Series/Tags) shows below. The
           All books/Unread/Reading/Finished filter row now lives in the title bar (see
-          TitleBar.tsx). Icon-only, so this degrades cleanly into the collapsed rail via wrapping. */}
+          TitleBar.tsx). Icon-only, so this degrades cleanly into the collapsed rail via wrapping.
+          SIDEBAR_DEFAULT_WIDTH is sized to fit every section icon on one row at the default
+          width; a narrower drag-resized width just wraps to a second row instead. */}
       <Group gap={4} px="xs" py={6} wrap="wrap" style={{ borderBottom: "1px solid var(--mantine-color-default-border)" }}>
         {sections.map((section) => (
           <Tooltip key={section.key} label={section.label}>
@@ -403,6 +502,21 @@ export function Sidebar({
               groups={byBookCount(publishersQuery.data)}
               action={seeAllAction(onOpenPublishers)}
               onDropBooks={(target, bookIds, shiftKey) => onDropBooks("publisher", target, bookIds, shiftKey)}
+            />
+          )}
+          {browseSection === "languages" && (
+            <GroupSection
+              title={t("sidebar.languages")}
+              kind="language"
+              icon={IconLanguage}
+              activeFilter={activeFilter}
+              onSelect={onSelect}
+              groups={byBookCount(languagesQuery.data).map((group) => ({
+                ...group,
+                name: languageDisplayName(group.id, t),
+              }))}
+              action={seeAllAction(onOpenLanguages)}
+              onDropBooks={(target, bookIds, shiftKey) => onDropBooks("language", target, bookIds, shiftKey)}
             />
           )}
         </ScrollArea>

@@ -6,8 +6,8 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Maktaba.Api.Endpoints;
 
-/// <summary>Distinct author/series/tag lists (with book counts) for the browse sidebar, plus a bare
-/// publisher-name list for the book-edit form's autocomplete.</summary>
+/// <summary>Distinct author/series/tag/language lists (with book counts) for the browse sidebar,
+/// plus a bare publisher-name list for the book-edit form's autocomplete.</summary>
 public static class BrowseEndpoints
 {
     public static void MapBrowseEndpoints(this WebApplication app)
@@ -73,6 +73,22 @@ public static class BrowseEndpoints
                 .OrderBy(p => p.Name)
                 .ToListAsync();
             return Results.Ok(publishers.Select(p => new BrowseGroupDto(p.Name, p.Name, p.Count)));
+        });
+
+        // Distinct book languages with book counts, for the sidebar's "browse by language" section
+        // (issue #13) - same shape/rationale as the publisher grouping just above: Language is a
+        // plain string column on Book (an ISO 639-1 code, see BookEditForm.tsx's LANGUAGE_CODES),
+        // not its own entity/table, so the code itself doubles as the BrowseGroup "id" and the
+        // frontend translates it to a display name (language.<code> i18n keys) for rendering.
+        app.MapGet("/api/languages/grouped", async (MaktabaDbContext db) =>
+        {
+            var languages = await db.Books
+                .Where(b => b.Language != null && b.Language != "")
+                .GroupBy(b => b.Language!)
+                .Select(g => new { Name = g.Key, Count = g.Count() })
+                .OrderBy(l => l.Name)
+                .ToListAsync();
+            return Results.Ok(languages.Select(l => new BrowseGroupDto(l.Name, l.Name, l.Count)));
         });
 
         app.MapGet("/api/reading-statuses", async (MaktabaDbContext db) =>

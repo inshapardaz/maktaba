@@ -24,7 +24,8 @@ public static class BookEndpoints
             string? readingStatus,
             string? format,
             int? minRating,
-            string? publisher) =>
+            string? publisher,
+            string? language) =>
         {
             var root = libraryPath.LibraryRootPath!;
 
@@ -68,6 +69,13 @@ public static class BookEndpoints
             if (!string.IsNullOrEmpty(publisher))
             {
                 query = query.Where(b => b.Publisher == publisher);
+            }
+
+            // Same rationale as publisher above - Language is a plain string column (an ISO 639-1
+            // code, see BrowseEndpoints.cs's /api/languages/grouped), matched directly.
+            if (!string.IsNullOrEmpty(language))
+            {
+                query = query.Where(b => b.Language == language);
             }
 
             if (Enum.TryParse<ReadingStatus>(readingStatus, ignoreCase: true, out var parsedStatus))

@@ -21,7 +21,7 @@ import { LibrarySpotlight } from "./components/LibrarySpotlight";
 import { BookGrid } from "./components/BookGrid";
 import { BookList } from "./components/BookList";
 import { BookDetailPanel } from "./components/BookDetailPanel";
-import { Sidebar, type GroupFilter, type MainView } from "./components/Sidebar";
+import { Sidebar, SIDEBAR_DEFAULT_WIDTH, type GroupFilter, type MainView } from "./components/Sidebar";
 import { TitleBar, TITLEBAR_HEIGHT } from "./components/TitleBar";
 import { HomeView } from "./components/HomeView";
 import { InlineReader } from "./components/InlineReader";
@@ -30,6 +30,7 @@ import { CollectionsView } from "./components/CollectionsView";
 import { TagsView } from "./components/TagsView";
 import { SeriesView } from "./components/SeriesView";
 import { PublishersView } from "./components/PublishersView";
+import { LanguagesView } from "./components/LanguagesView";
 import { FilterBar, type SortDirection, type SortKey, type ViewMode } from "./components/FilterBar";
 import { ImportDialog } from "./components/ImportDialog";
 import { SettingsScreen } from "./components/SettingsScreen";
@@ -85,6 +86,7 @@ function App() {
   const [mainView, setMainView] = useState<MainView>("home");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT_WIDTH);
   const [sortKey, setSortKeyState] = useState<SortKey>("title");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
@@ -122,6 +124,7 @@ function App() {
     tagId: groupFilter?.kind === "tagId" ? groupFilter.id : undefined,
     collectionId: groupFilter?.kind === "collectionId" ? groupFilter.id : undefined,
     publisher: groupFilter?.kind === "publisher" ? groupFilter.id : undefined,
+    language: groupFilter?.kind === "language" ? groupFilter.id : undefined,
     readingStatus: groupFilter?.kind === "readingStatus" ? (groupFilter.id as BookFilters["readingStatus"]) : undefined,
   };
 
@@ -207,7 +210,7 @@ function App() {
   };
 
   const dragDropMessageKey: Record<
-    "authorId" | "authorIdAppend" | "seriesId" | "tagId" | "collectionId" | "publisher",
+    "authorId" | "authorIdAppend" | "seriesId" | "tagId" | "collectionId" | "publisher" | "language",
     { one: TranslationKey; other: TranslationKey }
   > = {
     authorId: { one: "dragDrop.authorSet_one", other: "dragDrop.authorSet_other" },
@@ -216,18 +219,20 @@ function App() {
     tagId: { one: "dragDrop.tag_one", other: "dragDrop.tag_other" },
     collectionId: { one: "dragDrop.collection_one", other: "dragDrop.collection_other" },
     publisher: { one: "dragDrop.publisher_one", other: "dragDrop.publisher_other" },
+    language: { one: "dragDrop.language_one", other: "dragDrop.language_other" },
   };
 
   // Drop-to-edit (issue #10): dragging a book (or the active multi-selection) from the grid/list
-  // onto a sidebar Authors/Series/Tags/Collections/Publisher row applies that edit to every
-  // dropped book. Fetches each book's current full detail first and PUTs it back with just the
-  // one field changed, since the edit endpoint (same one BookEditForm uses) is a full replace,
-  // not an incremental patch. Author *replaces* the book's author(s) by default (a plain drop);
-  // holding Shift while dropping appends instead, alongside any existing authors (a book can have
-  // co-authors) - see Sidebar.tsx's GroupSection onDrop, which reads the native DragEvent's
-  // shiftKey. Series/publisher replace (a book has at most one of each); tag/collection both add.
+  // onto a sidebar Authors/Series/Tags/Collections/Publisher/Language row applies that edit to
+  // every dropped book. Fetches each book's current full detail first and PUTs it back with just
+  // the one field changed, since the edit endpoint (same one BookEditForm uses) is a full
+  // replace, not an incremental patch. Author *replaces* the book's author(s) by default (a plain
+  // drop); holding Shift while dropping appends instead, alongside any existing authors (a book
+  // can have co-authors) - see Sidebar.tsx's GroupSection onDrop, which reads the native
+  // DragEvent's shiftKey. Series/publisher/language replace (a book has at most one of each);
+  // tag/collection both add.
   const handleDropBooksOnGroup = async (
-    kind: "authorId" | "seriesId" | "tagId" | "collectionId" | "publisher",
+    kind: "authorId" | "seriesId" | "tagId" | "collectionId" | "publisher" | "language",
     target: { id: string; name: string },
     bookIds: string[],
     shiftKey: boolean,
@@ -266,6 +271,11 @@ function App() {
           if (!edit.tags.includes(target.name)) edit.tags = [...edit.tags, target.name];
         } else if (kind === "publisher") {
           edit.publisher = target.name;
+        } else if (kind === "language") {
+          // Unlike publisher, target.name is a translated display label (e.g. "English") for
+          // showing in the sidebar/notification - the actual Book.Language column stores the raw
+          // ISO 639-1 code, which is target.id here (see Sidebar.tsx's languageDisplayName).
+          edit.language = target.id;
         } else {
           if (!edit.collectionIds.includes(target.id)) edit.collectionIds = [...edit.collectionIds, target.id];
         }
@@ -399,7 +409,7 @@ function App() {
             starting below it. */}
         <AppShell
           header={{ height: TITLEBAR_HEIGHT }}
-          navbar={hasLibrary ? { width: sidebarCollapsed ? 56 : 232, breakpoint: 0 } : undefined}
+          navbar={hasLibrary ? { width: sidebarCollapsed ? 56 : sidebarWidth, breakpoint: 0 } : undefined}
           padding={0}
         >
           <AppShell.Header>
@@ -424,11 +434,14 @@ function App() {
                 onSelect={handleSelectFilter}
                 settingsOpen={settingsOpen}
                 collapsed={sidebarCollapsed}
+                width={sidebarWidth}
+                onWidthChange={setSidebarWidth}
                 onOpenAuthors={() => setMainView("authors")}
                 onOpenCollections={() => setMainView("collections")}
                 onOpenTags={() => setMainView("tags")}
                 onOpenSeries={() => setMainView("series")}
                 onOpenPublishers={() => setMainView("publishers")}
+                onOpenLanguages={() => setMainView("languages")}
                 onOpenSettings={() => setSettingsOpen(true)}
                 onLibraryChanged={handleLibraryChanged}
                 onDropBooks={handleDropBooksOnGroup}
@@ -460,6 +473,8 @@ function App() {
               <SeriesView onSelect={handleSelectFilter} onBack={() => setMainView("library")} />
             ) : mainView === "publishers" ? (
               <PublishersView onSelect={handleSelectFilter} onBack={() => setMainView("library")} />
+            ) : mainView === "languages" ? (
+              <LanguagesView onSelect={handleSelectFilter} onBack={() => setMainView("library")} />
             ) : (
               <>
                 <FilterBar

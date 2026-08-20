@@ -75,6 +75,7 @@ export interface BookFilters {
   tagId?: string;
   collectionId?: string;
   publisher?: string;
+  language?: string;
   readingStatus?: ReadingStatus;
   format?: string;
   minRating?: number;
@@ -194,6 +195,7 @@ export function listBooks(filters: BookFilters = {}): Promise<BookSummary[]> {
   if (filters.tagId) params.set("tagId", filters.tagId);
   if (filters.collectionId) params.set("collectionId", filters.collectionId);
   if (filters.publisher) params.set("publisher", filters.publisher);
+  if (filters.language) params.set("language", filters.language);
   if (filters.readingStatus) params.set("readingStatus", filters.readingStatus);
   if (filters.format) params.set("format", filters.format);
   if (filters.minRating) params.set("minRating", String(filters.minRating));
@@ -327,6 +329,14 @@ export function listPublishers(): Promise<string[]> {
 // publisher name itself doubles as the BrowseGroup's id (see backend BrowseEndpoints.cs).
 export function listPublisherGroups(): Promise<BrowseGroup[]> {
   return request<BrowseGroup[]>("/api/publishers/grouped");
+}
+
+// Distinct book languages (ISO 639-1 codes) with book counts, for the sidebar's "browse by
+// language" section (issue #13) - same shape/rationale as publisher groups above: Language is a
+// plain string column on Book, not its own entity, so the code itself doubles as the id and the
+// frontend translates it to a display name (see languageDisplayName in Sidebar.tsx).
+export function listLanguageGroups(): Promise<BrowseGroup[]> {
+  return request<BrowseGroup[]>("/api/languages/grouped");
 }
 
 export function createCollection(name: string): Promise<BrowseGroup> {

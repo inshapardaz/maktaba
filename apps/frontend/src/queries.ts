@@ -6,6 +6,9 @@ export function invalidateLibraryQueries(queryClient: QueryClient) {
   void queryClient.invalidateQueries({ queryKey: ["authors"] });
   void queryClient.invalidateQueries({ queryKey: ["series"] });
   void queryClient.invalidateQueries({ queryKey: ["tags"] });
+  void queryClient.invalidateQueries({ queryKey: ["publishers"] });
+  void queryClient.invalidateQueries({ queryKey: ["publisherGroups"] });
+  void queryClient.invalidateQueries({ queryKey: ["languageGroups"] });
   void queryClient.invalidateQueries({ queryKey: ["collections"] });
   void queryClient.invalidateQueries({ queryKey: ["readingStatusCounts"] });
 }

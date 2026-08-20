@@ -48,6 +48,7 @@ const en = {
   "sidebar.tags": "Tags",
   "sidebar.collections": "Collections",
   "sidebar.publishers": "Publishers",
+  "sidebar.languages": "Languages",
   "sidebar.seeAll": "See all",
   "sidebar.readingStatus": "Reading status",
   "sidebar.collapse": "Collapse sidebar",
@@ -65,6 +66,9 @@ const en = {
   "publishersView.title": "Publishers",
   "publishersView.searchPlaceholder": "Search publishers…",
   "publishersView.empty": "No publishers found.",
+  "languagesView.title": "Languages",
+  "languagesView.searchPlaceholder": "Search languages…",
+  "languagesView.empty": "No languages found.",
 
   "tagsView.title": "Tags",
   "tagsView.searchPlaceholder": "Search tags…",
@@ -97,6 +101,8 @@ const en = {
   "dragDrop.collection_other": 'Added {count} books to "{name}"',
   "dragDrop.publisher_one": 'Publisher set to "{name}" for {count} book',
   "dragDrop.publisher_other": 'Publisher set to "{name}" for {count} books',
+  "dragDrop.language_one": 'Language set to "{name}" for {count} book',
+  "dragDrop.language_other": 'Language set to "{name}" for {count} books',
   "dragDrop.partialFailure": "Updated {done} of {total} books - some failed",
 
   "filterBar.allFormats": "All formats",
@@ -315,6 +321,7 @@ const ur: TranslationDict = {
   "sidebar.tags": "ٹیگز",
   "sidebar.collections": "مجموعے",
   "sidebar.publishers": "ناشرین",
+  "sidebar.languages": "زبانیں",
   "sidebar.seeAll": "سب دیکھیں",
   "sidebar.readingStatus": "مطالعے کی حیثیت",
   "sidebar.collapse": "سائیڈبار سکیڑیں",
@@ -332,6 +339,9 @@ const ur: TranslationDict = {
   "publishersView.title": "ناشرین",
   "publishersView.searchPlaceholder": "ناشرین تلاش کریں…",
   "publishersView.empty": "کوئی ناشر نہیں ملا۔",
+  "languagesView.title": "زبانیں",
+  "languagesView.searchPlaceholder": "زبانیں تلاش کریں…",
+  "languagesView.empty": "کوئی زبان نہیں ملی۔",
 
   "tagsView.title": "ٹیگز",
   "tagsView.searchPlaceholder": "ٹیگز تلاش کریں…",
@@ -364,6 +374,8 @@ const ur: TranslationDict = {
   "dragDrop.collection_other": '{count} کتابیں "{name}" میں شامل کر دی گئیں',
   "dragDrop.publisher_one": '{count} کتاب کے لیے ناشر "{name}" مقرر کر دیا گیا',
   "dragDrop.publisher_other": '{count} کتابوں کے لیے ناشر "{name}" مقرر کر دیا گیا',
+  "dragDrop.language_one": '{count} کتاب کے لیے زبان "{name}" مقرر کر دی گئی',
+  "dragDrop.language_other": '{count} کتابوں کے لیے زبان "{name}" مقرر کر دی گئی',
   "dragDrop.partialFailure": "{total} میں سے {done} کتابیں اپ ڈیٹ ہوئیں - کچھ ناکام رہیں",
 
   "filterBar.allFormats": "تمام فارمیٹس",

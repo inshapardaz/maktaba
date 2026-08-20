@@ -30,6 +30,7 @@ import {
 } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
 import type { TranslationKey } from "../i18n/translations";
+import { invalidateLibraryQueries } from "../queries";
 
 interface BookEditFormProps {
   bookId: string;
@@ -226,13 +227,8 @@ export function BookEditForm({ bookId, onClose, onSaved }: BookEditFormProps) {
   const saveMutation = useMutation({
     mutationFn: (edit: BookEditRequest) => updateBook(bookId, edit),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["books"] });
+      invalidateLibraryQueries(queryClient);
       void queryClient.invalidateQueries({ queryKey: ["book", bookId] });
-      void queryClient.invalidateQueries({ queryKey: ["authors"] });
-      void queryClient.invalidateQueries({ queryKey: ["series"] });
-      void queryClient.invalidateQueries({ queryKey: ["tags"] });
-      void queryClient.invalidateQueries({ queryKey: ["publishers"] });
-      void queryClient.invalidateQueries({ queryKey: ["collections"] });
       onSaved();
     },
   });
