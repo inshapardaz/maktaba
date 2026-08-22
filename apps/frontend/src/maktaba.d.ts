@@ -43,6 +43,8 @@ declare global {
       getUpdateStatus: () => Promise<UpdateStatus>;
       onUpdateStatus: (callback: (status: UpdateStatus) => void) => () => void;
       checkForUpdates: () => Promise<void>;
+      getAppVersion: () => Promise<string>;
+      isPackaged: () => Promise<boolean>;
       downloadUpdate: () => Promise<void>;
       quitAndInstall: () => Promise<void>;
     };

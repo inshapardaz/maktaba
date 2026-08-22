@@ -109,6 +109,13 @@ contextBridge.exposeInMainWorld("maktaba", {
 
   checkForUpdates: (): Promise<void> => ipcRenderer.invoke("maktaba:check-for-updates"),
 
+  // Backs the About tab's version display - see main.ts's maktaba:get-app-version handler.
+  getAppVersion: (): Promise<string> => ipcRenderer.invoke("maktaba:get-app-version"),
+
+  // Lets the About tab avoid calling the update-check IPC methods at all in dev, where none of
+  // them are registered (see main.ts's maktaba:get-is-packaged handler / updater.ts's initUpdater).
+  isPackaged: (): Promise<boolean> => ipcRenderer.invoke("maktaba:get-is-packaged"),
+
   // On mac (no signed build to silently install - see updater.ts), this opens the GitHub releases
   // page in the default browser instead of actually downloading anything in-app.
   downloadUpdate: (): Promise<void> => ipcRenderer.invoke("maktaba:download-update"),

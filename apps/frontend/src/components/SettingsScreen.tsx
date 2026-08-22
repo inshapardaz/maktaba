@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, ColorSwatch, Group, Modal, Select, SegmentedControl, Stack, Switch, Tabs, Text, Tooltip, UnstyledButton } from "@mantine/core";
-import { IconAlertTriangle, IconBook2, IconBooks, IconCheck, IconFileImport, IconSettings } from "@tabler/icons-react";
+import { IconAlertTriangle, IconBook2, IconBooks, IconCheck, IconFileImport, IconInfoCircle, IconSettings } from "@tabler/icons-react";
 import { getSystemCapabilities } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
 import { getStoredDefaultFormat, setStoredDefaultFormat, type ConvertFormat } from "../convertFormat";
@@ -19,11 +19,12 @@ import {
 import { useThemeColor } from "../ThemeColorContext";
 import { THEME_COLOR_OPTIONS } from "../theme";
 import { URDU_FONT_OPTIONS, type UrduFontName } from "../urduFont";
+import { AboutSettings } from "./AboutSettings";
 import { ColorSchemeToggle } from "./ColorSchemeToggle";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { LibrariesSettings } from "./LibrariesSettings";
 
-export type SettingsTab = "general" | "libraries" | "reading" | "import";
+export type SettingsTab = "general" | "libraries" | "reading" | "import" | "about";
 
 interface SettingsScreenProps {
   opened: boolean;
@@ -112,6 +113,9 @@ export function SettingsScreen({ opened, onClose, onLibraryChanged, initialTab }
           </Tabs.Tab>
           <Tabs.Tab value="import" leftSection={<IconFileImport size={14} />}>
             {t("settings.import")}
+          </Tabs.Tab>
+          <Tabs.Tab value="about" leftSection={<IconInfoCircle size={14} />}>
+            {t("settings.about")}
           </Tabs.Tab>
         </Tabs.List>
 
@@ -263,6 +267,10 @@ export function SettingsScreen({ opened, onClose, onLibraryChanged, initialTab }
               />
             </Tooltip>
           </Stack>
+        </Tabs.Panel>
+
+        <Tabs.Panel value="about" pt="lg">
+          <AboutSettings />
         </Tabs.Panel>
       </Tabs>
     </Modal>

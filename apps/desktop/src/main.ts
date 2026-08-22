@@ -35,6 +35,17 @@ app.setAppUserModelId("com.inshapardaz.maktaba");
 registerNativeHandlers(() => mainWindow);
 initUpdater();
 
+// Backs the About tab's version display (SettingsScreen.tsx's AboutSettings) - same value
+// menu.ts's "About Maktaba" dialog already reads main-process-side, just also exposed to the
+// renderer since app.getVersion() isn't otherwise reachable there.
+ipcMain.handle("maktaba:get-app-version", () => app.getVersion());
+
+// Also for the About tab: initUpdater() below no-ops entirely (never registers its own
+// maktaba:check-for-updates/get-update-status/etc. handlers at all) when !app.isPackaged, so
+// AboutSettings needs to know not to call those in dev - otherwise "Check for Updates" surfaces a
+// raw "No handler registered" IPC error instead of a friendly "not available in dev" message.
+ipcMain.handle("maktaba:get-is-packaged", () => app.isPackaged);
+
 // Whether the standard File/Edit/View/Window/Help app menu (menu.ts's buildAppMenu) is shown -
 // natively as each reader pop-out window's own menu bar (they use the default OS frame), and via
 // a menu button in the main window's custom title bar (which has no room for a full menu bar row -
