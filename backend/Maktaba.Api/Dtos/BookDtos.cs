@@ -17,7 +17,11 @@ public record BookSummaryDto(
     // frontend offer "series order" and "last read" as sort keys without a second request per book
     // (see App.tsx's sortBooks and FilterBar.tsx's SortKey).
     double? SeriesIndex,
-    DateTime? LastReadAt
+    DateTime? LastReadAt,
+    // Distinct formats this book has a file for (e.g. ["Epub", "Pdf"]) - lets BookGrid/BookList show
+    // a split "Read" button and BookList show format badges without a per-row detail fetch, since
+    // the actual per-file AbsolutePath is only needed once a specific format is chosen to open.
+    string[] Formats
 );
 
 // Powers the Home view's "continue reading" hero + "currently reading" list - one row per book
@@ -66,6 +70,10 @@ public record BookDetailDto(
 
 /// <summary>DuplicateAction: null (ask) | "skip" | "keep-both" | "merge".</summary>
 public record ImportBookRequest(string FilePath, string? DuplicateAction = null);
+
+// BookDetailPanel's "add another file" action - attaches an extra format to an already-existing
+// book, distinct from ImportBookRequest above which always considers creating a brand new book.
+public record AddBookFileRequest(string FilePath);
 
 public record DuplicateBookDto(string ExistingBookId, string ExistingTitle, string[] ExistingAuthors, bool SameContentHash);
 

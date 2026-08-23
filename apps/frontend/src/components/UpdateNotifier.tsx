@@ -20,6 +20,8 @@ export function UpdateNotifier() {
 
   useEffect(() => {
     const isMac = window.maktaba.platform === "darwin";
+    let cancelled = false;
+    let unsubscribe: (() => void) | undefined;
 
     const handle = (status: UpdateStatus) => {
       switch (status.state) {
@@ -78,8 +80,21 @@ export function UpdateNotifier() {
       }
     };
 
-    void window.maktaba.getUpdateStatus().then(handle);
-    return window.maktaba.onUpdateStatus(handle);
+    // initUpdater() never registers maktaba:get-update-status/etc. at all outside a packaged build
+    // (see updater.ts's early return on !app.isPackaged) - checked up front and skipped entirely in
+    // dev, rather than calling it and letting Electron log a "no handler registered" error to the
+    // console on every single launch (a .catch() alone doesn't suppress that - it's Electron's own
+    // internal logging for a failed invoke, not a catchable unhandled-rejection warning).
+    void window.maktaba.isPackaged().then((packaged) => {
+      if (cancelled || !packaged) return;
+      void window.maktaba.getUpdateStatus().then(handle);
+      unsubscribe = window.maktaba.onUpdateStatus(handle);
+    });
+
+    return () => {
+      cancelled = true;
+      unsubscribe?.();
+    };
   }, [t]);
 
   return null;

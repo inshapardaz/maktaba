@@ -1,9 +1,17 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { notifications } from "@mantine/notifications";
-import { ActionIcon, Badge, Box, Group, Image, Loader, Table, TextInput, Tooltip } from "@mantine/core";
-import { IconBook2, IconEdit, IconPencil } from "@tabler/icons-react";
-import { coverUrl, getBook, pickPreferredReadFile, updateBook, type BookEditRequest, type BookSummary } from "../api";
+import { ActionIcon, Badge, Box, Group, Image, Loader, Menu, Table, TextInput, Tooltip } from "@mantine/core";
+import { IconBook2, IconChevronDown, IconEdit, IconPencil } from "@tabler/icons-react";
+import {
+  coverUrl,
+  getBook,
+  pickPreferredReadFile,
+  updateBook,
+  type BookEditRequest,
+  type BookFileInfo,
+  type BookSummary,
+} from "../api";
 import { setBookDragData } from "../bookDrag";
 import { useLanguage } from "../i18n/LanguageContext";
 import { invalidateLibraryQueries } from "../queries";
@@ -32,6 +40,10 @@ interface BookRowProps {
   onEdit: (id: string) => void;
 }
 
+function isReadableFormat(format: string): format is "Epub" | "Pdf" {
+  return format === "Epub" || format === "Pdf";
+}
+
 // A row's own component (rather than inlining the .map body) so its Read action can hold its own
 // loading state, same reasoning as BookGrid.tsx's BookCard - fetching the book detail to resolve
 // which file to open is async, and without a per-row flag a rapid double-click would fire it twice.
@@ -43,6 +55,7 @@ function BookRow({ book, index, selected, selectedIds, onSelect, onEdit }: BookR
   const [hovered, setHovered] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(book.title);
+  const readableFormats = book.formats.filter(isReadableFormat);
 
   // Book.title has no dedicated rename endpoint (unlike Author/Series/Tag) - the edit endpoint is
   // a full replace, so the current full detail is fetched first and PUT back with just title
@@ -95,12 +108,15 @@ function BookRow({ book, index, selected, selectedIds, onSelect, onEdit }: BookR
     setEditingTitle(false);
   };
 
-  const handleRead = async () => {
+  const handleRead = async (format?: "Epub" | "Pdf") => {
     if (loadingRead) return;
     setLoadingRead(true);
     try {
       const detail = await getBook(book.id);
-      const file = pickPreferredReadFile(detail.files);
+      const matchedFile = format
+        ? detail.files.find((f): f is BookFileInfo & { format: "Epub" | "Pdf" } => f.format === format)
+        : undefined;
+      const file = matchedFile ?? pickPreferredReadFile(detail.files);
       if (file) {
         launchReader({
           bookId: book.id,
@@ -187,6 +203,12 @@ function BookRow({ book, index, selected, selectedIds, onSelect, onEdit }: BookR
                   <IconPencil size={12} />
                 </ActionIcon>
               )}
+              {readableFormats.length > 1 &&
+                readableFormats.map((format) => (
+                  <Badge key={format} size="xs" variant="outline" color="gray">
+                    {format}
+                  </Badge>
+                ))}
             </Group>
           )}
         </Group>
@@ -204,21 +226,61 @@ function BookRow({ book, index, selected, selectedIds, onSelect, onEdit }: BookR
       <Table.Td>{new Date(book.dateAdded).toLocaleDateString(language === "ur" ? "ur" : undefined)}</Table.Td>
       <Table.Td>
         <Group gap={4} wrap="nowrap" justify="flex-end">
-          <Tooltip label={t("bookGrid.read")}>
-            <ActionIcon
-              size="sm"
-              variant="subtle"
-              color="gray"
-              aria-label={t("bookGrid.read")}
-              disabled={loadingRead}
-              onClick={(event) => {
-                event.stopPropagation();
-                void handleRead();
-              }}
-            >
-              {loadingRead ? <Loader size={14} /> : <IconBook2 size={14} />}
-            </ActionIcon>
-          </Tooltip>
+          {readableFormats.length > 1 ? (
+            <Menu position="bottom-end" withinPortal>
+              <ActionIcon.Group>
+                <Tooltip label={t("bookGrid.read")}>
+                  <ActionIcon
+                    size="sm"
+                    variant="subtle"
+                    color="gray"
+                    aria-label={t("bookGrid.read")}
+                    disabled={loadingRead}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void handleRead();
+                    }}
+                  >
+                    {loadingRead ? <Loader size={14} /> : <IconBook2 size={14} />}
+                  </ActionIcon>
+                </Tooltip>
+                <Menu.Target>
+                  <ActionIcon
+                    size="sm"
+                    variant="subtle"
+                    color="gray"
+                    aria-label={t("bookDetail.chooseFormat")}
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <IconChevronDown size={12} />
+                  </ActionIcon>
+                </Menu.Target>
+              </ActionIcon.Group>
+              <Menu.Dropdown onClick={(event) => event.stopPropagation()}>
+                {readableFormats.map((format) => (
+                  <Menu.Item key={format} onClick={() => void handleRead(format)}>
+                    {format}
+                  </Menu.Item>
+                ))}
+              </Menu.Dropdown>
+            </Menu>
+          ) : (
+            <Tooltip label={t("bookGrid.read")}>
+              <ActionIcon
+                size="sm"
+                variant="subtle"
+                color="gray"
+                aria-label={t("bookGrid.read")}
+                disabled={loadingRead}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  void handleRead();
+                }}
+              >
+                {loadingRead ? <Loader size={14} /> : <IconBook2 size={14} />}
+              </ActionIcon>
+            </Tooltip>
+          )}
           <Tooltip label={t("bookDetail.edit")}>
             <ActionIcon
               size="sm"

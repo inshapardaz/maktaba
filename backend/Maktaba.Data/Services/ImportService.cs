@@ -27,34 +27,38 @@ public class ImportService(
         var contentHash = await EbookFileHelpers.ComputeSha256Async(sourceFilePath, ct);
         var format = EbookFileHelpers.DetectFormat(sourceFilePath);
 
-        if (resolution != ImportDuplicateResolution.KeepBoth)
+        // Always checked (regardless of resolution) so KeepBoth below knows whether it's actually
+        // creating a sibling of a real duplicate (title needs disambiguating) or just happened to be
+        // pre-selected with no genuine collision (title left untouched).
+        var duplicate = await FindDuplicateAsync(metadata.Title, metadata.Authors, contentHash, ct);
+        if (duplicate is not null)
         {
-            var duplicate = await FindDuplicateAsync(metadata.Title, metadata.Authors, contentHash, ct);
-            if (duplicate is not null)
+            switch (resolution)
             {
-                switch (resolution)
-                {
-                    case ImportDuplicateResolution.Auto:
-                        throw new DuplicateBookDetectedException(
-                            duplicate.Value.Book.Id,
-                            duplicate.Value.Book.Title,
-                            duplicate.Value.Book.BookAuthors.Select(ba => ba.Author.Name).ToArray(),
-                            duplicate.Value.SameContentHash);
-                    case ImportDuplicateResolution.Skip:
-                        return duplicate.Value.Book;
-                    case ImportDuplicateResolution.Merge:
-                        return await MergeFileIntoExistingBookAsync(
-                            duplicate.Value.Book, sourceFilePath, format, contentHash, ct);
-                }
+                case ImportDuplicateResolution.Auto:
+                    throw new DuplicateBookDetectedException(
+                        duplicate.Value.Book.Id,
+                        duplicate.Value.Book.Title,
+                        duplicate.Value.Book.BookAuthors.Select(ba => ba.Author.Name).ToArray(),
+                        duplicate.Value.SameContentHash);
+                case ImportDuplicateResolution.Skip:
+                    return duplicate.Value.Book;
+                case ImportDuplicateResolution.Merge:
+                    return await MergeFileIntoExistingBookAsync(
+                        duplicate.Value.Book, sourceFilePath, format, contentHash, ct);
             }
         }
 
-        var sortTitle = TitleSorting.ComputeSortTitle(metadata.Title);
+        // KeepBoth falls through to here even when a duplicate was found (case ImportDuplicateResolution.KeepBoth
+        // isn't handled above, so the switch has no effect on it) - "Token" alongside an existing "Token"
+        // becomes "Token (2)", same numbering style as EbookFileHelpers.GetUniqueFilePath uses for filenames.
+        var title = duplicate is not null ? await GetUniqueTitleAsync(metadata.Title, ct) : metadata.Title;
+        var sortTitle = TitleSorting.ComputeSortTitle(title);
         var authors = await EntityResolvers.ResolveAuthorsAsync(db, metadata.Authors, ct);
 
         var book = new Book
         {
-            Title = metadata.Title,
+            Title = title,
             SortTitle = sortTitle,
             Description = metadata.Description,
             Language = metadata.Language,
@@ -82,14 +86,14 @@ public class ImportService(
 
         var authorFolderSegment = FileNaming.SanitizePathSegment(
             authors.Count > 0 ? authors[0].SortName : "Unknown Author");
-        var bookFolderSegment = FileNaming.SanitizePathSegment($"{metadata.Title} ({IdCodec.Encode(book.Id)})");
+        var bookFolderSegment = FileNaming.SanitizePathSegment($"{title} ({IdCodec.Encode(book.Id)})");
         var relativeFolder = Path.Combine(authorFolderSegment, bookFolderSegment);
         var absoluteFolder = Path.Combine(libraryRoot, relativeFolder);
 
         Directory.CreateDirectory(absoluteFolder);
         try
         {
-            var destFileName = FileNaming.SanitizePathSegment(metadata.Title) +
+            var destFileName = FileNaming.SanitizePathSegment(title) +
                 Path.GetExtension(sourceFilePath).ToLowerInvariant();
             var destFilePath = Path.Combine(absoluteFolder, destFileName);
             File.Copy(sourceFilePath, destFilePath, overwrite: false);
@@ -121,6 +125,39 @@ public class ImportService(
             Directory.Delete(absoluteFolder, recursive: true);
             throw;
         }
+    }
+
+    public async Task<Book?> AddFileToBookAsync(int bookId, string sourceFilePath, CancellationToken ct = default)
+    {
+        var book = await db.Books.FirstOrDefaultAsync(b => b.Id == bookId, ct);
+        if (book is null)
+        {
+            return null;
+        }
+
+        var format = EbookFileHelpers.DetectFormat(sourceFilePath);
+        var contentHash = await EbookFileHelpers.ComputeSha256Async(sourceFilePath, ct);
+        return await MergeFileIntoExistingBookAsync(book, sourceFilePath, format, contentHash, ct);
+    }
+
+    // "Token" -> "Token (2)" -> "Token (3)", checked against every existing title (not just the one
+    // known duplicate) so repeated keep-both imports of the same book don't collide with each other.
+    private async Task<string> GetUniqueTitleAsync(string title, CancellationToken ct)
+    {
+        if (!await db.Books.AnyAsync(b => b.Title == title, ct))
+        {
+            return title;
+        }
+
+        var n = 2;
+        string candidate;
+        do
+        {
+            candidate = $"{title} ({n})";
+            n++;
+        } while (await db.Books.AnyAsync(b => b.Title == candidate, ct));
+
+        return candidate;
     }
 
     private async Task<(Book Book, bool SameContentHash)?> FindDuplicateAsync(

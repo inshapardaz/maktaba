@@ -17,4 +17,13 @@ public interface IImportService
         string sourceFilePath,
         ImportDuplicateResolution resolution = ImportDuplicateResolution.Auto,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Adds <paramref name="sourceFilePath"/> as an additional format on an already-existing book
+    /// (e.g. attaching a PDF to a book that so far only has an Epub) - copies the file into that
+    /// book's own folder and adds a BookFile row, but never re-reads/overwrites the book's metadata,
+    /// matching the same "existing book metadata is never touched" rule rescans follow. Returns null
+    /// if <paramref name="bookId"/> doesn't exist.
+    /// </summary>
+    Task<Book?> AddFileToBookAsync(int bookId, string sourceFilePath, CancellationToken ct = default);
 }

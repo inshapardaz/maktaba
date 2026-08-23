@@ -12,6 +12,7 @@ import {
   Image,
   List,
   Loader,
+  Menu,
   Modal,
   SegmentedControl,
   Stack,
@@ -19,9 +20,18 @@ import {
   Title,
   Tooltip,
 } from "@mantine/core";
-import { IconAlertCircle, IconBook2, IconFolder, IconExternalLink, IconTrash } from "@tabler/icons-react";
+import {
+  IconAlertCircle,
+  IconBook2,
+  IconChevronDown,
+  IconFolder,
+  IconExternalLink,
+  IconPlus,
+  IconTrash,
+} from "@tabler/icons-react";
 import {
   getBook,
+  addBookFile,
   deleteBook,
   coverUrl,
   updateBookStatus,
@@ -33,6 +43,7 @@ import {
 import { useLanguage } from "../i18n/LanguageContext";
 import { useReaderLauncher } from "../ReaderLauncherContext";
 import { BookEditForm } from "./BookEditForm";
+import { languageDisplayName } from "./Sidebar";
 import { SpineCover } from "./SpineCover";
 
 function isReadableFormat(format: string): format is "Epub" | "Pdf" {
@@ -61,6 +72,7 @@ export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelP
   const [isRemoving, setRemoving] = useState(false);
   const [removeError, setRemoveError] = useState<string | null>(null);
   const [confirmingRemove, setConfirmingRemove] = useState(false);
+  const [addFileError, setAddFileError] = useState<string | null>(null);
 
   const {
     data: book,
@@ -84,6 +96,30 @@ export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelP
       void queryClient.invalidateQueries({ queryKey: ["readingStatusCounts"] });
     },
   });
+
+  const addFileMutation = useMutation({
+    mutationFn: (filePath: string) => addBookFile(bookId, filePath),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["book", bookId] });
+      void queryClient.invalidateQueries({ queryKey: ["books"] });
+    },
+  });
+
+  // Sequential (not Promise.all) so one file's failure doesn't abort files already queued behind
+  // it, matching ImportDialog.tsx's own queue-processing behavior for its own multi-file picker.
+  const handleAddFile = async () => {
+    const filePaths = await window.maktaba.pickEbookFiles();
+    if (filePaths.length === 0) return;
+
+    setAddFileError(null);
+    for (const filePath of filePaths) {
+      try {
+        await addFileMutation.mutateAsync(filePath);
+      } catch (err) {
+        setAddFileError(err instanceof Error ? err.message : String(err));
+      }
+    }
+  };
 
   const statusOptions: { value: ReadingStatus; label: string }[] = [
     { value: "Unread", label: t("readingStatus.unread") },
@@ -187,15 +223,43 @@ export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelP
           </Group>
 
           {preferredReadFile && (
-            <Button
-              size="md"
-              variant="filled"
-              fullWidth
-              leftSection={<IconBook2 size={18} />}
-              onClick={() => openReader(preferredReadFile.format, preferredReadFile.absolutePath)}
-            >
-              {t("bookDetail.read")}
-            </Button>
+            readableFiles.length > 1 ? (
+              <Button.Group>
+                <Button
+                  size="md"
+                  variant="filled"
+                  style={{ flex: 1 }}
+                  leftSection={<IconBook2 size={18} />}
+                  onClick={() => openReader(preferredReadFile.format, preferredReadFile.absolutePath)}
+                >
+                  {t("bookDetail.read")}
+                </Button>
+                <Menu position="bottom-end" withinPortal>
+                  <Menu.Target>
+                    <Button size="md" variant="filled" px="xs" aria-label={t("bookDetail.chooseFormat")}>
+                      <IconChevronDown size={18} />
+                    </Button>
+                  </Menu.Target>
+                  <Menu.Dropdown>
+                    {readableFiles.map((f) => (
+                      <Menu.Item key={f.absolutePath} onClick={() => openReader(f.format, f.absolutePath)}>
+                        {f.format}
+                      </Menu.Item>
+                    ))}
+                  </Menu.Dropdown>
+                </Menu>
+              </Button.Group>
+            ) : (
+              <Button
+                size="md"
+                variant="filled"
+                fullWidth
+                leftSection={<IconBook2 size={18} />}
+                onClick={() => openReader(preferredReadFile.format, preferredReadFile.absolutePath)}
+              >
+                {t("bookDetail.read")}
+              </Button>
+            )
           )}
 
           <Stack gap={6}>
@@ -239,7 +303,7 @@ export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelP
             {book.language && (
               <div>
                 <FieldLabel>{t("bookDetail.language")}</FieldLabel>
-                <Text size="sm">{book.language}</Text>
+                <Text size="sm">{languageDisplayName(book.language, t)}</Text>
               </div>
             )}
           </Group>
@@ -277,22 +341,6 @@ export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelP
                     {f.format} — {(f.fileSizeBytes / 1024).toFixed(0)} KB
                   </Text>
                   <Group gap={4}>
-                    {/* Only shown when there's an actual choice to make (e.g. both Epub and
-                          Pdf) - the single-format case is already covered by the prominent Read
-                          button above, so a duplicate link here would just be clutter. */}
-                    {readableFiles.length > 1 && isReadableFormat(f.format) && (
-                      <Anchor
-                        size="sm"
-                        component="button"
-                        type="button"
-                        onClick={() => openReader(f.format as "Epub" | "Pdf", f.absolutePath)}
-                      >
-                        <Group gap={4}>
-                          <IconBook2 size={14} />
-                          {t("bookDetail.read")}
-                        </Group>
-                      </Anchor>
-                    )}
                     <Tooltip label={t("bookDetail.open")}>
                       <ActionIcon
                         size="sm"
@@ -320,6 +368,24 @@ export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelP
               </List.Item>
             ))}
           </List>
+
+          <Anchor
+            size="sm"
+            component="button"
+            type="button"
+            disabled={addFileMutation.isPending}
+            onClick={() => void handleAddFile()}
+          >
+            <Group gap={4}>
+              {addFileMutation.isPending ? <Loader size={14} /> : <IconPlus size={14} />}
+              {t("bookDetail.addFile")}
+            </Group>
+          </Anchor>
+          {addFileError && (
+            <Text size="xs" c="red">
+              {addFileError}
+            </Text>
+          )}
 
           <Divider />
 
