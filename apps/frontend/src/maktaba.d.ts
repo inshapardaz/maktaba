@@ -27,6 +27,7 @@ declare global {
       pickEbookFiles: () => Promise<string[]>;
       pickEbookFolder: () => Promise<string[]>;
       resolveEbookPaths: (paths: string[]) => Promise<string[]>;
+      cancelResolveEbookPaths: () => Promise<void>;
       onResolveEbookPathsProgress: (callback: (progress: { found: number; currentPath: string }) => void) => () => void;
       revealInFolder: (filePath: string) => Promise<void>;
       openPath: (filePath: string) => Promise<void>;

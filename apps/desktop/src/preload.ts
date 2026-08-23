@@ -36,6 +36,9 @@ contextBridge.exposeInMainWorld("maktaba", {
   resolveEbookPaths: (paths: string[]): Promise<string[]> =>
     ipcRenderer.invoke("maktaba:resolve-ebook-paths", paths),
 
+  // Stops an in-flight resolveEbookPaths walk early - see native.ts's scanCancelled.
+  cancelResolveEbookPaths: (): Promise<void> => ipcRenderer.invoke("maktaba:cancel-resolve-ebook-paths"),
+
   // Live progress while resolveEbookPaths walks a folder tree - see native.ts's walkEbookFiles.
   onResolveEbookPathsProgress: (callback: (progress: { found: number; currentPath: string }) => void): (() => void) => {
     const listener = (_event: Electron.IpcRendererEvent, progress: { found: number; currentPath: string }) =>

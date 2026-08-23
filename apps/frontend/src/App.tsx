@@ -33,6 +33,7 @@ import { PublishersView } from "./components/PublishersView";
 import { LanguagesView } from "./components/LanguagesView";
 import { FilterBar, type SortDirection, type SortKey, type ViewMode } from "./components/FilterBar";
 import { ImportDialog } from "./components/ImportDialog";
+import { ImportStatusBar, IMPORT_STATUS_BAR_HEIGHT } from "./components/ImportStatusBar";
 import { OnboardingTour } from "./components/OnboardingTour";
 import { SettingsScreen, type SettingsTab } from "./components/SettingsScreen";
 import { UpdateNotifier } from "./components/UpdateNotifier";
@@ -40,6 +41,7 @@ import { invalidateLibraryQueries } from "./queries";
 import { useDebounced } from "./useDebounced";
 import { useLanguage } from "./i18n/LanguageContext";
 import { ReaderLauncherProvider, type ReaderRequest } from "./ReaderLauncherContext";
+import { useImportQueue } from "./ImportContext";
 import { getStoredReaderEngine, getStoredReaderOpenMode } from "./readerSettings";
 import { hasCompletedOnboarding } from "./onboarding";
 
@@ -76,6 +78,7 @@ function defaultDirectionFor(sortKey: SortKey): SortDirection {
 function App() {
   const { t } = useLanguage();
   const queryClient = useQueryClient();
+  const importQueue = useImportQueue();
 
   // Keeps the OS-level window title (taskbar/Alt-Tab) in sync with the in-app language too -
   // scoped to App.tsx (the main window only) rather than LanguageContext.tsx, since reader windows
@@ -100,7 +103,6 @@ function App() {
   const [selectedBookIds, setSelectedBookIds] = useState<Set<string>>(new Set());
   const [lastClickedIndex, setLastClickedIndex] = useState<number | null>(null);
   const [isDragActive, setDragActive] = useState(false);
-  const [importFiles, setImportFiles] = useState<string[] | null>(null);
   const [inlineReader, setInlineReader] = useState<ReaderRequest | null>(null);
   const [tourOpen, setTourOpen] = useState(false);
 
@@ -329,12 +331,12 @@ function App() {
     setMainView("library");
   };
 
-  // Opens ImportDialog with an empty queue rather than pre-picking files here, so its own
-  // "Browse files" / "Import folder" buttons are reachable - previously this jumped straight to
-  // the (files-only) OS picker and never opened the dialog if it was cancelled, meaning there was
-  // no way to reach the folder-import option from the UI at all.
+  // Opens ImportDialog with whatever's already queued (empty on a fresh open) rather than
+  // pre-picking files here, so its own "Browse files" / "Import folder" buttons are reachable -
+  // previously this jumped straight to the (files-only) OS picker and never opened the dialog if
+  // it was cancelled, meaning there was no way to reach the folder-import option from the UI at all.
   const handleImportClick = () => {
-    setImportFiles([]);
+    importQueue.open();
   };
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
@@ -346,11 +348,7 @@ function App() {
       return;
     }
 
-    void window.maktaba.resolveEbookPaths(paths).then((files) => {
-      if (files.length > 0) {
-        setImportFiles(files);
-      }
-    });
+    void importQueue.dropPaths(paths);
   };
 
   // The one place that decides how "Read"/"Resume" actually opens a book - internal reader vs the
@@ -392,6 +390,8 @@ function App() {
   };
 
   const hasLibrary = !!libraryQuery.data;
+  const showImportBar =
+    importQueue.isMinimized && (importQueue.isProcessing || importQueue.isResolving || importQueue.summary.conflicted > 0);
 
   return (
     <Box
@@ -434,7 +434,7 @@ function App() {
             sibling element above the AppShell, otherwise the navbar overlaps it instead of
             starting below it. */}
         <AppShell
-          header={{ height: TITLEBAR_HEIGHT }}
+          header={{ height: showImportBar ? TITLEBAR_HEIGHT + IMPORT_STATUS_BAR_HEIGHT : TITLEBAR_HEIGHT }}
           navbar={hasLibrary ? { width: sidebarCollapsed ? 56 : sidebarWidth, breakpoint: 0 } : undefined}
           padding={0}
         >
@@ -451,6 +451,7 @@ function App() {
               onShowAllBooks={handleShowAllBooks}
               actionsHidden={!!inlineReader}
             />
+            {showImportBar && <ImportStatusBar />}
           </AppShell.Header>
 
           {hasLibrary && (
@@ -486,7 +487,7 @@ function App() {
                 onOpened={(_path, filesToImport) => {
                   void queryClient.invalidateQueries({ queryKey: ["library"] });
                   if (filesToImport.length > 0) {
-                    setImportFiles(filesToImport);
+                    importQueue.enqueueFiles(filesToImport);
                   }
                 }}
               />
@@ -574,13 +575,7 @@ function App() {
               />
             )}
 
-            {importFiles && (
-              <ImportDialog
-                initialFiles={importFiles}
-                onClose={() => setImportFiles(null)}
-                onImported={() => invalidateLibraryQueries(queryClient)}
-              />
-            )}
+            <ImportDialog />
           </>
         )}
 

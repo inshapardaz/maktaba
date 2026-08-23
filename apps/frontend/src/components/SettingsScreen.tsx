@@ -1,10 +1,8 @@
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Alert, ColorSwatch, Group, Modal, Select, SegmentedControl, Stack, Switch, Tabs, Text, Tooltip, UnstyledButton } from "@mantine/core";
-import { IconAlertTriangle, IconBook2, IconBooks, IconCheck, IconFileImport, IconInfoCircle, IconSettings } from "@tabler/icons-react";
-import { getSystemCapabilities } from "../api";
+import { Alert, ColorSwatch, Group, Modal, Select, SegmentedControl, Stack, Switch, Tabs, Text, UnstyledButton } from "@mantine/core";
+import { IconAlertTriangle, IconBook2, IconBooks, IconCheck, IconInfoCircle, IconSettings } from "@tabler/icons-react";
 import { useLanguage } from "../i18n/LanguageContext";
-import { getStoredDefaultFormat, setStoredDefaultFormat, type ConvertFormat } from "../convertFormat";
 import {
   getStoredAutoTagMode,
   getStoredReaderEngine,
@@ -24,7 +22,7 @@ import { ColorSchemeToggle } from "./ColorSchemeToggle";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { LibrariesSettings } from "./LibrariesSettings";
 
-export type SettingsTab = "general" | "libraries" | "reading" | "import" | "about";
+export type SettingsTab = "general" | "libraries" | "reading" | "about";
 
 interface SettingsScreenProps {
   opened: boolean;
@@ -49,15 +47,11 @@ export function SettingsScreen({ opened, onClose, onLibraryChanged, initialTab }
   const { t, urduFont, setUrduFont } = useLanguage();
   const { themeColor, setThemeColor } = useThemeColor();
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab ?? "general");
-  const [defaultFormat, setDefaultFormat] = useState<ConvertFormat>(getStoredDefaultFormat());
   const [readerOpenMode, setReaderOpenMode] = useState<ReaderOpenMode>(getStoredReaderOpenMode());
   const [epubEngine, setEpubEngine] = useState<ReaderEngine>(getStoredReaderEngine("Epub"));
   const [pdfEngine, setPdfEngine] = useState<ReaderEngine>(getStoredReaderEngine("Pdf"));
   const [autoTagMode, setAutoTagMode] = useState<AutoTagMode>(getStoredAutoTagMode());
   const queryClient = useQueryClient();
-
-  const capabilitiesQuery = useQuery({ queryKey: ["systemCapabilities"], queryFn: getSystemCapabilities });
-  const calibreAvailable = capabilitiesQuery.data?.calibreAvailable ?? false;
 
   // Shared with TitleBar.tsx's MenuButton (same query key) so toggling here updates that button's
   // visibility immediately, without waiting for a refetch.
@@ -66,12 +60,6 @@ export function SettingsScreen({ opened, onClose, onLibraryChanged, initialTab }
   const handleMenuBarChange = (enabled: boolean) => {
     queryClient.setQueryData(["menuBarEnabled"], enabled);
     void window.maktaba.setMenuBarEnabled(enabled);
-  };
-
-  const handleDefaultFormatChange = (value: string) => {
-    const format = value as ConvertFormat;
-    setDefaultFormat(format);
-    setStoredDefaultFormat(format);
   };
 
   const handleReaderOpenModeChange = (value: string) => {
@@ -110,9 +98,6 @@ export function SettingsScreen({ opened, onClose, onLibraryChanged, initialTab }
           </Tabs.Tab>
           <Tabs.Tab value="reading" leftSection={<IconBook2 size={14} />}>
             {t("settings.reading")}
-          </Tabs.Tab>
-          <Tabs.Tab value="import" leftSection={<IconFileImport size={14} />}>
-            {t("settings.import")}
           </Tabs.Tab>
           <Tabs.Tab value="about" leftSection={<IconInfoCircle size={14} />}>
             {t("settings.about")}
@@ -246,26 +231,6 @@ export function SettingsScreen({ opened, onClose, onLibraryChanged, initialTab }
                 {t("settings.autoTagStatusHint")}
               </Text>
             </Stack>
-          </Stack>
-        </Tabs.Panel>
-
-        <Tabs.Panel value="import" pt="lg">
-          <Stack gap={4}>
-            <FieldLabel>{t("settings.defaultConvertFormat")}</FieldLabel>
-            <Tooltip label={t("importDialog.calibreUnavailable")} disabled={calibreAvailable || capabilitiesQuery.isLoading}>
-              <SegmentedControl
-                size="sm"
-                w={280}
-                data={[
-                  { value: "none", label: t("importDialog.convertNone") },
-                  { value: "Epub", label: "EPUB" },
-                  { value: "Pdf", label: "PDF" },
-                ]}
-                value={defaultFormat}
-                onChange={handleDefaultFormatChange}
-                disabled={!capabilitiesQuery.isLoading && !calibreAvailable}
-              />
-            </Tooltip>
           </Stack>
         </Tabs.Panel>
 

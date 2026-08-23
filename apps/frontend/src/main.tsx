@@ -13,6 +13,7 @@ import { LanguageProvider, getStoredLanguage } from "./i18n/LanguageContext";
 import { ReaderOverlay } from "./components/ReaderOverlay";
 import { BackendGate } from "./components/BackendGate";
 import { HelpWindow } from "./components/HelpWindow";
+import { ImportProvider } from "./ImportContext";
 import App from "./App.tsx";
 
 const queryClient = new QueryClient();
@@ -73,7 +74,9 @@ createRoot(document.getElementById("root")!).render(
                 ) : isHelpWindow ? (
                   <HelpWindow />
                 ) : (
-                  <App />
+                  <ImportProvider>
+                    <App />
+                  </ImportProvider>
                 )}
               </BackendGate>
             </QueryClientProvider>
