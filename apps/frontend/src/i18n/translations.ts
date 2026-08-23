@@ -310,6 +310,10 @@ const en = {
   "importDialog.summaryConflicted": "{count} conflicted",
   "importDialog.summaryFailed": "{count} failed",
   "importDialog.backgroundProgress": "Importing… {done} / {total}",
+  "importDialog.minimize": "Minimize",
+  "importDialog.restore": "Restore",
+  "importDialog.noMatchingItems": "No files match this filter.",
+  "importDialog.conflictsNeedAttention": "{count} conflicts need attention",
 
   "reader.close": "Close reader",
   "reader.loadErrorTitle": "Couldn't load book",
@@ -624,6 +628,10 @@ const ur: TranslationDict = {
   "importDialog.summaryConflicted": "{count} تصادم",
   "importDialog.summaryFailed": "{count} ناکام",
   "importDialog.backgroundProgress": "درآمد جاری ہے… {done} / {total}",
+  "importDialog.minimize": "چھوٹا کریں",
+  "importDialog.restore": "بحال کریں",
+  "importDialog.noMatchingItems": "اس فلٹر سے کوئی فائل مطابقت نہیں رکھتی۔",
+  "importDialog.conflictsNeedAttention": "{count} تصادمات پر توجہ درکار ہے",
 
   "reader.close": "ریڈر بند کریں",
   "reader.loadErrorTitle": "کتاب لوڈ نہیں ہو سکی",

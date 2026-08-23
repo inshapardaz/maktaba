@@ -33,7 +33,7 @@ import { PublishersView } from "./components/PublishersView";
 import { LanguagesView } from "./components/LanguagesView";
 import { FilterBar, type SortDirection, type SortKey, type ViewMode } from "./components/FilterBar";
 import { ImportDialog } from "./components/ImportDialog";
-import { ImportBackgroundIndicator } from "./components/ImportBackgroundIndicator";
+import { ImportStatusBar, IMPORT_STATUS_BAR_HEIGHT } from "./components/ImportStatusBar";
 import { OnboardingTour } from "./components/OnboardingTour";
 import { SettingsScreen, type SettingsTab } from "./components/SettingsScreen";
 import { UpdateNotifier } from "./components/UpdateNotifier";
@@ -390,6 +390,8 @@ function App() {
   };
 
   const hasLibrary = !!libraryQuery.data;
+  const showImportBar =
+    importQueue.isMinimized && (importQueue.isProcessing || importQueue.isResolving || importQueue.summary.conflicted > 0);
 
   return (
     <Box
@@ -432,7 +434,7 @@ function App() {
             sibling element above the AppShell, otherwise the navbar overlaps it instead of
             starting below it. */}
         <AppShell
-          header={{ height: TITLEBAR_HEIGHT }}
+          header={{ height: showImportBar ? TITLEBAR_HEIGHT + IMPORT_STATUS_BAR_HEIGHT : TITLEBAR_HEIGHT }}
           navbar={hasLibrary ? { width: sidebarCollapsed ? 56 : sidebarWidth, breakpoint: 0 } : undefined}
           padding={0}
         >
@@ -449,6 +451,7 @@ function App() {
               onShowAllBooks={handleShowAllBooks}
               actionsHidden={!!inlineReader}
             />
+            {showImportBar && <ImportStatusBar />}
           </AppShell.Header>
 
           {hasLibrary && (
@@ -575,8 +578,6 @@ function App() {
             <ImportDialog />
           </>
         )}
-
-        <ImportBackgroundIndicator />
 
         {isDragActive && (
           // pointer-events: none is load-bearing, not cosmetic - without it, this overlay (which

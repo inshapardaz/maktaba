@@ -44,6 +44,10 @@ export interface ImportSummary {
 interface ImportContextValue {
   queue: QueueItem[];
   isOpen: boolean;
+  // True once the dialog's been minimized rather than closed outright - the queue keeps draining
+  // either way, but only this state also keeps the on-disk folder scan running (see cancel() vs
+  // minimize() below) and shows ImportStatusBar under the title bar.
+  isMinimized: boolean;
   isProcessing: boolean;
   isResolving: boolean;
   scanProgress: { found: number; currentPath: string } | null;
@@ -53,7 +57,13 @@ interface ImportContextValue {
   setConflictPolicy: (policy: ConflictPolicy) => void;
   summary: ImportSummary;
   open: () => void;
-  close: () => void;
+  // Minimizes the dialog - scanning/importing keeps running in the background, surfaced via
+  // ImportStatusBar until it's restored (open()) or cancelled (below).
+  minimize: () => void;
+  // Closing the dialog outright (its own X, Escape, or the footer Close button) cancels rather
+  // than backgrounds: stops any folder scan in flight (native.ts's scanCancelled) and drops the
+  // whole queue, since there's no way back to "review the results" once the dialog is gone.
+  cancel: () => void;
   browseFiles: () => Promise<void>;
   browseFolder: () => Promise<void>;
   dropPaths: (paths: string[]) => Promise<void>;
@@ -82,17 +92,19 @@ function isRetryable(err: unknown): boolean {
 }
 
 // Mounted once at the app root (App.tsx) so the import queue - and any scan/import already in
-// flight - survives the ImportDialog modal being closed. That's the actual mechanism behind issue
-// #25's "allow the scan to continue in background": there's nothing background-thread-like on the
-// backend to hook into (see ImportService.cs - every import call is a single synchronous request),
-// so "background" here means the queue keeps draining via this provider regardless of whether the
-// dialog is mounted; ImportBackgroundIndicator.tsx surfaces that it's still running.
+// flight - survives the ImportDialog modal being minimized. That's the actual mechanism behind
+// issue #25's "allow the scan to continue in background": there's nothing background-thread-like
+// on the backend to hook into (see ImportService.cs - every import call is a single synchronous
+// request), so "background" here means the queue keeps draining via this provider regardless of
+// whether the dialog is mounted; ImportStatusBar.tsx surfaces that it's still running. Closing the
+// dialog outright (cancel(), below) is different - it actually stops everything.
 export function ImportProvider({ children }: { children: ReactNode }) {
   const { t } = useLanguage();
   const queryClient = useQueryClient();
   const queueRef = useRef<QueueItem[]>([]);
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [isOpen, setOpen] = useState(false);
+  const [isMinimized, setMinimized] = useState(false);
   const [isProcessing, setProcessing] = useState(false);
   const [isResolving, setResolving] = useState(false);
   const [scanProgress, setScanProgress] = useState<{ found: number; currentPath: string } | null>(null);
@@ -101,6 +113,9 @@ export function ImportProvider({ children }: { children: ReactNode }) {
   const convertFormatRef = useRef(convertFormat);
   const conflictPolicyRef = useRef(conflictPolicy);
   const processingRef = useRef(false);
+  // Bumped by cancel() so an already-running runQueue loop notices and stops picking up further
+  // pending items, instead of (racily) also picking up whatever gets queued next - see runQueue.
+  const generationRef = useRef(0);
 
   useEffect(() => {
     convertFormatRef.current = convertFormat;
@@ -225,9 +240,13 @@ export function ImportProvider({ children }: { children: ReactNode }) {
       return;
     }
     processingRef.current = true;
+    const myGeneration = generationRef.current;
     setProcessing(true);
 
     for (;;) {
+      if (generationRef.current !== myGeneration) {
+        break;
+      }
       const next = queueRef.current.find((item) => item.status === "pending");
       if (!next) {
         break;
@@ -246,7 +265,11 @@ export function ImportProvider({ children }: { children: ReactNode }) {
     }
     queueRef.current = [...queueRef.current, ...filePaths.map((filePath) => ({ filePath, status: "pending" as const }))];
     commit();
-    setOpen(true);
+    // Respects an active minimize - dropping more files on the main window while an import is
+    // already running in the background shouldn't yank the dialog back open on its own.
+    if (!isMinimized) {
+      setOpen(true);
+    }
     void runQueue();
   }
 
@@ -279,6 +302,25 @@ export function ImportProvider({ children }: { children: ReactNode }) {
     await resolvePathsAndEnqueue(paths);
   };
 
+  // See ImportContextValue.cancel - stops the native folder walk (if one's running), drops the
+  // whole queue, and closes for good. Distinct from minimize(), which leaves all of this running.
+  function cancel() {
+    generationRef.current += 1;
+    void window.maktaba.cancelResolveEbookPaths();
+    queueRef.current = [];
+    commit();
+    setResolving(false);
+    setScanProgress(null);
+    setProcessing(false);
+    setOpen(false);
+    setMinimized(false);
+  }
+
+  function minimize() {
+    setOpen(false);
+    setMinimized(true);
+  }
+
   const summary = useMemo<ImportSummary>(
     () => ({
       total: queue.length,
@@ -293,6 +335,7 @@ export function ImportProvider({ children }: { children: ReactNode }) {
   const value: ImportContextValue = {
     queue,
     isOpen,
+    isMinimized,
     isProcessing,
     isResolving,
     scanProgress,
@@ -301,8 +344,12 @@ export function ImportProvider({ children }: { children: ReactNode }) {
     conflictPolicy,
     setConflictPolicy,
     summary,
-    open: () => setOpen(true),
-    close: () => setOpen(false),
+    open: () => {
+      setOpen(true);
+      setMinimized(false);
+    },
+    minimize,
+    cancel,
     browseFiles,
     browseFolder,
     dropPaths,

@@ -23,6 +23,7 @@ import {
   IconEye,
   IconFileUpload,
   IconFolder,
+  IconMinus,
   IconRefresh,
   IconStack2,
   IconX,
@@ -82,7 +83,8 @@ export function ImportDialog() {
     conflictPolicy,
     setConflictPolicy,
     summary,
-    close,
+    minimize,
+    cancel,
     browseFiles,
     browseFolder,
     dropPaths,
@@ -92,6 +94,9 @@ export function ImportDialog() {
   } = useImportQueue();
   const [isDragOver, setDragOver] = useState(false);
   const [viewingBookId, setViewingBookId] = useState<string | null>(null);
+  // Clicking a summary badge below filters the list to just that status - clicking the same one
+  // again (or "Total") clears it. Purely a display filter, not part of ImportContext's own state.
+  const [statusFilter, setStatusFilter] = useState<ItemStatus | null>(null);
 
   const capabilitiesQuery = useQuery({ queryKey: ["systemCapabilities"], queryFn: getSystemCapabilities });
   const calibreAvailable = capabilitiesQuery.data?.calibreAvailable ?? false;
@@ -124,10 +129,28 @@ export function ImportDialog() {
     (item) => item.status === "done" || item.status === "error" || item.status === "skipped",
   ).length;
   const currentItem = queue.find((item) => item.status === "importing" || item.status === "converting");
+  const visibleQueue = statusFilter ? queue.filter((item) => item.status === statusFilter) : queue;
+
+  const toggleFilter = (status: ItemStatus) => setStatusFilter((current) => (current === status ? null : status));
 
   return (
     <>
-      <Modal opened onClose={close} title={t("importDialog.title")} size="xl" closeOnClickOutside={false}>
+      <Modal
+        opened
+        onClose={cancel}
+        title={
+          <Group justify="space-between" wrap="nowrap" gap={4} style={{ width: "100%" }}>
+            <Text fw={600}>{t("importDialog.title")}</Text>
+            <Tooltip label={t("importDialog.minimize")}>
+              <ActionIcon variant="subtle" color="gray" onClick={minimize} aria-label={t("importDialog.minimize")}>
+                <IconMinus size={16} />
+              </ActionIcon>
+            </Tooltip>
+          </Group>
+        }
+        size="xl"
+        closeOnClickOutside={false}
+      >
         <Stack gap="md">
           <Box
             onDragOver={(e) => {
@@ -214,16 +237,44 @@ export function ImportDialog() {
           {queue.length > 0 && (
             <Stack gap={6}>
               <Group gap={8}>
-                <Badge variant="light" color="gray">
+                <Badge
+                  component="button"
+                  type="button"
+                  variant={statusFilter === null ? "filled" : "light"}
+                  color="gray"
+                  style={{ cursor: "pointer", border: "none" }}
+                  onClick={() => setStatusFilter(null)}
+                >
                   {t("importDialog.summaryTotal", { count: summary.total })}
                 </Badge>
-                <Badge variant="light" color="green">
+                <Badge
+                  component="button"
+                  type="button"
+                  variant={statusFilter === "done" ? "filled" : "light"}
+                  color="green"
+                  style={{ cursor: "pointer", border: "none" }}
+                  onClick={() => toggleFilter("done")}
+                >
                   {t("importDialog.summaryImported", { count: summary.imported })}
                 </Badge>
-                <Badge variant="light" color="orange">
+                <Badge
+                  component="button"
+                  type="button"
+                  variant={statusFilter === "conflict" ? "filled" : "light"}
+                  color="orange"
+                  style={{ cursor: "pointer", border: "none" }}
+                  onClick={() => toggleFilter("conflict")}
+                >
                   {t("importDialog.summaryConflicted", { count: summary.conflicted })}
                 </Badge>
-                <Badge variant="light" color="red">
+                <Badge
+                  component="button"
+                  type="button"
+                  variant={statusFilter === "error" ? "filled" : "light"}
+                  color="red"
+                  style={{ cursor: "pointer", border: "none" }}
+                  onClick={() => toggleFilter("error")}
+                >
                   {t("importDialog.summaryFailed", { count: summary.failed })}
                 </Badge>
               </Group>
@@ -246,9 +297,13 @@ export function ImportDialog() {
               <Text size="sm" c="dimmed" ta="center" py="md">
                 {t("importDialog.empty")}
               </Text>
+            ) : visibleQueue.length === 0 ? (
+              <Text size="sm" c="dimmed" ta="center" py="md">
+                {t("importDialog.noMatchingItems")}
+              </Text>
             ) : (
               <Stack gap={10}>
-                {queue.map((item) => (
+                {visibleQueue.map((item) => (
                   <Box key={item.filePath}>
                     <Group justify="space-between" wrap="nowrap" gap="sm">
                       <Box style={{ minWidth: 0, flex: 1 }}>
@@ -352,7 +407,7 @@ export function ImportDialog() {
           </ScrollArea.Autosize>
 
           <Group justify="flex-end">
-            <Button size="xs" onClick={close}>
+            <Button size="xs" onClick={cancel}>
               {t("importDialog.close")}
             </Button>
           </Group>
