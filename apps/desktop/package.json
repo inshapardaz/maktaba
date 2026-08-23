@@ -64,7 +64,8 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true
+      "createDesktopShortcut": true,
+      "artifactName": "${productName}.Setup.${version}.${ext}"
     },
     "mac": {
       "target": [
