@@ -228,7 +228,6 @@ const en = {
   "settings.urduFont": "Urdu font",
   "settings.menuBar": "Menu bar",
   "settings.menuBarHint": "Shows the File/Edit/View menu in reader windows and a menu button in the title bar.",
-  "settings.import": "Import",
   "settings.about": "About",
   "settings.help": "Help",
   "settings.helpIntro": "Guides for getting the most out of Maktaba, available offline in English and Urdu.",
@@ -238,7 +237,6 @@ const en = {
   "settings.checkForUpdates": "Check for Updates",
   "settings.upToDate": "You're up to date",
   "settings.updatesDevOnly": "Update checks are only available in the installed app, not in a dev build.",
-  "settings.defaultConvertFormat": "Default \"convert to\" format for new imports",
   "settings.rescanStarting": "Starting…",
   "settings.rescanProgress": "{processed} / {total} books scanned",
 
@@ -546,7 +544,6 @@ const ur: TranslationDict = {
   "settings.urduFont": "اردو فونٹ",
   "settings.menuBar": "مینو بار",
   "settings.menuBarHint": "ریڈر ونڈوز میں فائل/ایڈٹ/ویو مینو اور ٹائٹل بار میں ایک مینو بٹن دکھاتا ہے۔",
-  "settings.import": "درآمد",
   "settings.about": "بارے میں",
   "settings.help": "مدد",
   "settings.helpIntro": "مکتبہ کو بہتر طور پر استعمال کرنے کے رہنما، آف لائن انگریزی اور اردو میں دستیاب۔",
@@ -556,7 +553,6 @@ const ur: TranslationDict = {
   "settings.checkForUpdates": "اپ ڈیٹس چیک کریں",
   "settings.upToDate": "آپ کا ایپ تازہ ترین ہے",
   "settings.updatesDevOnly": "اپ ڈیٹ چیک صرف انسٹال شدہ ایپ میں دستیاب ہے، ڈیو بلڈ میں نہیں۔",
-  "settings.defaultConvertFormat": "نئی درآمدات کے لیے پہلے سے طے شدہ \"تبدیل کریں\" فارمیٹ",
   "settings.rescanStarting": "شروع ہو رہا ہے…",
   "settings.rescanProgress": "{processed} / {total} کتابیں اسکین ہوئیں",
 
