@@ -109,6 +109,19 @@ export class DuplicateBookError extends Error {
 
 export type DuplicateAction = "skip" | "keep-both" | "merge";
 
+// Carries the HTTP status alongside the message so callers can distinguish a transient server-side
+// failure (5xx - worth auto-retrying, see ImportContext.tsx) from a genuine client-side rejection
+// (4xx - e.g. file not accessible, unsupported format) that retrying identically won't fix.
+export class ApiError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const { apiBaseUrl, token } = window.maktaba;
 
@@ -129,7 +142,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     if (res.status === 409 && body?.duplicate) {
       throw new DuplicateBookError(body.duplicate);
     }
-    throw new Error(body?.error ?? `Request failed: ${res.status}`);
+    throw new ApiError(body?.error ?? `Request failed: ${res.status}`, res.status);
   }
 
   if (res.status === 204) {
