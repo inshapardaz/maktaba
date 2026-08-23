@@ -121,4 +121,34 @@ contextBridge.exposeInMainWorld("maktaba", {
   downloadUpdate: (): Promise<void> => ipcRenderer.invoke("maktaba:download-update"),
 
   quitAndInstall: (): Promise<void> => ipcRenderer.invoke("maktaba:quit-and-install"),
+
+  // Offline help content (see help.ts) for the standalone Help window (HelpWindow.tsx, opened via
+  // openHelpWindow) and the onboarding tour's screenshot placeholders - reads packaged/dev-mode
+  // docs/ markdown via IPC rather than fetch(), same convention as every other filesystem access.
+  listHelpTopics: (locale: "en" | "ur"): Promise<{ slug: string; title: string }[]> =>
+    ipcRenderer.invoke("maktaba:list-help-topics", locale),
+
+  readHelpTopic: (locale: "en" | "ur", slug: string): Promise<{ title: string; bodyMarkdown: string } | null> =>
+    ipcRenderer.invoke("maktaba:read-help-topic", locale, slug),
+
+  // relativePath is the raw src of a markdown image reference (e.g. "../screenshots/x.svg") -
+  // resolved server-side (help.ts) and returned as a base64 data URL, since the renderer has no
+  // direct filesystem access to either the packaged resources or the dev-mode docs/ source.
+  readHelpAsset: (relativePath: string): Promise<string | null> =>
+    ipcRenderer.invoke("maktaba:read-help-asset", relativePath),
+
+  // Opens (or focuses, if already open) the dedicated Help window - see main.ts's openHelpWindow.
+  // Called from the main window's title bar Help button (TitleBar.tsx).
+  openHelpWindow: (): Promise<void> => ipcRenderer.invoke("maktaba:open-help-window"),
+
+  // Round-trips through the main process so the Help window (a separate renderer) can reopen
+  // OnboardingTour.tsx, which lives in the main window's own React tree - see main.ts's
+  // maktaba:replay-onboarding-tour handler.
+  replayOnboardingTour: (): Promise<void> => ipcRenderer.invoke("maktaba:replay-onboarding-tour"),
+
+  onReplayOnboardingTour: (callback: () => void): (() => void) => {
+    const listener = () => callback();
+    ipcRenderer.on("maktaba:replay-onboarding-tour", listener);
+    return () => ipcRenderer.removeListener("maktaba:replay-onboarding-tour", listener);
+  },
 });

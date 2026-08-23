@@ -18,6 +18,7 @@ import {
   IconBooks,
   IconCircleCheck,
   IconCircleDashed,
+  IconHelpCircle,
   IconHome2,
   IconLayoutSidebarLeftCollapse,
   IconLayoutSidebarLeftExpand,
@@ -130,6 +131,27 @@ function MenuButton() {
         aria-label={t("toolbar.menu")}
       >
         <IconMenu2 size={16} />
+      </ActionIcon>
+    </Tooltip>
+  );
+}
+
+// Opens the standalone Help window (HelpWindow.tsx, apps/desktop/src/main.ts's openHelpWindow) -
+// always visible, independent of hasLibrary/actionsHidden, same reasoning as MenuButton above:
+// help should stay reachable even before a library exists or while the inline reader covers the
+// rest of the title bar.
+function HelpButton() {
+  const { t } = useLanguage();
+  return (
+    <Tooltip label={t("toolbar.help")}>
+      <ActionIcon
+        className="maktaba-titlebar-no-drag"
+        variant="subtle"
+        color="gray"
+        onClick={() => void window.maktaba.openHelpWindow()}
+        aria-label={t("toolbar.help")}
+      >
+        <IconHelpCircle size={16} />
       </ActionIcon>
     </Tooltip>
   );
@@ -343,6 +365,8 @@ export function TitleBar({
           {t("toolbar.addBooks")}
         </Button>
       )}
+
+      <HelpButton />
     </Box>
   );
 }

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="600" viewBox="0 0 960 600">
+  <rect width="960" height="600" fill="#eef0f2"/>
+  <rect x="8" y="8" width="944" height="584" fill="none" stroke="#9aa3ad" stroke-width="3" stroke-dasharray="12 10"/>
+  <text x="480" y="285" font-family="Segoe UI, Arial, sans-serif" font-size="30" fill="#5b6570" text-anchor="middle">Screenshot placeholder</text>
+  <text x="480" y="325" font-family="Segoe UI, Arial, sans-serif" font-size="18" fill="#7b8592" text-anchor="middle">See docs/SCREENSHOTS.md for what to capture and where to save it</text>
+</svg>

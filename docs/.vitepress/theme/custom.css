@@ -1,0 +1,20 @@
+@import url("https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;700&display=swap");
+
+/* Matches the "nastaliq" option in apps/frontend/src/urduFont.ts, so the docs site and the
+   in-app Help pane render Urdu text with the same look. */
+html[dir="rtl"] {
+  --vp-font-family-base: "Noto Nastaliq Urdu", system-ui, sans-serif;
+}
+
+html[dir="rtl"] .VPDoc,
+html[dir="rtl"] .VPNav {
+  font-family: "Noto Nastaliq Urdu", system-ui, sans-serif;
+}
+
+/* Help articles are screenshot-heavy for a non-technical audience; keep images legible and
+   clearly bounded, including the SVG placeholders used before real screenshots are captured. */
+.vp-doc img {
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 8px;
+  box-shadow: var(--vp-shadow-2);
+}

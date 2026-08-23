@@ -33,6 +33,7 @@ import { PublishersView } from "./components/PublishersView";
 import { LanguagesView } from "./components/LanguagesView";
 import { FilterBar, type SortDirection, type SortKey, type ViewMode } from "./components/FilterBar";
 import { ImportDialog } from "./components/ImportDialog";
+import { OnboardingTour } from "./components/OnboardingTour";
 import { SettingsScreen, type SettingsTab } from "./components/SettingsScreen";
 import { UpdateNotifier } from "./components/UpdateNotifier";
 import { invalidateLibraryQueries } from "./queries";
@@ -40,6 +41,7 @@ import { useDebounced } from "./useDebounced";
 import { useLanguage } from "./i18n/LanguageContext";
 import { ReaderLauncherProvider, type ReaderRequest } from "./ReaderLauncherContext";
 import { getStoredReaderEngine, getStoredReaderOpenMode } from "./readerSettings";
+import { hasCompletedOnboarding } from "./onboarding";
 
 function compareBooks(a: BookSummary, b: BookSummary, sortKey: SortKey): number {
   switch (sortKey) {
@@ -100,6 +102,23 @@ function App() {
   const [isDragActive, setDragActive] = useState(false);
   const [importFiles, setImportFiles] = useState<string[] | null>(null);
   const [inlineReader, setInlineReader] = useState<ReaderRequest | null>(null);
+  const [tourOpen, setTourOpen] = useState(false);
+
+  // Mount-time only (deliberately empty deps) - shows the getting-started tour once on a genuine
+  // first run, before a library necessarily exists yet (see OnboardingTour's mount point below,
+  // outside the hasLibrary gate). Replaying it later (HelpSettings.tsx's button) just reopens this
+  // same modal instance via setTourOpen, independent of this check.
+  useEffect(() => {
+    if (!hasCompletedOnboarding()) {
+      setTourOpen(true);
+    }
+  }, []);
+
+  // The standalone Help window (a separate renderer - see HelpWindow.tsx/main.ts's
+  // openHelpWindow) can't reach into this window's React tree directly to reopen the tour, so its
+  // "Replay Getting Started Tour" button round-trips through the main process instead - see
+  // main.ts's maktaba:replay-onboarding-tour handler.
+  useEffect(() => window.maktaba.onReplayOnboardingTour(() => setTourOpen(true)), []);
 
   const [search, setSearch] = useState("");
   const [format, setFormat] = useState("");
@@ -403,6 +422,12 @@ function App() {
       }
     >
       <UpdateNotifier />
+      <OnboardingTour
+        opened={tourOpen}
+        onClose={() => setTourOpen(false)}
+        hasLibrary={hasLibrary}
+        onLibraryOpened={() => void queryClient.invalidateQueries({ queryKey: ["library"] })}
+      />
       <ReaderLauncherProvider launch={launchReader}>
         {/* AppShell.Navbar positions itself relative to the viewport (fixed), not to whatever DOM
             parent renders it — so the title bar has to be its own AppShell.Header rather than a
@@ -560,7 +585,15 @@ function App() {
         )}
 
         {isDragActive && (
-          <Overlay color="var(--mantine-primary-color-7)" backgroundOpacity={0.15} zIndex={1000}>
+          // pointer-events: none is load-bearing, not cosmetic - without it, this overlay (which
+          // renders directly under the cursor the instant isDragActive flips true) becomes the
+          // browser's drag hit-test target itself. dragenter/dragleave bubble and fire on that
+          // kind of parent -> child hit-target change (unlike mouseenter/mouseleave), so the
+          // outer Box's onDragLeave (below) would fire, flipping isDragActive back to false,
+          // unmounting this overlay, which hands the hit-test back to Box and fires onDragOver
+          // again - an infinite mount/unmount flicker several times a second. Excluding this
+          // whole layer from hit-testing keeps every drag event targeting Box throughout.
+          <Overlay color="var(--mantine-primary-color-7)" backgroundOpacity={0.15} zIndex={1000} style={{ pointerEvents: "none" }}>
             <Center h="100%">
               <Group gap="xs" c="var(--mantine-primary-color-7)">
                 <IconUpload size={24} />

@@ -47,6 +47,12 @@ declare global {
       isPackaged: () => Promise<boolean>;
       downloadUpdate: () => Promise<void>;
       quitAndInstall: () => Promise<void>;
+      listHelpTopics: (locale: "en" | "ur") => Promise<{ slug: string; title: string }[]>;
+      readHelpTopic: (locale: "en" | "ur", slug: string) => Promise<{ title: string; bodyMarkdown: string } | null>;
+      readHelpAsset: (relativePath: string) => Promise<string | null>;
+      openHelpWindow: () => Promise<void>;
+      replayOnboardingTour: () => Promise<void>;
+      onReplayOnboardingTour: (callback: () => void) => () => void;
     };
   }
 }
