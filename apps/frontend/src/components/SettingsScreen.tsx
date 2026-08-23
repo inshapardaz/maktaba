@@ -154,7 +154,7 @@ export function SettingsScreen({ opened, onClose, onLibraryChanged, initialTab }
               <Group justify="space-between">
                 <FieldLabel>{t("settings.menuBar")}</FieldLabel>
                 <Switch
-                  checked={menuBarQuery.data ?? true}
+                  checked={menuBarQuery.data ?? false}
                   onChange={(e) => handleMenuBarChange(e.currentTarget.checked)}
                 />
               </Group>

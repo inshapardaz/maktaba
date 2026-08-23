@@ -60,9 +60,9 @@ const preferencesPath = path.join(app.getPath("userData"), "electron-preferences
 function loadMenuBarEnabled(): boolean {
   try {
     const raw = JSON.parse(fs.readFileSync(preferencesPath, "utf8")) as { menuBarEnabled?: boolean };
-    return raw.menuBarEnabled ?? true;
+    return raw.menuBarEnabled ?? false;
   } catch {
-    return true;
+    return false;
   }
 }
 
