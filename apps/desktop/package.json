@@ -42,6 +42,10 @@
       {
         "from": "../frontend/dist",
         "to": "frontend/dist"
+      },
+      {
+        "from": "resources/help",
+        "to": "help"
       }
     ],
     "afterPack": "electron-builder/afterPack.cjs",

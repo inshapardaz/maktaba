@@ -9,7 +9,7 @@ const isMac = process.platform === "darwin";
  * Maktaba-specific actions, so this reads as "the same familiar menu, everywhere" instead of a
  * second, divergent command surface next to the sidebar/title bar.
  */
-export function buildAppMenu(onCheckForUpdates: () => void): Menu {
+export function buildAppMenu(onCheckForUpdates: () => void, onOpenHelp: () => void): Menu {
   const template: MenuItemConstructorOptions[] = [
     ...(isMac
       ? [
@@ -70,6 +70,11 @@ export function buildAppMenu(onCheckForUpdates: () => void): Menu {
     {
       label: "&Help",
       submenu: [
+        {
+          label: "Maktaba Help",
+          click: () => onOpenHelp(),
+        },
+        { type: "separator" as const },
         {
           label: "Check for Updates…",
           click: () => onCheckForUpdates(),

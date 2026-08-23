@@ -4,11 +4,11 @@ Local-first ebook library manager (Calibre-alternative). Electron + React/TypeSc
 C#/.NET 9 backend running as a local HTTP sidecar. All data lives on the user's disk under a
 library folder the user picks; no accounts, no cloud.
 
-Background docs: `docs/SPEC.md` (original v1 spec) and `docs/TASKS.md` (milestone log, M0–M4 +
-Sqids migration). **Both are now stale in places** — SPEC.md still describes a single-library
-model and lists "built-in reader"/"multi-library" as out-of-scope; both have since been built.
-Trust this file and the actual code over those two for current state; they're useful for *why*
-early decisions were made, not *what exists now*.
+`docs/` is the bilingual (English + Urdu) end-user help site (VitePress; see "Help & onboarding"
+below) — it is **not** background/spec material for Claude. (Earlier revisions of this file
+pointed at `docs/SPEC.md`/`docs/TASKS.md` for that purpose; both were deleted from the repo well
+before `docs/` was repurposed this way — there is no separate background-docs folder anymore.
+Trust this file and the actual code for current state and *why* decisions were made.)
 
 ## Architecture
 
@@ -202,3 +202,47 @@ at the repo root chains build → publish-backend → electron-builder. Known pa
 `electron-builder` ≥ 26 (25.x pulled a broken `app-builder-bin` prerelease) and keep the root
 `package.json` `overrides.@noble/hashes: ^1.8.0` (electron-builder's blockmap step needs the
 dual-CJS/ESM major; 2.x is ESM-only and breaks under `require()`).
+
+## Help & onboarding
+
+`docs/` is a VitePress site (`docs/en/`, `docs/ur/`, `npm run docs:dev`/`docs:build` from the repo
+root) — bilingual help articles, one topic per markdown file. `docs/topics.cjs` (deliberately
+**CommonJS**, not `.mjs`/`.ts`) is the single source of truth for the topic list/order/titles; it's
+loaded identically by three different module contexts that otherwise couldn't share one file
+without a build step: `docs/.vitepress/config.ts` (sidebar), `scripts/build-help-content.mjs`
+(packaging), and `apps/desktop/src/help.ts` (dev-mode `require()` — a real `.mjs` can't be
+`require()`d synchronously from the CommonJS-compiled Electron main process). Screenshots
+referenced from markdown (`docs/screenshots/*.svg`) are currently all placeholder graphics (copies
+of `_placeholder-source.svg`) — see `docs/SCREENSHOTS.md` for the capture checklist of what each
+one should eventually show.
+
+The same `docs/` markdown is also the **offline in-app Help**, shown in its own top-level window
+(`HelpWindow.tsx`) rather than a Settings tab — help content is multi-page and screenshot-heavy
+and is meant to stay open alongside the rest of the app, which doesn't fit the small Settings
+modal. Opened via `window.maktaba.openHelpWindow()` (`main.ts`'s `openHelpWindow`, a singleton
+`BrowserWindow` with native OS chrome, following the same pattern as `openReaderWindow`) from
+either the main window's title bar Help button (`TitleBar.tsx`'s `HelpButton`) or the native app
+menu's "Maktaba Help" item (`menu.ts`). `scripts/build-help-content.mjs` copies `docs/{en,ur}/*.md`
++ screenshots into `apps/desktop/resources/help/` before packaging (chained into
+`npm run package:win/mac/linux`, mirroring `publish-backend.mjs`'s role); `help.ts`'s IPC handlers
+(`maktaba:list-help-topics`/`read-help-topic`/`read-help-asset`) read that packaged copy when
+`app.isPackaged`, or straight from `docs/` in dev — same dev/prod split as the sidecar. The
+renderer never touches these files directly (reads via `window.maktaba`, consistent with every
+other filesystem access — see `native.ts`), and renders the markdown with `react-markdown`; RTL/
+Urdu font come for free from the existing `useLanguage()`/`--urdu-font-family` machinery, no
+separate logic needed.
+
+First-run onboarding (`OnboardingTour.tsx`, a Mantine `Stepper` in a `Modal`, mounted in `App.tsx`
+**outside** the `hasLibrary` gate so it can show before a library exists) is gated by a
+`"maktaba-onboarding-complete"` localStorage flag (`onboarding.ts`) — not real first-run detection,
+just "has this tour been dismissed once." Replayable anytime from the Help window's "Replay
+Getting Started Tour" button — since that window is a separate renderer process from the main
+window (where the tour's React tree actually lives), the button round-trips through the main
+process instead of calling into it directly: it invokes `maktaba:replay-onboarding-tour`, which
+focuses the main window and sends it a `"maktaba:replay-onboarding-tour"` event that `App.tsx`
+subscribes to via `window.maktaba.onReplayOnboardingTour` — the same "invoke here, event there"
+shape as the sidecar/update-status broadcasts.
+
+All Urdu content added for this feature (docs, onboarding copy, new `translations.ts` keys) is
+Claude-authored and has **not** been reviewed by a native speaker — treat it as a first draft that
+needs review before relying on it for real users.

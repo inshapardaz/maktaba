@@ -3,6 +3,7 @@ import * as path from "node:path";
 import * as fs from "node:fs";
 import { startSidecar, stopSidecar, waitForHealth, SidecarHandle, SidecarStatus } from "./sidecar";
 import { registerNativeHandlers } from "./native";
+import { registerHelpHandlers } from "./help";
 import { buildAppMenu } from "./menu";
 import { checkForUpdates, initUpdater } from "./updater";
 
@@ -15,6 +16,8 @@ const isMac = process.platform === "darwin";
 // window instead of stacking duplicates; different books (or the same book in a different
 // format) each get their own independent window.
 const readerWindows = new Map<string, BrowserWindow>();
+// Only one Help window is ever needed - re-invoking maktaba:open-help-window just focuses it.
+let helpWindow: BrowserWindow | null = null;
 
 const isDev = !app.isPackaged;
 
@@ -33,6 +36,7 @@ app.setName("Maktaba");
 app.setAppUserModelId("com.inshapardaz.maktaba");
 
 registerNativeHandlers(() => mainWindow);
+registerHelpHandlers();
 initUpdater();
 
 // Backs the About tab's version display (SettingsScreen.tsx's AboutSettings) - same value
@@ -63,7 +67,7 @@ function loadMenuBarEnabled(): boolean {
 }
 
 let menuBarEnabled = loadMenuBarEnabled();
-const appMenu = buildAppMenu(checkForUpdates);
+const appMenu = buildAppMenu(checkForUpdates, () => void openHelpWindow());
 
 // Applies the current on/off state to every already-open window (main + readers) plus the mac
 // global menu bar / the default new windows will otherwise inherit - called once at startup and
@@ -305,6 +309,55 @@ ipcMain.handle(
   (_event, { bookId, format, title }: { bookId: string; format: string; title?: string }) =>
     openReaderWindow(bookId, format, title),
 );
+
+// Opened from the main window's title bar Help button (TitleBar.tsx) and the native app menu's
+// "Maktaba Help" item (menu.ts) - a plain top-level window (native OS chrome, no custom
+// titleBarStyle) showing HelpWindow.tsx, following the same singleton-window pattern as
+// openReaderWindow above (re-invoking just focuses the existing window instead of duplicating it).
+async function openHelpWindow(): Promise<void> {
+  if (helpWindow && !helpWindow.isDestroyed()) {
+    helpWindow.focus();
+    return;
+  }
+  if (!sidecar) return;
+
+  const win = new BrowserWindow({
+    width: 980,
+    height: 720,
+    minWidth: 640,
+    minHeight: 480,
+    title: "Maktaba Help",
+    icon: appIconPath,
+    webPreferences: webPreferencesFor(sidecar),
+  });
+
+  helpWindow = win;
+  win.on("closed", () => {
+    helpWindow = null;
+  });
+
+  const query: Record<string, string> = { view: "help" };
+  if (isDev) {
+    await win.loadURL(`http://localhost:5173/?${new URLSearchParams(query).toString()}`);
+  } else {
+    await win.loadFile(path.join(__dirname, "..", "..", "frontend", "dist", "index.html"), { query });
+  }
+}
+
+ipcMain.handle("maktaba:open-help-window", () => openHelpWindow());
+
+// The Help window's "Replay Getting Started Tour" button (HelpWindow.tsx) can't reach into the
+// main window's own React tree (separate renderer process) to reopen OnboardingTour.tsx directly,
+// so it round-trips through here instead: bring the main window forward, then broadcast an event
+// it's subscribed to (App.tsx's onReplayOnboardingTour) - same "invoke here, event there" shape as
+// the sidecar/update status broadcasts above.
+ipcMain.handle("maktaba:replay-onboarding-tour", () => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.show();
+    mainWindow.focus();
+    mainWindow.webContents.send("maktaba:replay-onboarding-tour");
+  }
+});
 
 app.whenReady().then(async () => {
   createSplashWindow();

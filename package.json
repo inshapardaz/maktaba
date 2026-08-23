@@ -4,20 +4,25 @@
   "version": "0.0.0",
   "workspaces": [
     "apps/frontend",
-    "apps/desktop"
+    "apps/desktop",
+    "docs"
   ],
   "scripts": {
     "dev:frontend": "npm run dev --workspace maktaba-frontend",
     "dev:desktop:build": "npm run build --workspace maktaba-desktop -- --watch",
     "dev:electron": "wait-on tcp:5173 apps/desktop/dist/main.js --window 250 && electron apps/desktop",
     "dev": "concurrently -k -n frontend,desktop,electron -c blue,green,magenta \"npm:dev:frontend\" \"npm:dev:desktop:build\" \"npm:dev:electron\"",
+    "docs:dev": "npm run dev --workspace maktaba-docs",
+    "docs:build": "npm run build --workspace maktaba-docs",
+    "docs:preview": "npm run preview --workspace maktaba-docs",
     "build:frontend": "npm run build --workspace maktaba-frontend",
     "build:desktop": "npm run build --workspace maktaba-desktop",
+    "build:help-content": "node scripts/build-help-content.mjs",
     "publish:backend": "node scripts/publish-backend.mjs",
     "publish:backend:all": "node scripts/publish-backend.mjs --all",
-    "package:win": "npm run build:frontend && npm run build:desktop && node scripts/publish-backend.mjs win-x64 && npm run package:win --workspace maktaba-desktop",
-    "package:mac": "npm run build:frontend && npm run build:desktop && node scripts/publish-backend.mjs osx-x64 osx-arm64 && npm run package:mac --workspace maktaba-desktop",
-    "package:linux": "npm run build:frontend && npm run build:desktop && node scripts/publish-backend.mjs linux-x64 && npm run package:linux --workspace maktaba-desktop"
+    "package:win": "npm run build:frontend && npm run build:desktop && npm run build:help-content && node scripts/publish-backend.mjs win-x64 && npm run package:win --workspace maktaba-desktop",
+    "package:mac": "npm run build:frontend && npm run build:desktop && npm run build:help-content && node scripts/publish-backend.mjs osx-x64 osx-arm64 && npm run package:mac --workspace maktaba-desktop",
+    "package:linux": "npm run build:frontend && npm run build:desktop && npm run build:help-content && node scripts/publish-backend.mjs linux-x64 && npm run package:linux --workspace maktaba-desktop"
   },
   "devDependencies": {
     "concurrently": "^9.0.0",

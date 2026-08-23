@@ -12,6 +12,7 @@ import { ThemeColorProvider, useThemeColor } from "./ThemeColorContext";
 import { LanguageProvider, getStoredLanguage } from "./i18n/LanguageContext";
 import { ReaderOverlay } from "./components/ReaderOverlay";
 import { BackendGate } from "./components/BackendGate";
+import { HelpWindow } from "./components/HelpWindow";
 import App from "./App.tsx";
 
 const queryClient = new QueryClient();
@@ -21,15 +22,20 @@ const initialDirection = getStoredLanguage() === "ur" ? "rtl" : "ltr";
 // ?view=reader&bookId=...&format=...&title=... in the URL (see apps/desktop/src/main.ts's
 // openReaderWindow) rather than a route within the main window, so multiple books can be open
 // side by side. This is decided once at load time since each such window's URL never changes.
-const readerParams = new URLSearchParams(window.location.search);
+const windowParams = new URLSearchParams(window.location.search);
 const readerRequest =
-  readerParams.get("view") === "reader"
+  windowParams.get("view") === "reader"
     ? {
-      bookId: readerParams.get("bookId") ?? "",
-      format: readerParams.get("format") === "Pdf" ? ("Pdf" as const) : ("Epub" as const),
-      title: readerParams.get("title"),
+      bookId: windowParams.get("bookId") ?? "",
+      format: windowParams.get("format") === "Pdf" ? ("Pdf" as const) : ("Epub" as const),
+      title: windowParams.get("title"),
     }
     : null;
+
+// The Help window (apps/desktop/src/main.ts's openHelpWindow, opened from the title bar's Help
+// button) is the same "separate top-level window loading this bundle with a ?view= query param"
+// pattern as the reader window above.
+const isHelpWindow = windowParams.get("view") === "help";
 
 function ReaderWindow({ bookId, format, title }: { bookId: string; format: "Epub" | "Pdf"; title: string | null }) {
   useEffect(() => {
@@ -61,9 +67,11 @@ createRoot(document.getElementById("root")!).render(
           <LanguageProvider>
             <Notifications position="bottom-right" />
             <QueryClientProvider client={queryClient}>
-              <BackendGate showTitleBar={!readerRequest}>
+              <BackendGate showTitleBar={!readerRequest && !isHelpWindow}>
                 {readerRequest ? (
                   <ReaderWindow bookId={readerRequest.bookId} format={readerRequest.format} title={readerRequest.title} />
+                ) : isHelpWindow ? (
+                  <HelpWindow />
                 ) : (
                   <App />
                 )}
