@@ -13,6 +13,10 @@ export interface BookSummary {
   // FilterBar.tsx's SortKey ("seriesIndex"/"lastRead").
   seriesIndex: number | null;
   lastReadAt: string | null;
+  // Distinct formats this book has a file for (e.g. ["Epub", "Pdf"]) - lets BookGrid/BookList
+  // decide whether to show a split "Read" button without a per-row detail fetch; the file's
+  // AbsolutePath is only resolved (via getBook) once a specific format is actually chosen.
+  formats: string[];
 }
 
 export interface BookFileInfo {
@@ -227,6 +231,13 @@ export function pickPreferredReadFile(files: BookFileInfo[]): (BookFileInfo & { 
   return readableFiles.find((f) => f.format === "Epub") ?? readableFiles[0];
 }
 
+// Same "prefer Epub" rule as pickPreferredReadFile above, for call sites (BookGrid/BookList) that
+// only have BookSummary.formats (format names, no per-file AbsolutePath) rather than full file info.
+export function pickPreferredFormat(formats: string[]): ("Epub" | "Pdf") | undefined {
+  const readable = formats.filter(isReadableFormat);
+  return readable.find((f) => f === "Epub") ?? readable[0];
+}
+
 export interface ContinueReadingBook {
   id: string;
   title: string;
@@ -246,10 +257,20 @@ export function listContinueReading(limit?: number): Promise<ContinueReadingBook
   return request<ContinueReadingBook[]>(`/api/books/continue-reading${limit ? `?limit=${limit}` : ""}`);
 }
 
-export function importBook(filePath: string, duplicateAction?: DuplicateAction): Promise<{ id: string }> {
-  return request<{ id: string }>("/api/books/import", {
+export function importBook(filePath: string, duplicateAction?: DuplicateAction): Promise<{ id: string; title: string }> {
+  return request<{ id: string; title: string }>("/api/books/import", {
     method: "POST",
     body: JSON.stringify({ filePath, duplicateAction }),
+  });
+}
+
+// BookDetailPanel's "add another file" action - attaches an extra format to this already-existing
+// book (e.g. a PDF alongside its Epub) without touching its metadata, distinct from importBook()
+// above which always considers creating a brand new book.
+export function addBookFile(id: string, filePath: string): Promise<BookFileInfo> {
+  return request<BookFileInfo>(`/api/books/${id}/files`, {
+    method: "POST",
+    body: JSON.stringify({ filePath }),
   });
 }
 

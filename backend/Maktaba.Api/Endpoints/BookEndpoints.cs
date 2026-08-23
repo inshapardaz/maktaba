@@ -128,7 +128,8 @@ public static class BookEndpoints
                     CoverLocator.Find(root, b.FolderPath) is not null,
                     b.ReadingStatus.ToString(),
                     b.BookSeries.FirstOrDefault()?.SeriesIndex,
-                    lastReadByBookId.TryGetValue(b.Id, out var lastRead) ? lastRead : null))
+                    lastReadByBookId.TryGetValue(b.Id, out var lastRead) ? lastRead : null,
+                    b.Files.Select(f => f.Format.ToString()).Distinct().ToArray()))
                 .ToList();
 
             return Results.Ok(dtos);
@@ -182,6 +183,7 @@ public static class BookEndpoints
 
             var books = await db.Books
                 .Include(b => b.BookAuthors).ThenInclude(ba => ba.Author)
+                .Include(b => b.Files)
                 .AsNoTracking()
                 .OrderByDescending(b => b.DateAdded)
                 .Take(limit is > 0 ? limit.Value : 12)
@@ -198,7 +200,8 @@ public static class BookEndpoints
                     CoverLocator.Find(root, b.FolderPath) is not null,
                     b.ReadingStatus.ToString(),
                     null,
-                    null))
+                    null,
+                    b.Files.Select(f => f.Format.ToString()).Distinct().ToArray()))
                 .ToList();
 
             return Results.Ok(dtos);
@@ -423,6 +426,42 @@ public static class BookEndpoints
             return result is null ? Results.NotFound() : Results.Ok(new { folderPath = result.AbsoluteFolderPath });
         });
 
+        group.MapPost("/{id}/files", async (
+            string id,
+            AddBookFileRequest request,
+            IImportService importService,
+            ILibraryPathProvider libraryPath,
+            CancellationToken ct) =>
+        {
+            if (!IdCodec.TryDecode(id, out var bookId))
+            {
+                return Results.NotFound();
+            }
+
+            if (string.IsNullOrWhiteSpace(request.FilePath) || !File.Exists(request.FilePath))
+            {
+                return Results.BadRequest(new { error = "File not found." });
+            }
+
+            try
+            {
+                var book = await importService.AddFileToBookAsync(bookId, request.FilePath, ct);
+                if (book is null)
+                {
+                    return Results.NotFound();
+                }
+
+                var addedFile = book.Files[^1];
+                var root = libraryPath.LibraryRootPath!;
+                return Results.Ok(new BookFileDto(
+                    addedFile.Format.ToString(), addedFile.FileSizeBytes, Path.Combine(root, addedFile.FilePath)));
+            }
+            catch (NotSupportedException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+        });
+
         group.MapPost("/import", async (ImportBookRequest request, IImportService importService, CancellationToken ct) =>
         {
             if (string.IsNullOrWhiteSpace(request.FilePath) || !File.Exists(request.FilePath))
@@ -442,7 +481,7 @@ public static class BookEndpoints
             {
                 var book = await importService.ImportFileAsync(request.FilePath, resolution, ct);
                 var sqid = IdCodec.Encode(book.Id);
-                return Results.Created($"/api/books/{sqid}", new { id = sqid });
+                return Results.Created($"/api/books/{sqid}", new { id = sqid, title = book.Title });
             }
             catch (NotSupportedException ex)
             {

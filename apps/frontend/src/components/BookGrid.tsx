@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ActionIcon, Badge, Box, Group, Image, Loader, Text, Tooltip, UnstyledButton } from "@mantine/core";
-import { IconBook2, IconEdit, IconInfoCircle } from "@tabler/icons-react";
-import { coverUrl, getBook, pickPreferredReadFile, type BookSummary } from "../api";
+import { ActionIcon, Badge, Box, Group, Image, Loader, Menu, Text, Tooltip, UnstyledButton } from "@mantine/core";
+import { IconBook2, IconChevronDown, IconEdit, IconInfoCircle } from "@tabler/icons-react";
+import { coverUrl, getBook, pickPreferredReadFile, type BookFileInfo, type BookSummary } from "../api";
 import { setBookDragData } from "../bookDrag";
 import { useLanguage } from "../i18n/LanguageContext";
 import { useReaderLauncher } from "../ReaderLauncherContext";
@@ -33,18 +33,26 @@ interface BookCardProps {
   onEdit: (id: string) => void;
 }
 
+function isReadableFormat(format: string): format is "Epub" | "Pdf" {
+  return format === "Epub" || format === "Pdf";
+}
+
 function BookCard({ book, index, selected, selectedIds, onSelect, onEdit }: BookCardProps) {
   const { t } = useLanguage();
   const launchReader = useReaderLauncher();
   const [hovered, setHovered] = useState(false);
   const [loadingRead, setLoadingRead] = useState(false);
+  const readableFormats = book.formats.filter(isReadableFormat);
 
-  const handleRead = async () => {
+  const handleRead = async (format?: "Epub" | "Pdf") => {
     if (loadingRead) return;
     setLoadingRead(true);
     try {
       const detail = await getBook(book.id);
-      const file = pickPreferredReadFile(detail.files);
+      const matchedFile = format
+        ? detail.files.find((f): f is BookFileInfo & { format: "Epub" | "Pdf" } => f.format === format)
+        : undefined;
+      const file = matchedFile ?? pickPreferredReadFile(detail.files);
       if (file) {
         launchReader({
           bookId: book.id,
@@ -117,20 +125,59 @@ function BookCard({ book, index, selected, selectedIds, onSelect, onEdit }: Book
               borderRadius: "var(--mantine-radius-sm)",
             }}
           >
-            <Tooltip label={t("bookGrid.read")}>
-              <ActionIcon
-                size="lg"
-                radius="xl"
-                variant="filled"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  void handleRead();
-                }}
-                disabled={loadingRead}
-              >
-                {loadingRead ? <Loader size={16} color="white" /> : <IconBook2 size={18} />}
-              </ActionIcon>
-            </Tooltip>
+            {readableFormats.length > 1 ? (
+              <Menu position="top" withinPortal>
+                <ActionIcon.Group>
+                  <Tooltip label={t("bookGrid.read")}>
+                    <ActionIcon
+                      size="lg"
+                      radius="xl"
+                      variant="filled"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void handleRead();
+                      }}
+                      disabled={loadingRead}
+                    >
+                      {loadingRead ? <Loader size={16} color="white" /> : <IconBook2 size={18} />}
+                    </ActionIcon>
+                  </Tooltip>
+                  <Menu.Target>
+                    <ActionIcon
+                      size="lg"
+                      radius="xl"
+                      variant="filled"
+                      aria-label={t("bookDetail.chooseFormat")}
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <IconChevronDown size={14} />
+                    </ActionIcon>
+                  </Menu.Target>
+                </ActionIcon.Group>
+                <Menu.Dropdown onClick={(event) => event.stopPropagation()}>
+                  {readableFormats.map((format) => (
+                    <Menu.Item key={format} onClick={() => void handleRead(format)}>
+                      {format}
+                    </Menu.Item>
+                  ))}
+                </Menu.Dropdown>
+              </Menu>
+            ) : (
+              <Tooltip label={t("bookGrid.read")}>
+                <ActionIcon
+                  size="lg"
+                  radius="xl"
+                  variant="filled"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void handleRead();
+                  }}
+                  disabled={loadingRead}
+                >
+                  {loadingRead ? <Loader size={16} color="white" /> : <IconBook2 size={18} />}
+                </ActionIcon>
+              </Tooltip>
+            )}
             <Tooltip label={t("bookGrid.viewDetails")}>
               <ActionIcon
                 size="lg"
