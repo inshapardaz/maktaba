@@ -165,6 +165,16 @@ function App() {
     queryFn: getCurrentLibrary,
   });
 
+  // Falls back off the Periodicals view if this library's setting (Settings -> Libraries) gets
+  // toggled off while it's the one currently showing, or a different library (with the feature
+  // off) is switched to while it was showing - stale local UI state, not persisted.
+  useEffect(() => {
+    if (libraryQuery.data && !libraryQuery.data.periodicalsEnabled && mainView === "periodicals") {
+      setMainView("library");
+      setSelectedPeriodicalId(null);
+    }
+  }, [libraryQuery.data, mainView]);
+
   const booksQuery = useQuery({
     queryKey: ["books", filters],
     queryFn: () => listBooks(filters),

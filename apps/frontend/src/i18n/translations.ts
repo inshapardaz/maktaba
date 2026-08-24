@@ -315,6 +315,7 @@ const en = {
   "librariesSettings.remove": "Remove",
   "librariesSettings.empty": "No libraries yet.",
   "librariesSettings.manage": "Manage libraries…",
+  "librariesSettings.periodicals": "Periodicals feature",
 
   "home.continueReading": "Continue Reading",
   "home.currentlyReading": "Currently Reading",
@@ -674,6 +675,7 @@ const ur: TranslationDict = {
   "librariesSettings.remove": "ہٹا دیں",
   "librariesSettings.empty": "ابھی کوئی لائبریری موجود نہیں۔",
   "librariesSettings.manage": "لائبریریاں منظم کریں…",
+  "librariesSettings.periodicals": "متواتر اشاعتوں کی خصوصیت",
 
   "home.continueReading": "مطالعہ جاری رکھیں",
   "home.currentlyReading": "زیرِ مطالعہ کتابیں",

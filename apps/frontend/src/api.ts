@@ -57,6 +57,11 @@ export interface BookDetail extends BookSummary {
 
 export interface LibraryInfo {
   path: string;
+  id: string;
+  name: string;
+  // Per-library preference (Settings -> Libraries) - hides the Periodicals sidebar section and the
+  // book-edit form's Periodical fieldset when off, without touching this library's own data.
+  periodicalsEnabled: boolean;
 }
 
 export interface BrowseGroup {
@@ -184,6 +189,7 @@ export interface LibraryEntry {
   name: string;
   path: string;
   isActive: boolean;
+  periodicalsEnabled: boolean;
 }
 
 // Every library the user has ever opened - only one (isActive) is the one every other request
@@ -207,6 +213,13 @@ export function relocateLibrary(id: string, path: string): Promise<LibraryEntry>
   return request<LibraryEntry>(`/api/libraries/${id}/path`, {
     method: "PUT",
     body: JSON.stringify({ path }),
+  });
+}
+
+export function setLibraryPeriodicalsEnabled(id: string, enabled: boolean): Promise<LibraryEntry> {
+  return request<LibraryEntry>(`/api/libraries/${id}/periodicals-enabled`, {
+    method: "PUT",
+    body: JSON.stringify({ enabled }),
   });
 }
 

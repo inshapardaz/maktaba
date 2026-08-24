@@ -21,6 +21,7 @@ import { IconAlertCircle } from "@tabler/icons-react";
 import {
   createCollection,
   getBook,
+  getCurrentLibrary,
   listAuthors,
   listCollections,
   listPeriodicals,
@@ -267,7 +268,11 @@ export function BookEditForm({ bookId, onClose, onSaved }: BookEditFormProps) {
   const tagsQuery = useQuery({ queryKey: ["tags"], queryFn: listTags });
   const publishersQuery = useQuery({ queryKey: ["publishers"], queryFn: listPublishers });
   const collectionsQuery = useQuery({ queryKey: ["collections"], queryFn: listCollections });
-  const periodicalsQuery = useQuery({ queryKey: ["periodicals"], queryFn: listPeriodicals });
+  // Per-library preference (Settings -> Libraries) - shares the ["library"] query App.tsx already
+  // keeps warm, so this is a cache read, not an extra request.
+  const libraryQuery = useQuery({ queryKey: ["library"], queryFn: getCurrentLibrary });
+  const periodicalsEnabled = libraryQuery.data?.periodicalsEnabled ?? true;
+  const periodicalsQuery = useQuery({ queryKey: ["periodicals"], queryFn: listPeriodicals, enabled: periodicalsEnabled });
   const collectionOptions = buildCollectionOptions(collectionsQuery.data ?? [], collectionSearch, t);
 
   const authorOptions = buildCreatableData(
@@ -459,42 +464,48 @@ export function BookEditForm({ bookId, onClose, onSaved }: BookEditFormProps) {
               </Group>
             )}
 
-            <Fieldset legend={t("bookEdit.periodicalFieldset")}>
-              <Stack gap="sm">
-                <Select
-                  label={t("bookEdit.periodical")}
-                  data={(periodicalsQuery.data ?? []).map((p) => ({ value: p.id, label: p.name }))}
-                  value={form.periodicalId || null}
-                  onChange={(value) => setForm({ ...form, periodicalId: value ?? "" })}
-                  searchable
-                  clearable
-                />
+            {/* Hidden entirely (not just visually disabled) when this library has the feature
+                turned off (Settings -> Libraries) - see periodicalsEnabled above. An already-issue
+                book stays exactly as it is on disk/DB; there's just no way to change that
+                assignment (or the fields hidden above) from this form while it's off. */}
+            {periodicalsEnabled && (
+              <Fieldset legend={t("bookEdit.periodicalFieldset")}>
+                <Stack gap="sm">
+                  <Select
+                    label={t("bookEdit.periodical")}
+                    data={(periodicalsQuery.data ?? []).map((p) => ({ value: p.id, label: p.name }))}
+                    value={form.periodicalId || null}
+                    onChange={(value) => setForm({ ...form, periodicalId: value ?? "" })}
+                    searchable
+                    clearable
+                  />
 
-                {form.periodicalId && (
-                  <>
-                    <Group grow align="flex-start">
-                      <NumberInput
-                        label={t("bookEdit.volumeNumber")}
-                        value={form.volumeNumber}
-                        onChange={(value) => setForm({ ...form, volumeNumber: value === "" ? "" : String(value) })}
+                  {form.periodicalId && (
+                    <>
+                      <Group grow align="flex-start">
+                        <NumberInput
+                          label={t("bookEdit.volumeNumber")}
+                          value={form.volumeNumber}
+                          onChange={(value) => setForm({ ...form, volumeNumber: value === "" ? "" : String(value) })}
+                        />
+                        <NumberInput
+                          label={t("bookEdit.issueNumber")}
+                          step={0.1}
+                          value={form.issueNumber}
+                          onChange={(value) => setForm({ ...form, issueNumber: value === "" ? "" : String(value) })}
+                        />
+                      </Group>
+                      <IssueDateField
+                        frequency={selectedPeriodical?.frequency ?? "Occasional"}
+                        value={form.publishedDate}
+                        onChange={(value) => setForm({ ...form, publishedDate: value })}
+                        t={t}
                       />
-                      <NumberInput
-                        label={t("bookEdit.issueNumber")}
-                        step={0.1}
-                        value={form.issueNumber}
-                        onChange={(value) => setForm({ ...form, issueNumber: value === "" ? "" : String(value) })}
-                      />
-                    </Group>
-                    <IssueDateField
-                      frequency={selectedPeriodical?.frequency ?? "Occasional"}
-                      value={form.publishedDate}
-                      onChange={(value) => setForm({ ...form, publishedDate: value })}
-                      t={t}
-                    />
-                  </>
-                )}
-              </Stack>
-            </Fieldset>
+                    </>
+                  )}
+                </Stack>
+              </Fieldset>
+            )}
 
             {!form.periodicalId && (
               <MultiSelect

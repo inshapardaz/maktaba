@@ -116,13 +116,15 @@ public record SystemCapabilitiesDto(bool CalibreAvailable);
 
 public record OpenLibraryRequest(string Path);
 
-public record LibraryDto(string Path);
+public record LibraryDto(string Path, string Id, string Name, bool PeriodicalsEnabled);
 
-public record LibraryEntryDto(string Id, string Name, string Path, bool IsActive);
+public record LibraryEntryDto(string Id, string Name, string Path, bool IsActive, bool PeriodicalsEnabled);
 
 public record RenameLibraryRequestDto(string Name);
 
 public record RelocateLibraryRequestDto(string Path);
+
+public record SetPeriodicalsEnabledRequestDto(bool Enabled);
 
 public record RescanProgressDto(bool IsRunning, int Processed, int Total, string? CurrentBook);
 

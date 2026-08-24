@@ -150,6 +150,20 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
         return updated;
     }
 
+    public Task<LibraryRegistryEntry?> SetPeriodicalsEnabledAsync(string id, bool enabled, CancellationToken ct = default)
+    {
+        var index = _libraries.FindIndex(l => l.Id == id);
+        if (index < 0)
+        {
+            return Task.FromResult<LibraryRegistryEntry?>(null);
+        }
+
+        var updated = _libraries[index] with { PeriodicalsEnabled = enabled };
+        _libraries[index] = updated;
+        SaveConfig();
+        return Task.FromResult<LibraryRegistryEntry?>(updated);
+    }
+
     public async Task<bool> RemoveAsync(string id, CancellationToken ct = default)
     {
         var index = _libraries.FindIndex(l => l.Id == id);
