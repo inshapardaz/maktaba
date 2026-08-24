@@ -107,5 +107,6 @@ app.MapAuthorEndpoints();
 app.MapTagEndpoints();
 app.MapSeriesEndpoints();
 app.MapPeriodicalEndpoints();
+app.MapAnalyticsEndpoints();
 
 app.Run();

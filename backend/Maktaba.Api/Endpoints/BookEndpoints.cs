@@ -279,6 +279,10 @@ public static class BookEndpoints
 
             var series = book.BookSeries.FirstOrDefault();
 
+            var secondsRead = await db.ReadingActivities.Where(ra => ra.BookId == bookId).SumAsync(ra => (int?)ra.DurationSeconds, default) ?? 0;
+            var percentage = await db.ReadingProgress.Where(rp => rp.BookId == bookId).Select(rp => (double?)rp.Percentage).FirstOrDefaultAsync();
+            var expectedTotalSeconds = ReadingTimeEstimator.EstimateTotalSeconds(secondsRead, percentage ?? 0);
+
             var dto = new BookDetailDto(
                 id,
                 book.Title,
@@ -305,7 +309,10 @@ public static class BookEndpoints
                 book.Periodical?.Name,
                 book.IssueNumber,
                 book.VolumeNumber,
-                book.IssueDate);
+                book.IssueDate,
+                secondsRead,
+                expectedTotalSeconds,
+                expectedTotalSeconds is { } total ? Math.Max(0, total - secondsRead) : null);
 
             return Results.Ok(dto);
         });

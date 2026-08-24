@@ -41,6 +41,7 @@ import {
   type ReadingStatus,
 } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
+import { formatDuration } from "../readingTime";
 import { useReaderLauncher } from "../ReaderLauncherContext";
 import { BookEditForm } from "./BookEditForm";
 import { languageDisplayName } from "./Sidebar";
@@ -279,6 +280,16 @@ export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelP
                   chapter: progress.currentChapter,
                   totalChapters: progress.totalChapters,
                 })}
+              </Text>
+            )}
+            {book.secondsRead > 0 && (
+              <Text size="xs" c="dimmed">
+                {book.remainingSeconds != null
+                  ? t("bookDetail.timeReadWithRemaining", {
+                      timeRead: formatDuration(book.secondsRead, t),
+                      remaining: formatDuration(book.remainingSeconds, t),
+                    })
+                  : t("bookDetail.timeRead", { timeRead: formatDuration(book.secondsRead, t) })}
               </Text>
             )}
           </Stack>

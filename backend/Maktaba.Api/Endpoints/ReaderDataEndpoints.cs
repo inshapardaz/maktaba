@@ -185,5 +185,40 @@ public static class ReaderDataEndpoints
             await db.SaveChangesAsync(ct);
             return Results.NoContent();
         });
+
+        // Issue #23: the reader sends this every ~20s while its window is open and visible, with
+        // however many seconds elapsed since the last heartbeat - upserted into today's row rather
+        // than modeled as session start/end, so a crash or force-close never loses more than one
+        // heartbeat's worth of time (see ReadingActivity's doc comment).
+        group.MapPost("/reading-activity", async (
+            string id, RecordReadingActivityRequestDto request, MaktabaDbContext db, CancellationToken ct) =>
+        {
+            if (!IdCodec.TryDecode(id, out var bookId))
+            {
+                return Results.NotFound();
+            }
+
+            if (request.Seconds <= 0)
+            {
+                return Results.NoContent();
+            }
+
+            if (!await db.Books.AnyAsync(b => b.Id == bookId, ct))
+            {
+                return Results.NotFound();
+            }
+
+            var today = DateOnly.FromDateTime(DateTime.UtcNow);
+            var activity = await db.ReadingActivities.FirstOrDefaultAsync(ra => ra.BookId == bookId && ra.Date == today, ct);
+            if (activity is null)
+            {
+                activity = new ReadingActivity { BookId = bookId, Date = today };
+                db.ReadingActivities.Add(activity);
+            }
+
+            activity.DurationSeconds += request.Seconds;
+            await db.SaveChangesAsync(ct);
+            return Results.NoContent();
+        });
     }
 }

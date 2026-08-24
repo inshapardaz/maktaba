@@ -78,7 +78,12 @@ public record BookDetailDto(
     string? PeriodicalName,
     double? IssueNumber,
     int? VolumeNumber,
-    DateOnly? IssueDate
+    DateOnly? IssueDate,
+    // Issue #23: actual time spent reading this book, plus a self-calibrated total/remaining
+    // estimate (null until enough progress exists to extrapolate from - see ReadingTimeEstimator).
+    int SecondsRead,
+    int? ExpectedTotalSeconds,
+    int? RemainingSeconds
 );
 
 /// <summary>DuplicateAction: null (ask) | "skip" | "keep-both" | "merge".</summary>
@@ -144,3 +149,26 @@ public record PeriodicalDto(
 public record CreatePeriodicalRequestDto(string Name, string Frequency, string? Description);
 
 public record UpdatePeriodicalRequestDto(string Name, string Frequency, string? Description);
+
+public record RecordReadingActivityRequestDto(int Seconds);
+
+public record AnalyticsBookDto(
+    string Id,
+    string Title,
+    string ReadingStatus,
+    int SecondsRead,
+    double Percentage,
+    int? ExpectedTotalSeconds,
+    int? RemainingSeconds
+);
+
+public record AnalyticsSummaryDto(
+    int TotalSecondsRead,
+    int UnreadCount,
+    int UnreadExpectedSecondsTotal,
+    int ReadingCount,
+    int ReadingSecondsSpent,
+    int ReadingSecondsRemaining,
+    int FinishedCount,
+    AnalyticsBookDto[] Books
+);
