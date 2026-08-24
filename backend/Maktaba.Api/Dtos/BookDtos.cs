@@ -144,3 +144,9 @@ public record PeriodicalDto(
 public record CreatePeriodicalRequestDto(string Name, string Frequency, string? Description);
 
 public record UpdatePeriodicalRequestDto(string Name, string Frequency, string? Description);
+
+public record MetadataSearchResultDto(
+    string Key, string Title, string[] Authors, int? FirstPublishYear, string? CoverUrl, string? Isbn);
+
+public record MetadataDetailsDto(
+    string Title, string[] Authors, string? Description, string? Publisher, DateOnly? PublishedDate, string? Isbn);

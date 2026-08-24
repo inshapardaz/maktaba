@@ -40,6 +40,15 @@ builder.Services.AddSingleton<ICalibreConverter, CalibreConverter>();
 builder.Services.AddScoped<IBookConversionService, BookConversionService>();
 builder.Services.AddScoped<IPeriodicalService, PeriodicalService>();
 
+// Issue #24: Open Library's free public API, standing in for Goodreads (whose API has had no
+// new-consumer access since 2020) - see IMetadataLookupService's doc comment. A descriptive
+// User-Agent is requested by Open Library's API etiquette guidelines.
+builder.Services.AddHttpClient<IMetadataLookupService, OpenLibraryMetadataLookupService>(client =>
+{
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("Maktaba/1.0 (+https://github.com/inshapardaz/maktaba)");
+    client.Timeout = TimeSpan.FromSeconds(10);
+});
+
 var app = builder.Build();
 
 app.UseCors();
@@ -107,5 +116,6 @@ app.MapAuthorEndpoints();
 app.MapTagEndpoints();
 app.MapSeriesEndpoints();
 app.MapPeriodicalEndpoints();
+app.MapMetadataEndpoints();
 
 app.Run();

@@ -16,7 +16,7 @@ import {
   Textarea,
   TextInput,
 } from "@mantine/core";
-import { IconAlertCircle } from "@tabler/icons-react";
+import { IconAlertCircle, IconWorldSearch } from "@tabler/icons-react";
 import {
   createCollection,
   getBook,
@@ -28,9 +28,11 @@ import {
   listTags,
   updateBook,
   type BookEditRequest,
+  type MetadataDetails,
 } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
 import type { TranslationKey } from "../i18n/translations";
+import { MetadataSearchDialog } from "./MetadataSearchDialog";
 import { invalidateLibraryQueries } from "../queries";
 
 interface BookEditFormProps {
@@ -179,6 +181,7 @@ export function BookEditForm({ bookId, onClose, onSaved }: BookEditFormProps) {
   const [authorSearch, setAuthorSearch] = useState("");
   const [tagSearch, setTagSearch] = useState("");
   const [collectionSearch, setCollectionSearch] = useState("");
+  const [metadataSearchOpen, setMetadataSearchOpen] = useState(false);
   const ratingOptions = [{ value: "0", label: t("bookEdit.unrated") }, ...STAR_RATING_OPTIONS];
 
   const { data: book, isLoading } = useQuery({
@@ -268,6 +271,21 @@ export function BookEditForm({ bookId, onClose, onSaved }: BookEditFormProps) {
     });
   };
 
+  // Issue #24: only overwrites fields the lookup actually returned data for - a match with no
+  // publisher/description shouldn't blank out whatever the user (or the original file's embedded
+  // metadata) already had there.
+  const handleApplyMetadata = (details: MetadataDetails) => {
+    setForm((prev) => ({
+      ...prev,
+      title: details.title || prev.title,
+      authors: details.authors.length > 0 ? details.authors : prev.authors,
+      publisher: details.publisher ?? prev.publisher,
+      publishedDate: details.publishedDate ?? prev.publishedDate,
+      description: details.description ?? prev.description,
+    }));
+    setMetadataSearchOpen(false);
+  };
+
   return (
     <Modal opened onClose={onClose} title={t("bookEdit.title")} size="lg">
       {isLoading && (
@@ -279,12 +297,23 @@ export function BookEditForm({ bookId, onClose, onSaved }: BookEditFormProps) {
       {!isLoading && (
         <form onSubmit={handleSubmit}>
           <Stack gap="sm">
-            <TextInput
-              label={t("bookEdit.titleField")}
-              required
-              value={form.title}
-              onChange={(e) => setForm({ ...form, title: e.currentTarget.value })}
-            />
+            <Group align="flex-end" gap="xs" wrap="nowrap">
+              <TextInput
+                style={{ flex: 1 }}
+                label={t("bookEdit.titleField")}
+                required
+                value={form.title}
+                onChange={(e) => setForm({ ...form, title: e.currentTarget.value })}
+              />
+              <Button
+                variant="default"
+                size="sm"
+                leftSection={<IconWorldSearch size={15} />}
+                onClick={() => setMetadataSearchOpen(true)}
+              >
+                {t("metadataSearch.button")}
+              </Button>
+            </Group>
 
             <MultiSelect
               label={t("bookEdit.authors")}
@@ -488,6 +517,14 @@ export function BookEditForm({ bookId, onClose, onSaved }: BookEditFormProps) {
             </Group>
           </Stack>
         </form>
+      )}
+
+      {metadataSearchOpen && (
+        <MetadataSearchDialog
+          initialTitle={form.title}
+          onApply={handleApplyMetadata}
+          onClose={() => setMetadataSearchOpen(false)}
+        />
       )}
     </Modal>
   );
