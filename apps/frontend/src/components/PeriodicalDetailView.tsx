@@ -11,7 +11,7 @@ import {
   Image,
   Loader,
   MultiSelect,
-  SegmentedControl,
+  NavLink,
   Select,
   SimpleGrid,
   Stack,
@@ -49,79 +49,84 @@ interface PeriodicalDetailViewProps {
   onSelectBook: (id: string) => void;
 }
 
-type Granularity = "year" | "quarter" | "month" | "week" | "day" | "list";
-
 const FREQUENCIES: PeriodicalFrequency[] = ["Daily", "Weekly", "BiWeekly", "Monthly", "Quarterly", "Yearly", "Occasional"];
 
-// A daily/weekly periodical has too many issues for a flat list to be useful, so it defaults to a
-// coarser grouping; a monthly one is manageable grouped by year; anything sparser (quarterly and
-// up) is fine as a flat list by default. The user can always override via the SegmentedControl.
-function defaultGranularity(frequency: PeriodicalFrequency): Granularity {
-  if (frequency === "Daily" || frequency === "Weekly" || frequency === "BiWeekly") return "month";
-  if (frequency === "Monthly") return "year";
-  return "list";
+// The left-nav's selection: "All" (default) shows every issue; a year or year+month narrows the
+// grid to that scope. "undated" covers issues with no issue date at all (a periodical predating
+// the field, or one added before its date was set) - kept reachable rather than silently dropped.
+type IssueSelection =
+  | { type: "all" }
+  | { type: "year"; year: number }
+  | { type: "month"; year: number; month: number }
+  | { type: "undated" };
+
+interface MonthBucket {
+  month: number;
+  count: number;
 }
 
-function startOfWeek(date: Date): Date {
-  const copy = new Date(date);
-  const day = copy.getDay();
-  copy.setDate(copy.getDate() + ((day === 0 ? -6 : 1) - day));
-  copy.setHours(0, 0, 0, 0);
-  return copy;
+interface YearBucket {
+  year: number;
+  count: number;
+  months: MonthBucket[];
 }
 
-function groupKeyAndLabel(issueDate: string | null, granularity: Granularity): { key: string; label: string } {
-  if (granularity === "list" || !issueDate) {
-    return { key: "", label: "" };
-  }
+// Years sorted most-recent-first (and months within a year the same way) - matches how the issue
+// grid itself is sorted, so the nav and the content it filters read in the same direction.
+function buildYearBuckets(issues: BookSummary[]): { years: YearBucket[]; undatedCount: number } {
+  const byYear = new Map<number, BookSummary[]>();
+  let undatedCount = 0;
 
-  const d = new Date(issueDate);
-  switch (granularity) {
-    case "year":
-      return { key: String(d.getFullYear()), label: String(d.getFullYear()) };
-    case "quarter": {
-      const quarter = Math.floor(d.getMonth() / 3) + 1;
-      return { key: `${d.getFullYear()}-Q${quarter}`, label: `Q${quarter} ${d.getFullYear()}` };
+  for (const issue of issues) {
+    if (!issue.issueDate) {
+      undatedCount++;
+      continue;
     }
-    case "month": {
-      const label = d.toLocaleDateString(undefined, { year: "numeric", month: "long" });
-      return { key: `${d.getFullYear()}-${d.getMonth()}`, label };
-    }
-    case "week": {
-      const weekStart = startOfWeek(d);
-      return { key: weekStart.toISOString(), label: weekStart.toLocaleDateString() };
-    }
-    case "day":
-      return { key: issueDate, label: d.toLocaleDateString() };
-  }
-}
-
-interface IssueGroup {
-  key: string;
-  label: string;
-  issues: BookSummary[];
-}
-
-function groupIssues(issues: BookSummary[], granularity: Granularity, undatedLabel: string): IssueGroup[] {
-  const sorted = [...issues].sort((a, b) => (b.issueDate ?? "").localeCompare(a.issueDate ?? ""));
-
-  if (granularity === "list") {
-    return sorted.length > 0 ? [{ key: "", label: "", issues: sorted }] : [];
-  }
-
-  const groups = new Map<string, IssueGroup>();
-  for (const issue of sorted) {
-    const { key, label } = groupKeyAndLabel(issue.issueDate, granularity);
-    const groupKey = key || "__undated__";
-    const existing = groups.get(groupKey);
+    const year = new Date(issue.issueDate).getFullYear();
+    const existing = byYear.get(year);
     if (existing) {
-      existing.issues.push(issue);
+      existing.push(issue);
     } else {
-      groups.set(groupKey, { key: groupKey, label: label || undatedLabel, issues: [issue] });
+      byYear.set(year, [issue]);
     }
   }
 
-  return [...groups.values()];
+  const years = [...byYear.entries()]
+    .sort(([a], [b]) => b - a)
+    .map(([year, yearIssues]) => {
+      const byMonth = new Map<number, number>();
+      for (const issue of yearIssues) {
+        const month = new Date(issue.issueDate!).getMonth();
+        byMonth.set(month, (byMonth.get(month) ?? 0) + 1);
+      }
+      const months = [...byMonth.entries()]
+        .sort(([a], [b]) => b - a)
+        .map(([month, count]) => ({ month, count }));
+      return { year, count: yearIssues.length, months };
+    });
+
+  return { years, undatedCount };
+}
+
+function issuesInSelection(issues: BookSummary[], selection: IssueSelection): BookSummary[] {
+  switch (selection.type) {
+    case "all":
+      return issues;
+    case "undated":
+      return issues.filter((issue) => !issue.issueDate);
+    case "year":
+      return issues.filter((issue) => issue.issueDate && new Date(issue.issueDate).getFullYear() === selection.year);
+    case "month":
+      return issues.filter((issue) => {
+        if (!issue.issueDate) return false;
+        const d = new Date(issue.issueDate);
+        return d.getFullYear() === selection.year && d.getMonth() === selection.month;
+      });
+  }
+}
+
+function monthName(month: number): string {
+  return new Date(2000, month, 1).toLocaleDateString(undefined, { month: "long" });
 }
 
 // A grouped-by-date view is expected to render many small groups rather than one huge list, so
@@ -160,7 +165,7 @@ export function PeriodicalDetailView({ periodicalId, onBack, onSelectBook }: Per
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
-  const [granularityOverride, setGranularityOverride] = useState<Granularity | null>(null);
+  const [selection, setSelection] = useState<IssueSelection>({ type: "all" });
   const [form, setForm] = useState({
     name: "",
     description: "",
@@ -234,10 +239,11 @@ export function PeriodicalDetailView({ periodicalId, onBack, onSelectBook }: Per
     setEditing(true);
   };
 
-  const granularity = granularityOverride ?? (periodicalQuery.data ? defaultGranularity(periodicalQuery.data.frequency) : "list");
-  const groups = useMemo(
-    () => groupIssues(issuesQuery.data ?? [], granularity, t("periodicalDetail.undated")),
-    [issuesQuery.data, granularity, t],
+  const allIssues = issuesQuery.data ?? [];
+  const { years: yearBuckets, undatedCount } = useMemo(() => buildYearBuckets(allIssues), [allIssues]);
+  const visibleIssues = useMemo(
+    () => [...issuesInSelection(allIssues, selection)].sort((a, b) => (b.issueDate ?? "").localeCompare(a.issueDate ?? "")),
+    [allIssues, selection],
   );
 
   if (periodicalQuery.isLoading || !periodicalQuery.data) {
@@ -414,47 +420,103 @@ export function PeriodicalDetailView({ periodicalId, onBack, onSelectBook }: Per
           </Box>
         </Group>
 
-        <Group justify="space-between" mb="md">
-          <Text fz={10.5} fw={600} c="dimmed" tt="uppercase" style={{ letterSpacing: "0.1em" }}>
-            {t("periodicalDetail.issues")}
-          </Text>
-          <SegmentedControl
-            size="xs"
-            value={granularity}
-            onChange={(value) => setGranularityOverride(value as Granularity)}
-            data={[
-              { value: "year", label: t("periodicalDetail.byYear") },
-              { value: "quarter", label: t("periodicalDetail.byQuarter") },
-              { value: "month", label: t("periodicalDetail.byMonth") },
-              { value: "week", label: t("periodicalDetail.byWeek") },
-              { value: "day", label: t("periodicalDetail.byDay") },
-              { value: "list", label: t("periodicalDetail.byList") },
-            ]}
-          />
-        </Group>
+        <Text fz={10.5} fw={600} c="dimmed" tt="uppercase" mb="md" style={{ letterSpacing: "0.1em" }}>
+          {t("periodicalDetail.issues")}
+        </Text>
 
-        {groups.length === 0 && (
+        {allIssues.length === 0 ? (
           <Text size="sm" c="dimmed">
             {t("periodicalDetail.noIssues")}
           </Text>
-        )}
-
-        <Stack gap="xl">
-          {groups.map((group) => (
-            <Box key={group.key}>
-              {group.label && (
-                <Text fw={600} size="sm" mb="sm">
-                  {group.label}
-                </Text>
+        ) : (
+          <Group align="flex-start" gap="xl" wrap="nowrap">
+            {/* Left nav: All, then one row per year with an issue count - a Weekly periodical's
+                year rows expand (Mantine NavLink's own children/chevron) into per-month counts,
+                since a flat year of weekly issues is too many to browse at once; other frequencies
+                just filter straight to that year on click. */}
+            <Stack gap={2} w={200} style={{ flexShrink: 0 }}>
+              <NavLink
+                label={t("periodicalDetail.allIssues")}
+                active={selection.type === "all"}
+                onClick={() => setSelection({ type: "all" })}
+                rightSection={
+                  <Badge size="sm" variant="light" color="gray">
+                    {allIssues.length}
+                  </Badge>
+                }
+                styles={{ label: { fontWeight: 600 } }}
+              />
+              {yearBuckets.map((bucket) =>
+                periodical.frequency === "Weekly" ? (
+                  <NavLink
+                    key={bucket.year}
+                    label={String(bucket.year)}
+                    active={selection.type === "year" && selection.year === bucket.year}
+                    onClick={() => setSelection({ type: "year", year: bucket.year })}
+                    rightSection={
+                      <Badge size="sm" variant="light" color="gray">
+                        {bucket.count}
+                      </Badge>
+                    }
+                    childrenOffset={16}
+                  >
+                    {bucket.months.map((monthBucket) => (
+                      <NavLink
+                        key={monthBucket.month}
+                        label={monthName(monthBucket.month)}
+                        active={selection.type === "month" && selection.year === bucket.year && selection.month === monthBucket.month}
+                        onClick={() => setSelection({ type: "month", year: bucket.year, month: monthBucket.month })}
+                        rightSection={
+                          <Badge size="xs" variant="light" color="gray">
+                            {monthBucket.count}
+                          </Badge>
+                        }
+                      />
+                    ))}
+                  </NavLink>
+                ) : (
+                  <NavLink
+                    key={bucket.year}
+                    label={String(bucket.year)}
+                    active={selection.type === "year" && selection.year === bucket.year}
+                    onClick={() => setSelection({ type: "year", year: bucket.year })}
+                    rightSection={
+                      <Badge size="sm" variant="light" color="gray">
+                        {bucket.count}
+                      </Badge>
+                    }
+                  />
+                ),
               )}
-              <SimpleGrid cols={{ base: 2, sm: 3, md: 4, lg: 5, xl: 6 }} spacing="lg">
-                {group.issues.map((issue) => (
-                  <IssueCard key={issue.id} issue={issue} onClick={() => onSelectBook(issue.id)} />
-                ))}
-              </SimpleGrid>
+              {undatedCount > 0 && (
+                <NavLink
+                  label={t("periodicalDetail.undated")}
+                  active={selection.type === "undated"}
+                  onClick={() => setSelection({ type: "undated" })}
+                  rightSection={
+                    <Badge size="sm" variant="light" color="gray">
+                      {undatedCount}
+                    </Badge>
+                  }
+                />
+              )}
+            </Stack>
+
+            <Box style={{ flex: 1, minWidth: 0 }}>
+              {visibleIssues.length === 0 ? (
+                <Text size="sm" c="dimmed">
+                  {t("periodicalDetail.noIssues")}
+                </Text>
+              ) : (
+                <SimpleGrid cols={{ base: 2, sm: 3, md: 4, lg: 5 }} spacing="lg">
+                  {visibleIssues.map((issue) => (
+                    <IssueCard key={issue.id} issue={issue} onClick={() => onSelectBook(issue.id)} />
+                  ))}
+                </SimpleGrid>
+              )}
             </Box>
-          ))}
-        </Stack>
+          </Group>
+        )}
       </Box>
     </Box>
   );
