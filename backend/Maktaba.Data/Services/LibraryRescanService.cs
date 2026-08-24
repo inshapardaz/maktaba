@@ -85,14 +85,15 @@ public partial class LibraryRescanService(
         // Flattened up front (rather than the nested author/book enumeration this used to be) so the
         // total is known before the loop starts - GET /api/libraries/rescan/progress reports against
         // this total while the rescan below is still running on the request thread that called us.
-        // "Periodicals" is a reserved top-level folder name (see Periodical.cs/BookFolderRelocator) -
-        // walked separately, one level deeper, instead of being treated as an author folder.
+        // "Periodicals" (see Periodical.cs/BookFolderRelocator) and "AuthorImages" (see
+        // AuthorImageLocator, issue #28) are reserved top-level folder names - excluded from the
+        // author-folder walk below since neither holds author-organized book folders.
         var topLevelDirs = Directory.EnumerateDirectories(libraryRoot).ToList();
         var periodicalsRoot = topLevelDirs.FirstOrDefault(
             d => string.Equals(Path.GetFileName(d), "Periodicals", StringComparison.Ordinal));
 
         var bookDirs = topLevelDirs
-            .Where(d => d != periodicalsRoot)
+            .Where(d => d != periodicalsRoot && !string.Equals(Path.GetFileName(d), "AuthorImages", StringComparison.Ordinal))
             .SelectMany(Directory.EnumerateDirectories)
             .ToList();
 

@@ -126,7 +126,7 @@ public record RelocateLibraryRequestDto(string Path);
 
 public record RescanProgressDto(bool IsRunning, int Processed, int Total, string? CurrentBook);
 
-public record BrowseGroupDto(string Id, string Name, int BookCount);
+public record BrowseGroupDto(string Id, string Name, int BookCount, bool HasImage = false);
 
 public record CreateCollectionRequestDto(string Name);
 

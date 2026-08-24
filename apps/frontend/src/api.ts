@@ -63,6 +63,9 @@ export interface BrowseGroup {
   id: string;
   name: string;
   bookCount: number;
+  // Only ever populated for listAuthors() (issue #28's author photo) - other browse groups
+  // (Series/Tags/Collections/...) always get false/undefined here.
+  hasImage?: boolean;
 }
 
 export interface BookEditRequest {
@@ -349,6 +352,34 @@ export function renameAuthor(id: string, name: string): Promise<BrowseGroup> {
     method: "PUT",
     body: JSON.stringify({ name }),
   });
+}
+
+export function authorImageUrl(id: string): string {
+  const { apiBaseUrl, token } = window.maktaba;
+  return `${apiBaseUrl}/api/authors/${id}/image?access_token=${encodeURIComponent(token)}`;
+}
+
+// Bypasses request() - same reasoning as uploadPeriodicalCover: needs a browser-generated
+// multipart boundary, not the JSON Content-Type request() always forces onto a body.
+export async function uploadAuthorImage(id: string, file: File): Promise<void> {
+  const { apiBaseUrl, token } = window.maktaba;
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const res = await fetch(`${apiBaseUrl}/api/authors/${id}/image`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { error?: string } | null;
+    throw new ApiError(body?.error ?? `Request failed: ${res.status}`, res.status);
+  }
+}
+
+export function deleteAuthorImage(id: string): Promise<void> {
+  return request<void>(`/api/authors/${id}/image`, { method: "DELETE" });
 }
 
 export function listSeries(): Promise<BrowseGroup[]> {
