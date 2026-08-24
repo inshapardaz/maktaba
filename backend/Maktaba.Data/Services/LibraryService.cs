@@ -230,12 +230,13 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
 
     // Probes the newest columns/tables added by a schema-breaking change (currently: M6's
     // ReadingStatus/Collections, the Bookmarks/Notes/ReadingProgress tables, ReadingProgress's
-    // ChapterId/Position resume-anchor columns, and issue #26's Periodicals table/Book.PeriodicalId
-    // column) - a cheap, representative stand-in for "is this database current" without needing
-    // full EF Core migrations, which this project deliberately doesn't use. Every future
-    // schema-breaking change needs its own probe added here, or an upgrading user's existing
-    // metadata.db won't be recognized as stale and requests against the new column/table will
-    // throw instead of transparently rebuilding.
+    // ChapterId/Position resume-anchor columns, issue #26's Periodicals table/Book.PeriodicalId
+    // column, and Periodical's Language/Publisher/Editor columns + PeriodicalTags table) - a
+    // cheap, representative stand-in for "is this database current" without needing full EF Core
+    // migrations, which this project deliberately doesn't use. Every future schema-breaking change
+    // needs its own probe added here, or an upgrading user's existing metadata.db won't be
+    // recognized as stale and requests against the new column/table will throw instead of
+    // transparently rebuilding.
     private static async Task<bool> IsCurrentSchemaAsync(MaktabaDbContext db, CancellationToken ct)
     {
         try
@@ -245,6 +246,8 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
             await db.ReadingProgress.Select(rp => new { rp.BookId, rp.ChapterId }).Take(1).ToListAsync(ct);
             await db.Periodicals.Select(p => p.Id).Take(1).ToListAsync(ct);
             await db.Books.Select(b => b.PeriodicalId).Take(1).ToListAsync(ct);
+            await db.Periodicals.Select(p => new { p.Language, p.Publisher, p.Editor }).Take(1).ToListAsync(ct);
+            await db.PeriodicalTags.Select(pt => pt.PeriodicalId).Take(1).ToListAsync(ct);
             return true;
         }
         catch (SqliteException)

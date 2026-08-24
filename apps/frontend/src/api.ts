@@ -543,8 +543,24 @@ export interface Periodical {
   name: string;
   description: string | null;
   frequency: PeriodicalFrequency;
+  // Metadata that lives at the periodical level rather than per-issue - see BookEditForm.tsx,
+  // which hides its own language/publisher/tags fields once a book is an issue in favor of these.
+  language: string | null;
+  publisher: string | null;
+  editor: string | null;
+  tags: string[];
   issueCount: number;
   hasCover: boolean;
+}
+
+export interface PeriodicalEditFields {
+  name: string;
+  frequency: PeriodicalFrequency;
+  description: string | null;
+  language: string | null;
+  publisher: string | null;
+  editor: string | null;
+  tags: string[];
 }
 
 export function listPeriodicals(): Promise<Periodical[]> {
@@ -556,7 +572,9 @@ export function getPeriodical(id: string): Promise<Periodical> {
 }
 
 // Upserts by name (same semantics as createCollection) - a repeated quick-add of the same
-// periodical name resolves to the one existing row instead of creating a duplicate.
+// periodical name resolves to the one existing row instead of creating a duplicate. Kept as this
+// minimal name+frequency signature since it's only ever called from Sidebar's quick-add popover -
+// the full field set is edited afterward via updatePeriodical, from PeriodicalDetailView.
 export function createPeriodical(name: string, frequency: PeriodicalFrequency, description?: string | null): Promise<Periodical> {
   return request<Periodical>("/api/periodicals", {
     method: "POST",
@@ -564,12 +582,10 @@ export function createPeriodical(name: string, frequency: PeriodicalFrequency, d
   });
 }
 
-export function updatePeriodical(
-  id: string, name: string, frequency: PeriodicalFrequency, description: string | null,
-): Promise<Periodical> {
+export function updatePeriodical(id: string, fields: PeriodicalEditFields): Promise<Periodical> {
   return request<Periodical>(`/api/periodicals/${id}`, {
     method: "PUT",
-    body: JSON.stringify({ name, frequency, description }),
+    body: JSON.stringify(fields),
   });
 }
 

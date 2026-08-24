@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ActionIcon,
+  Autocomplete,
   Badge,
   Box,
   Button,
@@ -9,6 +10,7 @@ import {
   Group,
   Image,
   Loader,
+  MultiSelect,
   SegmentedControl,
   Select,
   SimpleGrid,
@@ -25,15 +27,20 @@ import {
   deletePeriodical,
   getPeriodical,
   listBooks,
+  listPublishers,
+  listTags,
   periodicalCoverUrl,
   updatePeriodical,
   uploadPeriodicalCover,
   type BookSummary,
   type PeriodicalFrequency,
 } from "../api";
+import { buildCreatableData } from "../creatableSelect";
 import { useLanguage } from "../i18n/LanguageContext";
 import type { TranslationKey } from "../i18n/translations";
+import { getLanguageOptions, withCurrentLanguage } from "../languageOptions";
 import { BrowseViewHeader } from "./BrowseViewHeader";
+import { languageDisplayName } from "./Sidebar";
 import { SpineCover } from "./SpineCover";
 
 interface PeriodicalDetailViewProps {
@@ -154,23 +161,48 @@ export function PeriodicalDetailView({ periodicalId, onBack, onSelectBook }: Per
   const [editing, setEditing] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [granularityOverride, setGranularityOverride] = useState<Granularity | null>(null);
-  const [form, setForm] = useState({ name: "", description: "", frequency: "Occasional" as PeriodicalFrequency });
+  const [form, setForm] = useState({
+    name: "",
+    description: "",
+    frequency: "Occasional" as PeriodicalFrequency,
+    language: "",
+    publisher: "",
+    editor: "",
+    tags: [] as string[],
+  });
+  const [tagSearch, setTagSearch] = useState("");
 
   const periodicalQuery = useQuery({ queryKey: ["periodical", periodicalId], queryFn: () => getPeriodical(periodicalId) });
   const issuesQuery = useQuery({
     queryKey: ["books", { periodicalId }],
     queryFn: () => listBooks({ periodicalId }),
   });
+  const publishersQuery = useQuery({ queryKey: ["publishers"], queryFn: listPublishers });
+  const tagsQuery = useQuery({ queryKey: ["tags"], queryFn: listTags });
+  const tagOptions = buildCreatableData((tagsQuery.data ?? []).map((tag) => tag.name), form.tags, tagSearch, t);
 
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ["periodical", periodicalId] });
     void queryClient.invalidateQueries({ queryKey: ["periodicals"] });
+    // Book cards/detail show periodical-derived language/publisher nowhere directly today, but
+    // tags are shared with Books' own tag list (see BookEditForm.tsx), so that needs refreshing too.
+    void queryClient.invalidateQueries({ queryKey: ["tags"] });
   };
 
   const updateMutation = useMutation({
-    mutationFn: () => updatePeriodical(periodicalId, form.name.trim(), form.frequency, form.description.trim() || null),
+    mutationFn: () =>
+      updatePeriodical(periodicalId, {
+        name: form.name.trim(),
+        frequency: form.frequency,
+        description: form.description.trim() || null,
+        language: form.language.trim() || null,
+        publisher: form.publisher.trim() || null,
+        editor: form.editor.trim() || null,
+        tags: form.tags,
+      }),
     onSuccess: () => {
       setEditing(false);
+      setTagSearch("");
       invalidate();
     },
   });
@@ -194,6 +226,10 @@ export function PeriodicalDetailView({ periodicalId, onBack, onSelectBook }: Per
       name: periodicalQuery.data.name,
       description: periodicalQuery.data.description ?? "",
       frequency: periodicalQuery.data.frequency,
+      language: periodicalQuery.data.language ?? "",
+      publisher: periodicalQuery.data.publisher ?? "",
+      editor: periodicalQuery.data.editor ?? "",
+      tags: periodicalQuery.data.tags,
     });
     setEditing(true);
   };
@@ -268,6 +304,46 @@ export function PeriodicalDetailView({ periodicalId, onBack, onSelectBook }: Per
                   value={form.description}
                   onChange={(e) => setForm({ ...form, description: e.currentTarget.value })}
                 />
+                <Group grow align="flex-start">
+                  <Autocomplete
+                    label={t("bookEdit.publisher")}
+                    data={publishersQuery.data ?? []}
+                    value={form.publisher}
+                    onChange={(value) => setForm({ ...form, publisher: value })}
+                  />
+                  <Select
+                    label={t("bookEdit.language")}
+                    data={withCurrentLanguage(getLanguageOptions(t), form.language)}
+                    value={form.language || null}
+                    onChange={(value) => setForm({ ...form, language: value ?? "" })}
+                    searchable
+                    clearable
+                  />
+                </Group>
+                <TextInput
+                  label={t("periodicalDetail.editor")}
+                  value={form.editor}
+                  onChange={(e) => setForm({ ...form, editor: e.currentTarget.value })}
+                />
+                <MultiSelect
+                  label={t("bookEdit.tags")}
+                  data={tagOptions}
+                  value={form.tags}
+                  onChange={(values) => {
+                    setForm({ ...form, tags: values });
+                    setTagSearch("");
+                  }}
+                  searchable
+                  searchValue={tagSearch}
+                  onSearchChange={setTagSearch}
+                  onBlur={() => {
+                    const trimmed = tagSearch.trim();
+                    if (trimmed.length > 0 && !form.tags.some((tag) => tag.toLowerCase() === trimmed.toLowerCase())) {
+                      setForm((prev) => ({ ...prev, tags: [...prev.tags, trimmed] }));
+                    }
+                    setTagSearch("");
+                  }}
+                />
                 <Group>
                   <Button size="xs" loading={updateMutation.isPending} onClick={() => updateMutation.mutate()}>
                     {t("common.save")}
@@ -312,6 +388,26 @@ export function PeriodicalDetailView({ periodicalId, onBack, onSelectBook }: Per
                   <Text size="sm" c="dimmed">
                     {periodical.description}
                   </Text>
+                )}
+                {(periodical.publisher || periodical.language || periodical.editor) && (
+                  <Text size="sm" c="dimmed">
+                    {[
+                      periodical.publisher,
+                      periodical.language ? languageDisplayName(periodical.language, t) : null,
+                      periodical.editor,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </Text>
+                )}
+                {periodical.tags.length > 0 && (
+                  <Group gap={4}>
+                    {periodical.tags.map((tag) => (
+                      <Badge key={tag} size="sm" variant="outline" color="gray" tt="none">
+                        {tag}
+                      </Badge>
+                    ))}
+                  </Group>
                 )}
               </Stack>
             )}

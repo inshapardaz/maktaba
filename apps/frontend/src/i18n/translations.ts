@@ -134,6 +134,7 @@ const en = {
   "periodicalsView.frequency.Occasional": "Occasional",
 
   "periodicalDetail.description": "Description",
+  "periodicalDetail.editor": "Editor",
   "periodicalDetail.issues": "Issues",
   "periodicalDetail.undated": "Undated",
   "periodicalDetail.noIssues": "No issues yet. Drag a book onto this periodical, or edit a book to make it an issue.",
@@ -495,6 +496,7 @@ const ur: TranslationDict = {
   "periodicalsView.frequency.Occasional": "غیر منظم",
 
   "periodicalDetail.description": "تفصیل",
+  "periodicalDetail.editor": "مدیر",
   "periodicalDetail.issues": "شمارے",
   "periodicalDetail.undated": "بغیر تاریخ",
   "periodicalDetail.noIssues": "ابھی کوئی شمارہ موجود نہیں۔ کوئی کتاب اس اشاعت پر گھسیٹیں، یا کتاب میں ترمیم کر کے اسے شمارہ بنائیں۔",

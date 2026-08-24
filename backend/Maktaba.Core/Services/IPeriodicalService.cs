@@ -9,12 +9,21 @@ public enum PeriodicalDeleteOutcome
     HasIssues,
 }
 
+public record PeriodicalEditRequest(
+    string Name,
+    PeriodicalFrequency Frequency,
+    string? Description,
+    string? Language,
+    string? Publisher,
+    string? Editor,
+    IReadOnlyList<string> Tags
+);
+
 public interface IPeriodicalService
 {
-    Task<Periodical> CreateAsync(string name, PeriodicalFrequency frequency, string? description, CancellationToken ct = default);
+    Task<Periodical> CreateAsync(PeriodicalEditRequest request, CancellationToken ct = default);
 
-    Task<Periodical?> UpdateAsync(
-        int periodicalId, string name, PeriodicalFrequency frequency, string? description, CancellationToken ct = default);
+    Task<Periodical?> UpdateAsync(int periodicalId, PeriodicalEditRequest request, CancellationToken ct = default);
 
     Task<PeriodicalDeleteOutcome> DeleteAsync(int periodicalId, CancellationToken ct = default);
 

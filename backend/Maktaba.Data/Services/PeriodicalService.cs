@@ -8,19 +8,27 @@ namespace Maktaba.Data.Services;
 
 public class PeriodicalService(MaktabaDbContext db, ILibraryPathProvider libraryPath) : IPeriodicalService
 {
-    public async Task<Periodical> CreateAsync(
-        string name, PeriodicalFrequency frequency, string? description, CancellationToken ct = default)
+    public async Task<Periodical> CreateAsync(PeriodicalEditRequest request, CancellationToken ct = default)
     {
         var libraryRoot = libraryPath.LibraryRootPath!;
-        var trimmed = name.Trim();
+        var trimmed = request.Name.Trim();
 
         var periodical = new Periodical
         {
             Name = trimmed,
             SortName = TitleSorting.ComputeSortTitle(trimmed),
-            Frequency = frequency,
-            Description = description,
+            Frequency = request.Frequency,
+            Description = request.Description,
+            Language = request.Language,
+            Publisher = request.Publisher,
+            Editor = request.Editor,
         };
+
+        var tags = await EntityResolvers.ResolveTagsAsync(db, request.Tags, ct);
+        foreach (var tag in tags)
+        {
+            periodical.PeriodicalTags.Add(new PeriodicalTag { Periodical = periodical, Tag = tag });
+        }
 
         // Same two-step pattern as ImportService.ImportFileAsync - the on-disk folder embeds the
         // DB-assigned id, so the row has to be inserted first to get it.
@@ -50,18 +58,18 @@ public class PeriodicalService(MaktabaDbContext db, ILibraryPathProvider library
         }
     }
 
-    public async Task<Periodical?> UpdateAsync(
-        int periodicalId, string name, PeriodicalFrequency frequency, string? description, CancellationToken ct = default)
+    public async Task<Periodical?> UpdateAsync(int periodicalId, PeriodicalEditRequest request, CancellationToken ct = default)
     {
         var periodical = await db.Periodicals
             .Include(p => p.Issues).ThenInclude(b => b.Files)
+            .Include(p => p.PeriodicalTags).ThenInclude(pt => pt.Tag)
             .FirstOrDefaultAsync(p => p.Id == periodicalId, ct);
         if (periodical is null)
         {
             return null;
         }
 
-        var trimmed = name.Trim();
+        var trimmed = request.Name.Trim();
         var oldFolderRelative = periodical.FolderPath;
         var newFolderRelative = Path.Combine(
             "Periodicals", FileNaming.SanitizePathSegment($"{trimmed} ({IdCodec.Encode(periodical.Id)})"));
@@ -94,8 +102,19 @@ public class PeriodicalService(MaktabaDbContext db, ILibraryPathProvider library
 
         periodical.Name = trimmed;
         periodical.SortName = TitleSorting.ComputeSortTitle(trimmed);
-        periodical.Frequency = frequency;
-        periodical.Description = description;
+        periodical.Frequency = request.Frequency;
+        periodical.Description = request.Description;
+        periodical.Language = request.Language;
+        periodical.Publisher = request.Publisher;
+        periodical.Editor = request.Editor;
+
+        db.PeriodicalTags.RemoveRange(periodical.PeriodicalTags);
+        periodical.PeriodicalTags.Clear();
+        var tags = await EntityResolvers.ResolveTagsAsync(db, request.Tags, ct);
+        foreach (var tag in tags)
+        {
+            periodical.PeriodicalTags.Add(new PeriodicalTag { PeriodicalId = periodical.Id, Tag = tag });
+        }
 
         try
         {

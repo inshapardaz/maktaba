@@ -20,8 +20,16 @@ public class Periodical
     public PeriodicalFrequency Frequency { get; set; } = PeriodicalFrequency.Occasional;
     public DateTime DateAdded { get; set; } = DateTime.UtcNow;
 
+    // Metadata that lives at the periodical level rather than per-issue - an issue's own
+    // language/publisher/editor/tags are the periodical's, not something each issue edits
+    // separately (see BookEditForm.tsx, which hides those fields once a book is an issue).
+    public string? Language { get; set; }
+    public string? Publisher { get; set; }
+    public string? Editor { get; set; }
+
     /// <summary>Path to this periodical's own folder (holds its cover image), relative to the library root.</summary>
     public string FolderPath { get; set; } = string.Empty;
 
     public List<Book> Issues { get; set; } = [];
+    public List<PeriodicalTag> PeriodicalTags { get; set; } = [];
 }
