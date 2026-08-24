@@ -14,6 +14,7 @@ import {
   type ReaderEngine,
   type ReaderOpenMode,
 } from "../readerSettings";
+import { getStoredShowIssuesInGrid, setStoredShowIssuesInGrid } from "../periodicalSettings";
 import { useThemeColor } from "../ThemeColorContext";
 import { THEME_COLOR_OPTIONS } from "../theme";
 import { URDU_FONT_OPTIONS, type UrduFontName } from "../urduFont";
@@ -51,6 +52,7 @@ export function SettingsScreen({ opened, onClose, onLibraryChanged, initialTab }
   const [epubEngine, setEpubEngine] = useState<ReaderEngine>(getStoredReaderEngine("Epub"));
   const [pdfEngine, setPdfEngine] = useState<ReaderEngine>(getStoredReaderEngine("Pdf"));
   const [autoTagMode, setAutoTagMode] = useState<AutoTagMode>(getStoredAutoTagMode());
+  const [showIssuesInGrid, setShowIssuesInGrid] = useState(getStoredShowIssuesInGrid());
   const queryClient = useQueryClient();
 
   // Shared with TitleBar.tsx's MenuButton (same query key) so toggling here updates that button's
@@ -78,6 +80,14 @@ export function SettingsScreen({ opened, onClose, onLibraryChanged, initialTab }
     const mode = value as AutoTagMode;
     setAutoTagMode(mode);
     setStoredAutoTagMode(mode);
+  };
+
+  const handleShowIssuesInGridChange = (show: boolean) => {
+    setShowIssuesInGrid(show);
+    setStoredShowIssuesInGrid(show);
+    void queryClient.invalidateQueries({ queryKey: ["books"] });
+    void queryClient.invalidateQueries({ queryKey: ["recentlyAdded"] });
+    void queryClient.invalidateQueries({ queryKey: ["continueReading"] });
   };
 
   // Re-applied on every open (not just first mount) - the Modal/Tabs stay mounted between opens,
@@ -160,6 +170,18 @@ export function SettingsScreen({ opened, onClose, onLibraryChanged, initialTab }
               </Group>
               <Text size="xs" c="dimmed">
                 {t("settings.menuBarHint")}
+              </Text>
+            </Stack>
+            <Stack gap={2}>
+              <Group justify="space-between">
+                <FieldLabel>{t("settings.showIssuesInGrid")}</FieldLabel>
+                <Switch
+                  checked={showIssuesInGrid}
+                  onChange={(e) => handleShowIssuesInGridChange(e.currentTarget.checked)}
+                />
+              </Group>
+              <Text size="xs" c="dimmed">
+                {t("settings.showIssuesInGridHint")}
               </Text>
             </Stack>
           </Stack>

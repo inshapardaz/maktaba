@@ -34,17 +34,27 @@ public partial class LibraryRescanService(
         int CurrentChapter, int TotalChapters, int CurrentPage, int TotalPages, string? ChapterTitle,
         double Percentage, string? ChapterId, double? Position, DateTime UpdatedAt);
 
+    private sealed record PreviousPeriodicalState(
+        string Name, string SortName, string? Description, PeriodicalFrequency Frequency, DateTime DateAdded);
+
     // Captured per book id before the wipe below, and reapplied to the rebuilt row for any book
     // whose folder (and therefore id) still exists, rather than silently resetting it on every
     // rescan. This covers two different kinds of state: DB-only fields a rescan can't re-derive
     // from the file at all (Rating/ReadingStatus/DateAdded/tags/series/collections/bookmarks/
-    // notes/progress), and - since issue #15 - file-derived metadata too (Title/SortTitle/
-    // Description/Language/Publisher/DatePublished/Authors/Identifiers). The latter *could* be
-    // re-extracted from the file, but deliberately isn't: embedded EPUB/PDF metadata is often
-    // stale or wrong compared to what the user has since edited in the app (title corrections,
-    // fixed author names, ...), and a rescan silently clobbering those edits on every run was
-    // exactly the bug report. Only a genuinely new book (no previous state) has its metadata
-    // extracted from the file - see TryIndexBookFolderAsync.
+    // notes/progress/PeriodicalId/IssueNumber/VolumeNumber/IssueDate), and - since issue #15 -
+    // file-derived metadata too (Title/SortTitle/Description/Language/Publisher/DatePublished/
+    // Authors/Identifiers). The latter *could* be re-extracted from the file, but deliberately
+    // isn't: embedded EPUB/PDF metadata is often stale or wrong compared to what the user has
+    // since edited in the app (title corrections, fixed author names, ...), and a rescan silently
+    // clobbering those edits on every run was exactly the bug report. Only a genuinely new book
+    // (no previous state) has its metadata extracted from the file - see TryIndexBookFolderAsync.
+    //
+    // PeriodicalId is preserved from previous state rather than re-derived from which folder the
+    // book was just found in (same reasoning as AuthorNames not being derived from the author
+    // folder it's found under) - a book's periodical membership is app-managed state, not implied
+    // by wherever its folder happens to physically sit. Only a genuinely new issue (found via the
+    // Periodicals/ walk, no previous state) has PeriodicalId derived structurally from its parent
+    // folder, since that's the only signal available for a book with no previous state at all.
     private sealed record PreviousBookState(
         string Title,
         string SortTitle,
@@ -62,7 +72,11 @@ public partial class LibraryRescanService(
         List<int> CollectionIds,
         List<BookmarkInfo> Bookmarks,
         List<NoteInfo> Notes,
-        ProgressInfo? Progress);
+        ProgressInfo? Progress,
+        int? PeriodicalId,
+        double? IssueNumber,
+        int? VolumeNumber,
+        DateOnly? IssueDate);
 
     public async Task<int> RescanAsync(CancellationToken ct = default)
     {
@@ -71,11 +85,32 @@ public partial class LibraryRescanService(
         // Flattened up front (rather than the nested author/book enumeration this used to be) so the
         // total is known before the loop starts - GET /api/libraries/rescan/progress reports against
         // this total while the rescan below is still running on the request thread that called us.
-        var bookDirs = Directory.EnumerateDirectories(libraryRoot)
+        // "Periodicals" is a reserved top-level folder name (see Periodical.cs/BookFolderRelocator) -
+        // walked separately, one level deeper, instead of being treated as an author folder.
+        var topLevelDirs = Directory.EnumerateDirectories(libraryRoot).ToList();
+        var periodicalsRoot = topLevelDirs.FirstOrDefault(
+            d => string.Equals(Path.GetFileName(d), "Periodicals", StringComparison.Ordinal));
+
+        var bookDirs = topLevelDirs
+            .Where(d => d != periodicalsRoot)
             .SelectMany(Directory.EnumerateDirectories)
             .ToList();
 
-        progress.Start(bookDirs.Count);
+        var periodicalFolderEntries = (periodicalsRoot is not null ? Directory.EnumerateDirectories(periodicalsRoot) : Enumerable.Empty<string>())
+            .Select(dir =>
+            {
+                var match = BookFolderPattern().Match(Path.GetFileName(dir));
+                var decoded = match.Success && IdCodec.TryDecode(match.Groups["id"].Value, out var id) ? id : (int?)null;
+                return (Dir: dir, Id: decoded, Title: match.Success ? match.Groups["title"].Value : "");
+            })
+            .Where(e => e.Id is not null)
+            .ToList();
+
+        var issueDirs = periodicalFolderEntries
+            .SelectMany(e => Directory.EnumerateDirectories(e.Dir).Select(issueDir => (IssueDir: issueDir, PeriodicalId: e.Id!.Value)))
+            .ToList();
+
+        progress.Start(bookDirs.Count + issueDirs.Count);
         try
         {
             // Everything below - the wipe and the rebuild - runs inside one transaction. If the scan
@@ -87,6 +122,7 @@ public partial class LibraryRescanService(
             await using var transaction = await db.Database.BeginTransactionAsync(ct);
 
             var previousStates = await LoadPreviousBookStatesAsync(ct);
+            var previousPeriodicalStates = await LoadPreviousPeriodicalStatesAsync(ct);
 
             // Wipe the index (children before parents, to satisfy FK constraints) - metadata.db is designed
             // to be a rebuildable cache over the on-disk layout (see docs/SPEC.md §4). Collections
@@ -103,20 +139,62 @@ public partial class LibraryRescanService(
             await db.Notes.ExecuteDeleteAsync(ct);
             await db.ReadingProgress.ExecuteDeleteAsync(ct);
             await db.Books.ExecuteDeleteAsync(ct);
+            await db.Periodicals.ExecuteDeleteAsync(ct);
             await db.Authors.ExecuteDeleteAsync(ct);
             await db.Series.ExecuteDeleteAsync(ct);
             await db.Tags.ExecuteDeleteAsync(ct);
 
+            // Periodicals are recovered the same way books are (issue id embedded in the folder
+            // name), and flushed immediately so the book loop below can create issues referencing
+            // them via a real FK. A periodical folder with no issue subfolders left is still kept -
+            // an empty periodical (just created, or every issue since moved out) is legitimate state,
+            // not something a rescan should silently delete.
+            foreach (var entry in periodicalFolderEntries)
+            {
+                var periodicalId = entry.Id!.Value;
+                var relativeFolder = Path.GetRelativePath(libraryRoot, entry.Dir);
+                var periodical = previousPeriodicalStates.TryGetValue(periodicalId, out var previousPeriodical)
+                    ? new Periodical
+                    {
+                        Id = periodicalId,
+                        Name = previousPeriodical.Name,
+                        SortName = previousPeriodical.SortName,
+                        Description = previousPeriodical.Description,
+                        Frequency = previousPeriodical.Frequency,
+                        DateAdded = previousPeriodical.DateAdded,
+                        FolderPath = relativeFolder,
+                    }
+                    : new Periodical
+                    {
+                        Id = periodicalId,
+                        Name = entry.Title,
+                        SortName = TitleSorting.ComputeSortTitle(entry.Title),
+                        Frequency = PeriodicalFrequency.Occasional,
+                        FolderPath = relativeFolder,
+                    };
+
+                db.Periodicals.Add(periodical);
+            }
+
+            await db.SaveChangesAsync(ct);
+
             var importedCount = 0;
 
-            for (var i = 0; i < bookDirs.Count; i++)
+            var recoveredPeriodicalIds = periodicalFolderEntries.Select(e => e.Id!.Value).ToHashSet();
+
+            var workItems = bookDirs
+                .Select(d => (Dir: d, PeriodicalId: (int?)null))
+                .Concat(issueDirs.Select(x => (Dir: x.IssueDir, PeriodicalId: (int?)x.PeriodicalId)))
+                .ToList();
+
+            for (var i = 0; i < workItems.Count; i++)
             {
                 ct.ThrowIfCancellationRequested();
 
-                var bookDir = bookDirs[i];
+                var (bookDir, structuralPeriodicalId) = workItems[i];
                 try
                 {
-                    if (await TryIndexBookFolderAsync(libraryRoot, bookDir, previousStates, ct))
+                    if (await TryIndexBookFolderAsync(libraryRoot, bookDir, structuralPeriodicalId, recoveredPeriodicalIds, previousStates, ct))
                     {
                         importedCount++;
 
@@ -171,6 +249,10 @@ public partial class LibraryRescanService(
                 b.Rating,
                 b.ReadingStatus,
                 b.DateAdded,
+                b.PeriodicalId,
+                b.IssueNumber,
+                b.VolumeNumber,
+                b.IssueDate,
             })
             .ToListAsync(ct);
 
@@ -226,11 +308,27 @@ public partial class LibraryRescanService(
                 collections.Where(c => c.BookId == b.Id).Select(c => c.CollectionId).ToList(),
                 bookmarks.Where(bm => bm.BookId == b.Id).Select(bm => bm.Info).ToList(),
                 notes.Where(n => n.BookId == b.Id).Select(n => n.Info).ToList(),
-                progress.Where(p => p.BookId == b.Id).Select(p => p.Info).FirstOrDefault()));
+                progress.Where(p => p.BookId == b.Id).Select(p => p.Info).FirstOrDefault(),
+                b.PeriodicalId,
+                b.IssueNumber,
+                b.VolumeNumber,
+                b.IssueDate));
+    }
+
+    private async Task<Dictionary<int, PreviousPeriodicalState>> LoadPreviousPeriodicalStatesAsync(CancellationToken ct)
+    {
+        var periodicals = await db.Periodicals
+            .Select(p => new { p.Id, p.Name, p.SortName, p.Description, p.Frequency, p.DateAdded })
+            .ToListAsync(ct);
+
+        return periodicals.ToDictionary(
+            p => p.Id,
+            p => new PreviousPeriodicalState(p.Name, p.SortName, p.Description, p.Frequency, p.DateAdded));
     }
 
     private async Task<bool> TryIndexBookFolderAsync(
-        string libraryRoot, string bookDir, IReadOnlyDictionary<int, PreviousBookState> previousStates, CancellationToken ct)
+        string libraryRoot, string bookDir, int? structuralPeriodicalId, IReadOnlySet<int> recoveredPeriodicalIds,
+        IReadOnlyDictionary<int, PreviousBookState> previousStates, CancellationToken ct)
     {
         var match = BookFolderPattern().Match(Path.GetFileName(bookDir));
         if (!match.Success || !IdCodec.TryDecode(match.Groups["id"].Value, out var bookId))
@@ -254,7 +352,7 @@ public partial class LibraryRescanService(
         // untouched (built straight from previousStates, no file extraction) - only a genuinely
         // new id gets its metadata read from the file, lazily on the first recognized file below.
         var book = previousStates.TryGetValue(bookId, out var previous)
-            ? await BuildExistingBookAsync(bookId, relativeFolder, previous, ct)
+            ? await BuildExistingBookAsync(bookId, relativeFolder, previous, recoveredPeriodicalIds, ct)
             : null;
 
         foreach (var filePath in ebookFiles)
@@ -266,7 +364,7 @@ public partial class LibraryRescanService(
             {
                 var extractor = extractors.First(e => e.CanHandle(filePath));
                 var metadata = await extractor.ExtractAsync(filePath, ct);
-                book = await BuildNewBookAsync(bookId, relativeFolder, metadata, ct);
+                book = await BuildNewBookAsync(bookId, relativeFolder, metadata, structuralPeriodicalId, ct);
             }
 
             book.Files.Add(new BookFile
@@ -290,8 +388,15 @@ public partial class LibraryRescanService(
     // metadata; BookFiles are added by the caller from a fresh per-file read regardless (a
     // format/size/hash change on disk is exactly what a rescan should notice, even for a book
     // whose metadata is left alone).
-    private async Task<Book> BuildExistingBookAsync(int bookId, string relativeFolder, PreviousBookState previous, CancellationToken ct)
+    private async Task<Book> BuildExistingBookAsync(
+        int bookId, string relativeFolder, PreviousBookState previous, IReadOnlySet<int> recoveredPeriodicalIds, CancellationToken ct)
     {
+        // previous.PeriodicalId is preserved regardless of which folder this book was just found
+        // under (see PreviousBookState's doc comment) - except when that periodical itself no
+        // longer exists (its own folder was deleted), in which case the FK would be dangling; the
+        // issue reverts to a plain, un-periodicaled book rather than failing the whole rescan.
+        var periodicalStillExists = previous.PeriodicalId is { } pId && recoveredPeriodicalIds.Contains(pId);
+
         var book = new Book
         {
             Id = bookId,
@@ -305,6 +410,10 @@ public partial class LibraryRescanService(
             DateAdded = previous.DateAdded,
             Rating = previous.Rating,
             ReadingStatus = previous.ReadingStatus,
+            PeriodicalId = periodicalStillExists ? previous.PeriodicalId : null,
+            IssueNumber = periodicalStillExists ? previous.IssueNumber : null,
+            VolumeNumber = periodicalStillExists ? previous.VolumeNumber : null,
+            IssueDate = periodicalStillExists ? previous.IssueDate : null,
         };
 
         // previous.AuthorNames is already in credit order (loaded via OrderBy(ba => ba.Order) in
@@ -325,7 +434,8 @@ public partial class LibraryRescanService(
         return book;
     }
 
-    private async Task<Book> BuildNewBookAsync(int bookId, string relativeFolder, ExtractedBookMetadata metadata, CancellationToken ct)
+    private async Task<Book> BuildNewBookAsync(
+        int bookId, string relativeFolder, ExtractedBookMetadata metadata, int? periodicalId, CancellationToken ct)
     {
         var authors = await EntityResolvers.ResolveAuthorsAsync(db, metadata.Authors, ct);
         var book = new Book
@@ -338,6 +448,10 @@ public partial class LibraryRescanService(
             Publisher = metadata.Publisher,
             DatePublished = metadata.PublishedDate,
             FolderPath = relativeFolder,
+            // A brand-new issue (found via the Periodicals/ walk, no previous state at all) has no
+            // other source for its periodical membership - see PreviousBookState's doc comment.
+            // IssueNumber/VolumeNumber/IssueDate stay null: nothing in the file can tell you those.
+            PeriodicalId = periodicalId,
         };
 
         for (var i = 0; i < authors.Count; i++)

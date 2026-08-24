@@ -13,7 +13,11 @@ public record BookEditRequest(
     string? SeriesName,
     double? SeriesIndex,
     IReadOnlyList<string> Tags,
-    IReadOnlyList<int> CollectionIds
+    IReadOnlyList<int> CollectionIds,
+    int? PeriodicalId = null,
+    double? IssueNumber = null,
+    int? VolumeNumber = null,
+    DateOnly? IssueDate = null
 );
 
 /// <summary>

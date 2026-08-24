@@ -9,6 +9,7 @@ import {
   type ContinueReadingBook,
 } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
+import { getStoredShowIssuesInGrid } from "../periodicalSettings";
 import { useReaderLauncher } from "../ReaderLauncherContext";
 import { invalidateLibraryQueries } from "../queries";
 import { SpineCover } from "./SpineCover";
@@ -34,10 +35,16 @@ export function HomeView({ onSelectBook }: HomeViewProps) {
   const { t } = useLanguage();
   const queryClient = useQueryClient();
   const launchReader = useReaderLauncher();
-  const continueReadingQuery = useQuery({ queryKey: ["continueReading"], queryFn: () => listContinueReading(20) });
+  const continueReadingQuery = useQuery({
+    queryKey: ["continueReading"],
+    queryFn: () => listContinueReading(20, getStoredShowIssuesInGrid()),
+  });
   // Independent of continueReadingQuery - a freshly imported library has nothing in progress yet,
   // but there's still plenty to show here (see backend BookEndpoints.cs's /recently-added).
-  const recentlyAddedQuery = useQuery({ queryKey: ["recentlyAdded"], queryFn: () => listRecentlyAdded(12) });
+  const recentlyAddedQuery = useQuery({
+    queryKey: ["recentlyAdded"],
+    queryFn: () => listRecentlyAdded(12, getStoredShowIssuesInGrid()),
+  });
 
   const resumeBook = (book: ContinueReadingBook) => {
     launchReader({

@@ -16,19 +16,25 @@ internal static class BookFolderRelocator
 
     /// <summary>
     /// Renames/moves the book's on-disk folder (and its files) to match its current Title and
-    /// primary author's SortName. No-op if the folder already matches. Mutates book.FolderPath and
-    /// each file's FilePath in place; does not save changes.
+    /// primary author's SortName - or, for a book that's an issue of a Periodical (PeriodicalId
+    /// set), its periodical's folder instead of an author folder. No-op if the folder already
+    /// matches. Mutates book.FolderPath and each file's FilePath in place; does not save changes.
+    /// Callers must have .Include(b => b.Periodical) whenever a book might have PeriodicalId set.
     /// </summary>
     public static FolderMove? RelocateIfNeeded(Book book, string oldFolderRelative, string libraryRoot)
     {
-        var newAuthorSortName = book.BookAuthors
-            .OrderBy(ba => ba.Order)
-            .Select(ba => ba.Author.SortName)
-            .FirstOrDefault() ?? "Unknown Author";
+        var issueFolderSegment = FileNaming.SanitizePathSegment($"{book.Title} ({IdCodec.Encode(book.Id)})");
 
-        var newFolderRelative = Path.Combine(
-            FileNaming.SanitizePathSegment(newAuthorSortName),
-            FileNaming.SanitizePathSegment($"{book.Title} ({IdCodec.Encode(book.Id)})"));
+        var newFolderRelative = book.Periodical is { } periodical
+            ? Path.Combine(
+                "Periodicals",
+                FileNaming.SanitizePathSegment($"{periodical.Name} ({IdCodec.Encode(periodical.Id)})"),
+                issueFolderSegment)
+            : Path.Combine(
+                FileNaming.SanitizePathSegment(
+                    book.BookAuthors.OrderBy(ba => ba.Order).Select(ba => ba.Author.SortName).FirstOrDefault()
+                        ?? "Unknown Author"),
+                issueFolderSegment);
 
         if (string.Equals(newFolderRelative, oldFolderRelative, StringComparison.Ordinal))
         {

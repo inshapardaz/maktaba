@@ -22,6 +22,7 @@ import {
   getBook,
   listAuthors,
   listCollections,
+  listPeriodicals,
   listPublishers,
   listSeries,
   listTags,
@@ -50,6 +51,10 @@ interface FormState {
   seriesIndex: string;
   tags: string[];
   collectionIds: string[];
+  periodicalId: string;
+  issueNumber: string;
+  volumeNumber: string;
+  issueDate: string;
 }
 
 const EMPTY_FORM: FormState = {
@@ -64,6 +69,10 @@ const EMPTY_FORM: FormState = {
   seriesIndex: "",
   tags: [],
   collectionIds: [],
+  periodicalId: "",
+  issueNumber: "",
+  volumeNumber: "",
+  issueDate: "",
 };
 
 const STAR_RATING_OPTIONS = [
@@ -182,6 +191,7 @@ export function BookEditForm({ bookId, onClose, onSaved }: BookEditFormProps) {
   const tagsQuery = useQuery({ queryKey: ["tags"], queryFn: listTags });
   const publishersQuery = useQuery({ queryKey: ["publishers"], queryFn: listPublishers });
   const collectionsQuery = useQuery({ queryKey: ["collections"], queryFn: listCollections });
+  const periodicalsQuery = useQuery({ queryKey: ["periodicals"], queryFn: listPeriodicals });
   const collectionOptions = buildCollectionOptions(collectionsQuery.data ?? [], collectionSearch, t);
 
   const authorOptions = buildCreatableData(
@@ -221,6 +231,10 @@ export function BookEditForm({ bookId, onClose, onSaved }: BookEditFormProps) {
       seriesIndex: book.seriesIndex != null ? String(book.seriesIndex) : "",
       tags: book.tags,
       collectionIds: book.collections.map((c) => c.id),
+      periodicalId: book.periodicalId ?? "",
+      issueNumber: book.issueNumber != null ? String(book.issueNumber) : "",
+      volumeNumber: book.volumeNumber != null ? String(book.volumeNumber) : "",
+      issueDate: book.issueDate ?? "",
     });
   }, [book]);
 
@@ -247,6 +261,10 @@ export function BookEditForm({ bookId, onClose, onSaved }: BookEditFormProps) {
       seriesIndex: form.seriesIndex ? Number(form.seriesIndex) : null,
       tags: form.tags,
       collectionIds: form.collectionIds,
+      periodicalId: form.periodicalId || null,
+      issueNumber: form.periodicalId && form.issueNumber ? Number(form.issueNumber) : null,
+      volumeNumber: form.periodicalId && form.volumeNumber ? Number(form.volumeNumber) : null,
+      issueDate: form.periodicalId && form.issueDate ? form.issueDate : null,
     });
   };
 
@@ -343,6 +361,37 @@ export function BookEditForm({ bookId, onClose, onSaved }: BookEditFormProps) {
                 onChange={(value) => setForm({ ...form, seriesIndex: value === "" ? "" : String(value) })}
               />
             </Group>
+
+            <Select
+              label={t("bookEdit.periodical")}
+              data={(periodicalsQuery.data ?? []).map((p) => ({ value: p.id, label: p.name }))}
+              value={form.periodicalId || null}
+              onChange={(value) => setForm({ ...form, periodicalId: value ?? "" })}
+              searchable
+              clearable
+            />
+
+            {form.periodicalId && (
+              <Group grow align="flex-start">
+                <NumberInput
+                  label={t("bookEdit.volumeNumber")}
+                  value={form.volumeNumber}
+                  onChange={(value) => setForm({ ...form, volumeNumber: value === "" ? "" : String(value) })}
+                />
+                <NumberInput
+                  label={t("bookEdit.issueNumber")}
+                  step={0.1}
+                  value={form.issueNumber}
+                  onChange={(value) => setForm({ ...form, issueNumber: value === "" ? "" : String(value) })}
+                />
+                <TextInput
+                  type="date"
+                  label={t("bookEdit.issueDate")}
+                  value={form.issueDate}
+                  onChange={(e) => setForm({ ...form, issueDate: e.currentTarget.value })}
+                />
+              </Group>
+            )}
 
             <MultiSelect
               label={t("bookEdit.tags")}

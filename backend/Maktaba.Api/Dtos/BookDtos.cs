@@ -21,7 +21,15 @@ public record BookSummaryDto(
     // Distinct formats this book has a file for (e.g. ["Epub", "Pdf"]) - lets BookGrid/BookList show
     // a split "Read" button and BookList show format badges without a per-row detail fetch, since
     // the actual per-file AbsolutePath is only needed once a specific format is chosen to open.
-    string[] Formats
+    string[] Formats,
+    // Null unless this book is an issue of a Periodical (see Periodical.cs) - lets the frontend
+    // render issue badges (volume/number/date) without a second request per book, same rationale
+    // as SeriesIndex above.
+    string? PeriodicalId,
+    string? PeriodicalName,
+    double? IssueNumber,
+    int? VolumeNumber,
+    DateOnly? IssueDate
 );
 
 // Powers the Home view's "continue reading" hero + "currently reading" list - one row per book
@@ -65,7 +73,12 @@ public record BookDetailDto(
     BookFileDto[] Files,
     bool HasCover,
     string ReadingStatus,
-    BookCollectionDto[] Collections
+    BookCollectionDto[] Collections,
+    string? PeriodicalId,
+    string? PeriodicalName,
+    double? IssueNumber,
+    int? VolumeNumber,
+    DateOnly? IssueDate
 );
 
 /// <summary>DuplicateAction: null (ask) | "skip" | "keep-both" | "merge".</summary>
@@ -88,7 +101,11 @@ public record BookEditRequestDto(
     string? SeriesName,
     double? SeriesIndex,
     string[] Tags,
-    string[] CollectionIds
+    string[] CollectionIds,
+    string? PeriodicalId = null,
+    double? IssueNumber = null,
+    int? VolumeNumber = null,
+    DateOnly? IssueDate = null
 );
 
 public record UpdateBookStatusRequestDto(string ReadingStatus);
@@ -120,3 +137,10 @@ public record RenameAuthorRequestDto(string Name);
 public record RenameTagRequestDto(string Name);
 
 public record RenameSeriesRequestDto(string Name);
+
+public record PeriodicalDto(
+    string Id, string Name, string? Description, string Frequency, int IssueCount, bool HasCover);
+
+public record CreatePeriodicalRequestDto(string Name, string Frequency, string? Description);
+
+public record UpdatePeriodicalRequestDto(string Name, string Frequency, string? Description);
