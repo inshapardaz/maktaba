@@ -5,6 +5,7 @@ import {
   Autocomplete,
   Button,
   Center,
+  Fieldset,
   Group,
   Loader,
   Modal,
@@ -28,6 +29,7 @@ import {
   listTags,
   updateBook,
   type BookEditRequest,
+  type PeriodicalFrequency,
 } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
 import type { TranslationKey } from "../i18n/translations";
@@ -54,7 +56,6 @@ interface FormState {
   periodicalId: string;
   issueNumber: string;
   volumeNumber: string;
-  issueDate: string;
 }
 
 const EMPTY_FORM: FormState = {
@@ -72,7 +73,6 @@ const EMPTY_FORM: FormState = {
   periodicalId: "",
   issueNumber: "",
   volumeNumber: "",
-  issueDate: "",
 };
 
 const STAR_RATING_OPTIONS = [
@@ -172,6 +172,142 @@ function buildCollectionOptions(
   return options;
 }
 
+// The book's single "date" field (form.publishedDate, an ISO "YYYY-MM-DD" string) doubles as the
+// issue date once a periodical is selected - see IssueDateField below. These converters translate
+// between that one stored ISO date and whichever granularity-specific control the periodical's
+// frequency calls for, so switching frequencies never needs a second piece of state to stay in sync.
+function yearFromDate(date: string): string {
+  return date ? date.slice(0, 4) : "";
+}
+
+function dateFromYear(year: string): string {
+  return year ? `${year}-01-01` : "";
+}
+
+function quarterFromDate(date: string): { year: string; quarter: string } {
+  if (!date) return { year: "", quarter: "" };
+  const month = Number(date.slice(5, 7));
+  return { year: date.slice(0, 4), quarter: String(Math.floor((month - 1) / 3) + 1) };
+}
+
+function dateFromQuarter(year: string, quarter: string): string {
+  if (!year || !quarter) return "";
+  const month = (Number(quarter) - 1) * 3 + 1;
+  return `${year}-${String(month).padStart(2, "0")}-01`;
+}
+
+function monthFromDate(date: string): string {
+  return date ? date.slice(0, 7) : "";
+}
+
+function dateFromMonth(month: string): string {
+  return month ? `${month}-01` : "";
+}
+
+// ISO 8601 week: week 1 is the week containing the year's first Thursday: converted via UTC dates
+// throughout so a local timezone offset can never shift the computed day/week by one.
+function isoWeekFromDate(date: string): string {
+  if (!date) return "";
+  const d = new Date(`${date}T00:00:00Z`);
+  const day = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const week = Math.ceil(((d.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7);
+  return `${d.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
+}
+
+function dateFromIsoWeek(isoWeek: string): string {
+  const match = /^(\d{4})-W(\d{2})$/.exec(isoWeek);
+  if (!match) return "";
+  const year = Number(match[1]);
+  const week = Number(match[2]);
+  const jan4 = new Date(Date.UTC(year, 0, 4));
+  const jan4Day = jan4.getUTCDay() || 7;
+  const week1Monday = new Date(jan4);
+  week1Monday.setUTCDate(jan4.getUTCDate() - jan4Day + 1);
+  const target = new Date(week1Monday);
+  target.setUTCDate(week1Monday.getUTCDate() + (week - 1) * 7);
+  return target.toISOString().slice(0, 10);
+}
+
+// Swaps in a granularity-matched control for the periodical's frequency (a year picker for a
+// Yearly periodical, year+quarter for Quarterly, native month/week pickers for Monthly/Weekly),
+// falling back to a plain date picker for Daily/BiWeekly/Occasional where no coarser grouping
+// makes sense. Always reads from and writes back to the same ISO date string.
+function IssueDateField({
+  frequency,
+  value,
+  onChange,
+  t,
+}: {
+  frequency: PeriodicalFrequency;
+  value: string;
+  onChange: (value: string) => void;
+  t: (key: TranslationKey, vars?: Record<string, string | number>) => string;
+}) {
+  if (frequency === "Yearly") {
+    const year = yearFromDate(value);
+    return (
+      <NumberInput
+        label={t("bookEdit.issueDate")}
+        placeholder={t("bookEdit.year")}
+        allowDecimal={false}
+        hideControls
+        value={year === "" ? "" : Number(year)}
+        onChange={(v) => onChange(dateFromYear(v === "" ? "" : String(v)))}
+      />
+    );
+  }
+
+  if (frequency === "Quarterly") {
+    const { year, quarter } = quarterFromDate(value);
+    return (
+      <Group grow align="flex-end" gap="xs" wrap="nowrap">
+        <NumberInput
+          label={t("bookEdit.issueDate")}
+          placeholder={t("bookEdit.year")}
+          allowDecimal={false}
+          hideControls
+          value={year === "" ? "" : Number(year)}
+          onChange={(v) => onChange(dateFromQuarter(v === "" ? "" : String(v), quarter || "1"))}
+        />
+        <Select
+          data={["1", "2", "3", "4"].map((q) => ({ value: q, label: `Q${q}` }))}
+          value={quarter || null}
+          onChange={(v) => onChange(dateFromQuarter(year || String(new Date().getFullYear()), v ?? "1"))}
+          allowDeselect={false}
+        />
+      </Group>
+    );
+  }
+
+  if (frequency === "Monthly") {
+    return (
+      <TextInput
+        type="month"
+        label={t("bookEdit.issueDate")}
+        value={monthFromDate(value)}
+        onChange={(e) => onChange(dateFromMonth(e.currentTarget.value))}
+      />
+    );
+  }
+
+  if (frequency === "Weekly") {
+    return (
+      <TextInput
+        type="week"
+        label={t("bookEdit.issueDate")}
+        value={isoWeekFromDate(value)}
+        onChange={(e) => onChange(dateFromIsoWeek(e.currentTarget.value))}
+      />
+    );
+  }
+
+  return (
+    <TextInput type="date" label={t("bookEdit.issueDate")} value={value} onChange={(e) => onChange(e.currentTarget.value)} />
+  );
+}
+
 export function BookEditForm({ bookId, onClose, onSaved }: BookEditFormProps) {
   const { t } = useLanguage();
   const queryClient = useQueryClient();
@@ -224,7 +360,10 @@ export function BookEditForm({ bookId, onClose, onSaved }: BookEditFormProps) {
       authors: book.authors,
       language: book.language ?? "",
       publisher: book.publisher ?? "",
-      publishedDate: book.datePublished ?? "",
+      // One date field does double duty - the issue date for a periodical issue, the published
+      // date otherwise (see IssueDateField) - so it's sourced from whichever one the book actually
+      // has when it's an issue, falling back to publishedDate if issueDate was never set.
+      publishedDate: (book.periodicalId ? book.issueDate ?? book.datePublished : book.datePublished) ?? "",
       description: book.description ?? "",
       rating: book.rating,
       seriesName: book.seriesName ?? "",
@@ -234,7 +373,6 @@ export function BookEditForm({ bookId, onClose, onSaved }: BookEditFormProps) {
       periodicalId: book.periodicalId ?? "",
       issueNumber: book.issueNumber != null ? String(book.issueNumber) : "",
       volumeNumber: book.volumeNumber != null ? String(book.volumeNumber) : "",
-      issueDate: book.issueDate ?? "",
     });
   }, [book]);
 
@@ -264,9 +402,13 @@ export function BookEditForm({ bookId, onClose, onSaved }: BookEditFormProps) {
       periodicalId: form.periodicalId || null,
       issueNumber: form.periodicalId && form.issueNumber ? Number(form.issueNumber) : null,
       volumeNumber: form.periodicalId && form.volumeNumber ? Number(form.volumeNumber) : null,
-      issueDate: form.periodicalId && form.issueDate ? form.issueDate : null,
+      // Same single date field as publishedDate above - it *is* the issue date once a periodical
+      // is selected (see IssueDateField), not a second independent value to track.
+      issueDate: form.periodicalId && form.publishedDate ? form.publishedDate : null,
     });
   };
+
+  const selectedPeriodical = periodicalsQuery.data?.find((p) => p.id === form.periodicalId);
 
   return (
     <Modal opened onClose={onClose} title={t("bookEdit.title")} size="lg">
@@ -327,12 +469,17 @@ export function BookEditForm({ bookId, onClose, onSaved }: BookEditFormProps) {
             </Group>
 
             <Group grow align="flex-start">
-              <TextInput
-                type="date"
-                label={t("bookEdit.publishedDate")}
-                value={form.publishedDate}
-                onChange={(e) => setForm({ ...form, publishedDate: e.currentTarget.value })}
-              />
+              {/* Hidden once a periodical is selected - the same form.publishedDate value becomes
+                  the issue date, edited via IssueDateField inside the Periodical fieldset below
+                  instead of here, so there's never two controls for one value on screen at once. */}
+              {!form.periodicalId && (
+                <TextInput
+                  type="date"
+                  label={t("bookEdit.publishedDate")}
+                  value={form.publishedDate}
+                  onChange={(e) => setForm({ ...form, publishedDate: e.currentTarget.value })}
+                />
+              )}
               <Select
                 label={t("bookEdit.rating")}
                 data={ratingOptions}
@@ -362,36 +509,42 @@ export function BookEditForm({ bookId, onClose, onSaved }: BookEditFormProps) {
               />
             </Group>
 
-            <Select
-              label={t("bookEdit.periodical")}
-              data={(periodicalsQuery.data ?? []).map((p) => ({ value: p.id, label: p.name }))}
-              value={form.periodicalId || null}
-              onChange={(value) => setForm({ ...form, periodicalId: value ?? "" })}
-              searchable
-              clearable
-            />
+            <Fieldset legend={t("bookEdit.periodicalFieldset")}>
+              <Stack gap="sm">
+                <Select
+                  label={t("bookEdit.periodical")}
+                  data={(periodicalsQuery.data ?? []).map((p) => ({ value: p.id, label: p.name }))}
+                  value={form.periodicalId || null}
+                  onChange={(value) => setForm({ ...form, periodicalId: value ?? "" })}
+                  searchable
+                  clearable
+                />
 
-            {form.periodicalId && (
-              <Group grow align="flex-start">
-                <NumberInput
-                  label={t("bookEdit.volumeNumber")}
-                  value={form.volumeNumber}
-                  onChange={(value) => setForm({ ...form, volumeNumber: value === "" ? "" : String(value) })}
-                />
-                <NumberInput
-                  label={t("bookEdit.issueNumber")}
-                  step={0.1}
-                  value={form.issueNumber}
-                  onChange={(value) => setForm({ ...form, issueNumber: value === "" ? "" : String(value) })}
-                />
-                <TextInput
-                  type="date"
-                  label={t("bookEdit.issueDate")}
-                  value={form.issueDate}
-                  onChange={(e) => setForm({ ...form, issueDate: e.currentTarget.value })}
-                />
-              </Group>
-            )}
+                {form.periodicalId && (
+                  <>
+                    <Group grow align="flex-start">
+                      <NumberInput
+                        label={t("bookEdit.volumeNumber")}
+                        value={form.volumeNumber}
+                        onChange={(value) => setForm({ ...form, volumeNumber: value === "" ? "" : String(value) })}
+                      />
+                      <NumberInput
+                        label={t("bookEdit.issueNumber")}
+                        step={0.1}
+                        value={form.issueNumber}
+                        onChange={(value) => setForm({ ...form, issueNumber: value === "" ? "" : String(value) })}
+                      />
+                    </Group>
+                    <IssueDateField
+                      frequency={selectedPeriodical?.frequency ?? "Occasional"}
+                      value={form.publishedDate}
+                      onChange={(value) => setForm({ ...form, publishedDate: value })}
+                      t={t}
+                    />
+                  </>
+                )}
+              </Stack>
+            </Fieldset>
 
             <MultiSelect
               label={t("bookEdit.tags")}
