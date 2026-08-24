@@ -27,6 +27,7 @@ export interface BookSummary {
 }
 
 export interface BookFileInfo {
+  id: string;
   format: string;
   fileSizeBytes: number;
   absolutePath: string;
@@ -322,6 +323,15 @@ export function updateBook(id: string, edit: BookEditRequest): Promise<void> {
 
 export function deleteBook(id: string): Promise<{ folderPath: string }> {
   return request<{ folderPath: string }>(`/api/books/${id}`, { method: "DELETE" });
+}
+
+// Issue #27: renames the actual on-disk file (not just a display label) so it's identifiable when
+// browsing the folder or via "Show in folder" - see backend BookFolderRelocator's IsCustomNamed.
+export function renameBookFile(bookId: string, fileId: string, fileName: string): Promise<BookFileInfo> {
+  return request<BookFileInfo>(`/api/books/${bookId}/files/${fileId}/name`, {
+    method: "PATCH",
+    body: JSON.stringify({ fileName }),
+  });
 }
 
 export interface RescanProgress {

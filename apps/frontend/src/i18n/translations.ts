@@ -200,6 +200,7 @@ const en = {
   "bookDetail.read": "Read",
   "bookDetail.addFile": "Add file",
   "bookDetail.chooseFormat": "Choose format",
+  "bookDetail.renameFile": "Rename file",
 
   "bookEdit.title": "Edit book",
   "bookEdit.titleField": "Title",
@@ -559,6 +560,7 @@ const ur: TranslationDict = {
   "bookDetail.read": "پڑھیں",
   "bookDetail.addFile": "فائل شامل کریں",
   "bookDetail.chooseFormat": "فارمیٹ منتخب کریں",
+  "bookDetail.renameFile": "فائل کا نام تبدیل کریں",
 
   "bookEdit.title": "کتاب میں ترمیم کریں",
   "bookEdit.titleField": "عنوان",
