@@ -366,12 +366,22 @@ export function BookEditForm({ bookId, onClose, onSaved }: BookEditFormProps) {
       {!isLoading && (
         <form onSubmit={handleSubmit}>
           <Stack gap="sm">
-            <TextInput
-              label={t("bookEdit.titleField")}
-              required
-              value={form.title}
-              onChange={(e) => setForm({ ...form, title: e.currentTarget.value })}
-            />
+            {/* An issue has no user-editable title (see displayTitle in issueDisplay.ts - the
+                periodical it belongs to identifies it everywhere instead), so the field is
+                replaced with a plain note of which periodical this is, rather than left editable
+                for a value nothing else displays. */}
+            {form.periodicalId ? (
+              <Text size="sm" c="dimmed">
+                {t("bookEdit.issueOf", { periodical: selectedPeriodical?.name ?? "" })}
+              </Text>
+            ) : (
+              <TextInput
+                label={t("bookEdit.titleField")}
+                required
+                value={form.title}
+                onChange={(e) => setForm({ ...form, title: e.currentTarget.value })}
+              />
+            )}
 
             {/* Author/publisher/language/series/rating/tags/description are all hidden once the
                 book is an issue of a periodical - those attributes live on the periodical instead

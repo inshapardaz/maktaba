@@ -41,6 +41,7 @@ import {
   type ReadingStatus,
 } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
+import { displaySubtitle, displayTitle } from "../issueDisplay";
 import { useReaderLauncher } from "../ReaderLauncherContext";
 import { BookEditForm } from "./BookEditForm";
 import { languageDisplayName } from "./Sidebar";
@@ -155,7 +156,7 @@ export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelP
   // while the book loads.
   const openReader = (format: "Epub" | "Pdf", absolutePath: string) => {
     onClose();
-    launchReader({ bookId, format, title: book?.title, absolutePath, readingStatus: book?.readingStatus ?? "Unread" });
+    launchReader({ bookId, format, title: book && displayTitle(book), absolutePath, readingStatus: book?.readingStatus ?? "Unread" });
   };
 
   const readableFiles: (BookFileInfo & { format: "Epub" | "Pdf" })[] =
@@ -196,8 +197,8 @@ export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelP
             ) : (
               <SpineCover
                 id={book.id}
-                title={book.title}
-                author={book.authors.join(", ") || t("common.unknownAuthor")}
+                title={displayTitle(book)}
+                author={displaySubtitle(book, t)}
                 width={110}
                 height={165}
                 titleSize={14}
@@ -207,8 +208,8 @@ export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelP
             )}
 
             <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
-              <Title order={3}>{book.title}</Title>
-              <Text c="dimmed">{book.authors.join(", ") || t("common.unknownAuthor")}</Text>
+              <Title order={3}>{displayTitle(book)}</Title>
+              <Text c="dimmed">{displaySubtitle(book, t)}</Text>
               {book.seriesName && (
                 <Text size="sm">
                   {book.seriesName}

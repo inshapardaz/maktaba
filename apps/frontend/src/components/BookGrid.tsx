@@ -5,6 +5,7 @@ import { IconBook2, IconChevronDown, IconEdit, IconInfoCircle } from "@tabler/ic
 import { coverUrl, getBook, pickPreferredReadFile, type BookFileInfo, type BookSummary } from "../api";
 import { setBookDragData } from "../bookDrag";
 import { useLanguage } from "../i18n/LanguageContext";
+import { displaySubtitle, displayTitle } from "../issueDisplay";
 import { useReaderLauncher } from "../ReaderLauncherContext";
 import { READING_STATUS_COLOR, READING_STATUS_LABEL_KEY } from "../readingStatus";
 import { BookEditForm } from "./BookEditForm";
@@ -57,7 +58,7 @@ function BookCard({ book, index, selected, selectedIds, onSelect, onEdit }: Book
         launchReader({
           bookId: book.id,
           format: file.format,
-          title: detail.title,
+          title: displayTitle(detail),
           absolutePath: file.absolutePath,
           readingStatus: detail.readingStatus,
         });
@@ -99,8 +100,8 @@ function BookCard({ book, index, selected, selectedIds, onSelect, onEdit }: Book
         ) : (
           <SpineCover
             id={book.id}
-            title={book.title}
-            author={book.authors.join(", ") || t("common.unknownAuthor")}
+            title={displayTitle(book)}
+            author={displaySubtitle(book, t)}
             width={CARD_WIDTH}
             height={COVER_HEIGHT}
           />
@@ -215,11 +216,11 @@ function BookCard({ book, index, selected, selectedIds, onSelect, onEdit }: Book
           "activate the button" even with stopPropagation on the input). Disabled for card view -
           use the pencil-edit affordance in list view (BookList.tsx), or the full edit form
           (onEdit, above), to rename a title instead. */}
-      <Text size="sm" fw={600} mt={8} lineClamp={2} title={book.title}>
-        {book.title}
+      <Text size="sm" fw={600} mt={8} lineClamp={2} title={displayTitle(book)}>
+        {displayTitle(book)}
       </Text>
-      <Text size="xs" c="dimmed" truncate="end" title={book.authors.join(", ")}>
-        {book.authors.join(", ") || t("common.unknownAuthor")}
+      <Text size="xs" c="dimmed" truncate="end" title={displaySubtitle(book, t)}>
+        {displaySubtitle(book, t)}
       </Text>
     </UnstyledButton>
   );

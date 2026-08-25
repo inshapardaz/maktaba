@@ -142,6 +142,10 @@ const en = {
   "periodicalDetail.volumeShort": "Vol {number}",
   "periodicalDetail.issueShort": "No. {number}",
 
+  // Replaces the author line for an issue everywhere a book's authors would normally show
+  // (BookGrid/BookList/BookDetailPanel/the reader) - see issueDisplay.ts.
+  "issueInfo.dateLine": "{year} · {month} · Week {week}",
+
   "dragDrop.authorSet_one": 'Author set to "{name}" for {count} book',
   "dragDrop.authorSet_other": 'Author set to "{name}" for {count} books',
   "dragDrop.author_one": '"{name}" added as author to {count} book',
@@ -199,6 +203,7 @@ const en = {
 
   "bookEdit.title": "Edit book",
   "bookEdit.titleField": "Title",
+  "bookEdit.issueOf": "Issue of {periodical}",
   "bookEdit.authors": "Authors",
   "bookEdit.createOption": 'Create "{name}"',
   "bookEdit.series": "Series",
@@ -500,6 +505,8 @@ const ur: TranslationDict = {
   "periodicalDetail.volumeShort": "جلد {number}",
   "periodicalDetail.issueShort": "شمارہ {number}",
 
+  "issueInfo.dateLine": "{year} · {month} · ہفتہ {week}",
+
   "dragDrop.authorSet_one": '{count} کتاب کے لیے مصنف "{name}" مقرر کر دیا گیا',
   "dragDrop.authorSet_other": '{count} کتابوں کے لیے مصنف "{name}" مقرر کر دیا گیا',
   "dragDrop.author_one": '"{name}" کو {count} کتاب کے مصنف کے طور پر شامل کر دیا گیا',
@@ -557,6 +564,7 @@ const ur: TranslationDict = {
 
   "bookEdit.title": "کتاب میں ترمیم کریں",
   "bookEdit.titleField": "عنوان",
+  "bookEdit.issueOf": "{periodical} کا شمارہ",
   "bookEdit.authors": "مصنفین",
   "bookEdit.createOption": '"{name}" بنائیں',
   "bookEdit.series": "سیریز",
