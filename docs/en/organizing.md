@@ -24,6 +24,60 @@ from the book file itself, like "Currently Reading," "Favorites," or "For the Ki
 Open the Collections list from the sidebar to create a new collection, then add books to it from
 each book's details.
 
+## Periodicals
+
+Magazines, newspapers, and journals don't fit the usual author/title model — a single periodical
+can have dozens or hundreds of **issues**, and what identifies an issue is its volume/issue number
+and date, not an author. Maktaba has a separate **Periodicals** section in the sidebar for these.
+
+> Periodicals can be turned off entirely for a library that doesn't need them — see
+> [Settings → Libraries](settings.md).
+
+### Creating a periodical
+
+Click the **+** next to Periodicals in the sidebar for a quick add (just a name), or open the full
+Periodicals list (the arrow next to the section title) to create one with more detail up front.
+Once created, open a periodical to set:
+
+- A **cover image** — click the cover placeholder to upload one from your computer.
+- Its **frequency** — Daily, Weekly, Bi-weekly, Monthly, Quarterly, Yearly, or Occasional. This
+  also controls how you'll browse its issues (see below).
+- **Description**, **language**, **publisher**, **editor**, and **tags** — these describe the
+  periodical as a whole, not any one issue.
+
+### Turning a book into an issue
+
+Drag a book from the grid or list straight onto the periodical's row in the sidebar. Maktaba:
+
+- Moves the book's files into that periodical's own folder on disk, organized separately from
+  your author folders.
+- Clears the fields that no longer apply (author, publisher, language, series, tags, rating,
+  description) — a periodical's own metadata covers those instead.
+- Lets you set a **volume number**, **issue number**, and **issue date** for it.
+
+You can also assign a periodical from a book's own edit screen, without dragging — pick it from
+the **Periodical** field there.
+
+### Editing an issue
+
+Once a book belongs to a periodical, its edit screen looks different: the title, author,
+publisher, language, series, tags, rating, and description fields are gone (they're the
+periodical's, not the issue's) — what's left is just the periodical it belongs to, its volume and
+issue number, and its date. The date field itself changes shape to match the periodical's
+frequency: a year picker for a Yearly periodical, year-and-quarter for Quarterly, a month picker
+for Monthly, a week picker for Weekly, and an ordinary date picker otherwise.
+
+Everywhere an issue is shown — the grid, the list, its details popup, and the reader's title — it
+displays the periodical's name and its date (as year, month, and week number) in place of a title
+and author, since that's what actually identifies it.
+
+### Browsing issues by date
+
+Open a periodical to see its issues on the left as a year list, each with how many issues that
+year has, with **All** at the top to show everything at once. For a Weekly periodical, clicking a
+year expands it into months so you're not scrolling through fifty-two issues at once; for other
+frequencies, clicking a year filters straight to it.
+
 ## Searching
 
 Press **Ctrl+K** (or **Cmd+K** on Mac) from anywhere in Maktaba to search your whole library
