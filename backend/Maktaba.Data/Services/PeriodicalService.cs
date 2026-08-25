@@ -9,7 +9,7 @@ namespace Maktaba.Data.Services;
 public class PeriodicalService(MaktabaDbContext db, ILibraryPathProvider libraryPath) : IPeriodicalService
 {
     public async Task<Periodical> CreateAsync(
-        string name, PeriodicalFrequency frequency, string? description, CancellationToken ct = default)
+        string name, PeriodicalFrequency frequency, string? description, string? language, CancellationToken ct = default)
     {
         var libraryRoot = libraryPath.LibraryRootPath!;
         var trimmed = name.Trim();
@@ -20,6 +20,7 @@ public class PeriodicalService(MaktabaDbContext db, ILibraryPathProvider library
             SortName = TitleSorting.ComputeSortTitle(trimmed),
             Frequency = frequency,
             Description = description,
+            Language = language,
         };
 
         // Same two-step pattern as ImportService.ImportFileAsync - the on-disk folder embeds the
@@ -51,7 +52,8 @@ public class PeriodicalService(MaktabaDbContext db, ILibraryPathProvider library
     }
 
     public async Task<Periodical?> UpdateAsync(
-        int periodicalId, string name, PeriodicalFrequency frequency, string? description, CancellationToken ct = default)
+        int periodicalId, string name, PeriodicalFrequency frequency, string? description, string? language,
+        CancellationToken ct = default)
     {
         var periodical = await db.Periodicals
             .Include(p => p.Issues).ThenInclude(b => b.Files)
@@ -96,6 +98,7 @@ public class PeriodicalService(MaktabaDbContext db, ILibraryPathProvider library
         periodical.SortName = TitleSorting.ComputeSortTitle(trimmed);
         periodical.Frequency = frequency;
         periodical.Description = description;
+        periodical.Language = language;
 
         try
         {

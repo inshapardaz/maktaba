@@ -1,0 +1,7 @@
+// Issue #30: languages offered when configuring a Hunspell dictionary in Settings -> Dictionaries.
+// Deliberately its own small list (not shared with BookEditForm.tsx's language picker) - this one
+// only needs to stay in sync with itself, and duplicating a short constant array here is simpler
+// than coupling two otherwise-unrelated features to the same module.
+export const DICTIONARY_LANGUAGE_CODES = [
+  "en", "ur", "ar", "fa", "hi", "bn", "fr", "es", "de", "it", "pt", "nl", "ru", "tr", "pl", "zh", "ja", "ko",
+] as const;

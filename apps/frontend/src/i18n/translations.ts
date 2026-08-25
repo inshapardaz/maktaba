@@ -118,6 +118,7 @@ const en = {
   "periodicalsView.title": "Periodicals",
   "periodicalsView.namePlaceholder": "Periodical name",
   "periodicalsView.frequency": "Frequency",
+  "periodicalsView.language": "Language",
   "periodicalsView.add": "Add",
   "periodicalsView.searchPlaceholder": "Search periodicals…",
   "periodicalsView.empty": "No periodicals yet.",
@@ -302,6 +303,17 @@ const en = {
   "settings.autoTagAsk": "Ask me first",
   "settings.autoTagStatusHint": "When you start or finish a book in the reader, update its reading status automatically or show a notification with the option to apply it.",
 
+  "settings.dictionaries": "Dictionaries",
+
+  "dictionariesSettings.description": "Provide offline Hunspell dictionary files (.aff and .dic) per language for spell-check in the reader - checked before any online lookup, and works without an internet connection.",
+  "dictionariesSettings.empty": "No dictionaries configured yet.",
+  "dictionariesSettings.add": "Add a dictionary",
+  "dictionariesSettings.language": "Language",
+  "dictionariesSettings.chooseAff": "Choose .aff file…",
+  "dictionariesSettings.chooseDic": "Choose .dic file…",
+  "dictionariesSettings.save": "Save",
+  "dictionariesSettings.remove": "Remove",
+
   "librariesSettings.description": "Only one library is open at a time. Switch, rename, relocate, resync, or remove any of the libraries you've opened before.",
   "librariesSettings.addLibrary": "Add library…",
   "librariesSettings.active": "Active",
@@ -477,6 +489,7 @@ const ur: TranslationDict = {
   "periodicalsView.title": "متواتر اشاعتیں",
   "periodicalsView.namePlaceholder": "اشاعت کا نام",
   "periodicalsView.frequency": "تعدد",
+  "periodicalsView.language": "زبان",
   "periodicalsView.add": "شامل کریں",
   "periodicalsView.searchPlaceholder": "اشاعتیں تلاش کریں…",
   "periodicalsView.empty": "ابھی کوئی اشاعت موجود نہیں۔",
@@ -657,6 +670,17 @@ const ur: TranslationDict = {
   "settings.autoTagAuto": "خودکار طور پر اپ ڈیٹ کریں",
   "settings.autoTagAsk": "پہلے مجھ سے پوچھیں",
   "settings.autoTagStatusHint": "جب آپ ریڈر میں کوئی کتاب پڑھنا شروع یا مکمل کریں تو اس کی مطالعے کی حیثیت خودکار طور پر اپ ڈیٹ کریں یا اسے لاگو کرنے کے اختیار کے ساتھ ایک اطلاع دکھائیں۔",
+
+  "settings.dictionaries": "لغات",
+
+  "dictionariesSettings.description": "ریڈر میں ہجے کی جانچ کے لیے فی زبان آف لائن ہنسپیل لغت کی فائلیں (.aff اور .dic) فراہم کریں — یہ کسی بھی آن لائن تلاش سے پہلے چیک کی جاتی ہیں، اور انٹرنیٹ کنکشن کے بغیر بھی کام کرتی ہیں۔",
+  "dictionariesSettings.empty": "ابھی تک کوئی لغت مقرر نہیں کی گئی۔",
+  "dictionariesSettings.add": "لغت شامل کریں",
+  "dictionariesSettings.language": "زبان",
+  "dictionariesSettings.chooseAff": ".aff فائل منتخب کریں…",
+  "dictionariesSettings.chooseDic": ".dic فائل منتخب کریں…",
+  "dictionariesSettings.save": "محفوظ کریں",
+  "dictionariesSettings.remove": "ہٹا دیں",
 
   "librariesSettings.description": "ایک وقت میں صرف ایک لائبریری کھلی ہوتی ہے۔ اپنی پہلے کھولی گئی کسی بھی لائبریری کو تبدیل، نام تبدیل، مقام تبدیل، دوبارہ ہم آہنگ یا ہٹائیں۔",
   "librariesSettings.addLibrary": "لائبریری شامل کریں…",

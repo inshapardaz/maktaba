@@ -139,8 +139,8 @@ public record RenameTagRequestDto(string Name);
 public record RenameSeriesRequestDto(string Name);
 
 public record PeriodicalDto(
-    string Id, string Name, string? Description, string Frequency, int IssueCount, bool HasCover);
+    string Id, string Name, string? Description, string Frequency, string? Language, int IssueCount, bool HasCover);
 
-public record CreatePeriodicalRequestDto(string Name, string Frequency, string? Description);
+public record CreatePeriodicalRequestDto(string Name, string Frequency, string? Description, string? Language);
 
-public record UpdatePeriodicalRequestDto(string Name, string Frequency, string? Description);
+public record UpdatePeriodicalRequestDto(string Name, string Frequency, string? Description, string? Language);

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, ColorSwatch, Group, Modal, Select, SegmentedControl, Stack, Switch, Tabs, Text, UnstyledButton } from "@mantine/core";
-import { IconAlertTriangle, IconBook2, IconBooks, IconCheck, IconInfoCircle, IconSettings } from "@tabler/icons-react";
+import { IconAlertTriangle, IconBook2, IconBooks, IconCheck, IconInfoCircle, IconLanguage, IconSettings } from "@tabler/icons-react";
 import { useLanguage } from "../i18n/LanguageContext";
 import {
   getStoredAutoTagMode,
@@ -20,10 +20,11 @@ import { THEME_COLOR_OPTIONS } from "../theme";
 import { URDU_FONT_OPTIONS, type UrduFontName } from "../urduFont";
 import { AboutSettings } from "./AboutSettings";
 import { ColorSchemeToggle } from "./ColorSchemeToggle";
+import { DictionariesSettings } from "./DictionariesSettings";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { LibrariesSettings } from "./LibrariesSettings";
 
-export type SettingsTab = "general" | "libraries" | "reading" | "about";
+export type SettingsTab = "general" | "libraries" | "reading" | "dictionaries" | "about";
 
 interface SettingsScreenProps {
   opened: boolean;
@@ -108,6 +109,9 @@ export function SettingsScreen({ opened, onClose, onLibraryChanged, initialTab }
           </Tabs.Tab>
           <Tabs.Tab value="reading" leftSection={<IconBook2 size={14} />}>
             {t("settings.reading")}
+          </Tabs.Tab>
+          <Tabs.Tab value="dictionaries" leftSection={<IconLanguage size={14} />}>
+            {t("settings.dictionaries")}
           </Tabs.Tab>
           <Tabs.Tab value="about" leftSection={<IconInfoCircle size={14} />}>
             {t("settings.about")}
@@ -254,6 +258,10 @@ export function SettingsScreen({ opened, onClose, onLibraryChanged, initialTab }
               </Text>
             </Stack>
           </Stack>
+        </Tabs.Panel>
+
+        <Tabs.Panel value="dictionaries" pt="lg">
+          <DictionariesSettings />
         </Tabs.Panel>
 
         <Tabs.Panel value="about" pt="lg">

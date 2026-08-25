@@ -54,6 +54,11 @@ declare global {
       openHelpWindow: () => Promise<void>;
       replayOnboardingTour: () => Promise<void>;
       onReplayOnboardingTour: (callback: () => void) => () => void;
+      pickDictionaryFile: (extension: "aff" | "dic") => Promise<string | null>;
+      listDictionaries: () => Promise<string[]>;
+      saveDictionary: (language: string, affSourcePath: string, dicSourcePath: string) => Promise<void>;
+      removeDictionary: (language: string) => Promise<void>;
+      readDictionary: (language: string) => Promise<{ aff: Uint8Array; dic: Uint8Array } | null>;
     };
   }
 }

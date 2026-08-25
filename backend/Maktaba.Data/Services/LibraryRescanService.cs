@@ -35,7 +35,7 @@ public partial class LibraryRescanService(
         double Percentage, string? ChapterId, double? Position, DateTime UpdatedAt);
 
     private sealed record PreviousPeriodicalState(
-        string Name, string SortName, string? Description, PeriodicalFrequency Frequency, DateTime DateAdded);
+        string Name, string SortName, string? Description, PeriodicalFrequency Frequency, string? Language, DateTime DateAdded);
 
     // Captured per book id before the wipe below, and reapplied to the rebuilt row for any book
     // whose folder (and therefore id) still exists, rather than silently resetting it on every
@@ -161,6 +161,7 @@ public partial class LibraryRescanService(
                         SortName = previousPeriodical.SortName,
                         Description = previousPeriodical.Description,
                         Frequency = previousPeriodical.Frequency,
+                        Language = previousPeriodical.Language,
                         DateAdded = previousPeriodical.DateAdded,
                         FolderPath = relativeFolder,
                     }
@@ -170,6 +171,7 @@ public partial class LibraryRescanService(
                         Name = entry.Title,
                         SortName = TitleSorting.ComputeSortTitle(entry.Title),
                         Frequency = PeriodicalFrequency.Occasional,
+                        Language = "en",
                         FolderPath = relativeFolder,
                     };
 
@@ -318,12 +320,12 @@ public partial class LibraryRescanService(
     private async Task<Dictionary<int, PreviousPeriodicalState>> LoadPreviousPeriodicalStatesAsync(CancellationToken ct)
     {
         var periodicals = await db.Periodicals
-            .Select(p => new { p.Id, p.Name, p.SortName, p.Description, p.Frequency, p.DateAdded })
+            .Select(p => new { p.Id, p.Name, p.SortName, p.Description, p.Frequency, p.Language, p.DateAdded })
             .ToListAsync(ct);
 
         return periodicals.ToDictionary(
             p => p.Id,
-            p => new PreviousPeriodicalState(p.Name, p.SortName, p.Description, p.Frequency, p.DateAdded));
+            p => new PreviousPeriodicalState(p.Name, p.SortName, p.Description, p.Frequency, p.Language, p.DateAdded));
     }
 
     private async Task<bool> TryIndexBookFolderAsync(
@@ -444,7 +446,7 @@ public partial class LibraryRescanService(
             Title = metadata.Title,
             SortTitle = TitleSorting.ComputeSortTitle(metadata.Title),
             Description = metadata.Description,
-            Language = metadata.Language,
+            Language = metadata.Language ?? "en",
             Publisher = metadata.Publisher,
             DatePublished = metadata.PublishedDate,
             FolderPath = relativeFolder,

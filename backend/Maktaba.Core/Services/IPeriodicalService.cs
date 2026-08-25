@@ -11,10 +11,12 @@ public enum PeriodicalDeleteOutcome
 
 public interface IPeriodicalService
 {
-    Task<Periodical> CreateAsync(string name, PeriodicalFrequency frequency, string? description, CancellationToken ct = default);
+    Task<Periodical> CreateAsync(
+        string name, PeriodicalFrequency frequency, string? description, string? language, CancellationToken ct = default);
 
     Task<Periodical?> UpdateAsync(
-        int periodicalId, string name, PeriodicalFrequency frequency, string? description, CancellationToken ct = default);
+        int periodicalId, string name, PeriodicalFrequency frequency, string? description, string? language,
+        CancellationToken ct = default);
 
     Task<PeriodicalDeleteOutcome> DeleteAsync(int periodicalId, CancellationToken ct = default);
 

@@ -19,7 +19,7 @@ public static class PeriodicalEndpoints
 
             var periodicals = await db.Periodicals
                 .OrderBy(p => p.SortName)
-                .Select(p => new { p.Id, p.Name, p.Description, p.Frequency, p.FolderPath, IssueCount = p.Issues.Count })
+                .Select(p => new { p.Id, p.Name, p.Description, p.Frequency, p.Language, p.FolderPath, IssueCount = p.Issues.Count })
                 .ToListAsync();
 
             return Results.Ok(periodicals.Select(p => new PeriodicalDto(
@@ -27,6 +27,7 @@ public static class PeriodicalEndpoints
                 p.Name,
                 p.Description,
                 p.Frequency.ToString(),
+                p.Language,
                 p.IssueCount,
                 CoverLocator.Find(root, p.FolderPath) is not null)));
         });
@@ -52,18 +53,20 @@ public static class PeriodicalEndpoints
             var root = libraryPath.LibraryRootPath!;
             var existing = await db.Periodicals
                 .Where(p => p.Name.ToLower() == name.ToLower())
-                .Select(p => new { p.Id, p.Name, p.Description, p.Frequency, p.FolderPath, IssueCount = p.Issues.Count })
+                .Select(p => new { p.Id, p.Name, p.Description, p.Frequency, p.Language, p.FolderPath, IssueCount = p.Issues.Count })
                 .FirstOrDefaultAsync(ct);
 
             if (existing is not null)
             {
                 return Results.Ok(new PeriodicalDto(
                     IdCodec.Encode(existing.Id), existing.Name, existing.Description, existing.Frequency.ToString(),
-                    existing.IssueCount, CoverLocator.Find(root, existing.FolderPath) is not null));
+                    existing.Language, existing.IssueCount, CoverLocator.Find(root, existing.FolderPath) is not null));
             }
 
-            var periodical = await periodicalService.CreateAsync(name, frequency, request.Description?.Trim(), ct);
-            var dto = new PeriodicalDto(IdCodec.Encode(periodical.Id), periodical.Name, periodical.Description, periodical.Frequency.ToString(), 0, false);
+            var periodical = await periodicalService.CreateAsync(name, frequency, request.Description?.Trim(), request.Language?.Trim(), ct);
+            var dto = new PeriodicalDto(
+                IdCodec.Encode(periodical.Id), periodical.Name, periodical.Description, periodical.Frequency.ToString(),
+                periodical.Language, 0, false);
             return Results.Created($"/api/periodicals/{dto.Id}", dto);
         });
 
@@ -78,7 +81,7 @@ public static class PeriodicalEndpoints
 
             var periodical = await db.Periodicals
                 .Where(p => p.Id == periodicalId)
-                .Select(p => new { p.Id, p.Name, p.Description, p.Frequency, p.FolderPath, IssueCount = p.Issues.Count })
+                .Select(p => new { p.Id, p.Name, p.Description, p.Frequency, p.Language, p.FolderPath, IssueCount = p.Issues.Count })
                 .FirstOrDefaultAsync();
 
             if (periodical is null)
@@ -88,7 +91,7 @@ public static class PeriodicalEndpoints
 
             return Results.Ok(new PeriodicalDto(
                 IdCodec.Encode(periodical.Id), periodical.Name, periodical.Description, periodical.Frequency.ToString(),
-                periodical.IssueCount, CoverLocator.Find(root, periodical.FolderPath) is not null));
+                periodical.Language, periodical.IssueCount, CoverLocator.Find(root, periodical.FolderPath) is not null));
         });
 
         group.MapPut("/{id}", async (
@@ -111,7 +114,8 @@ public static class PeriodicalEndpoints
                 return Results.BadRequest(new { error = "Invalid frequency." });
             }
 
-            var periodical = await periodicalService.UpdateAsync(periodicalId, name, frequency, request.Description?.Trim(), ct);
+            var periodical = await periodicalService.UpdateAsync(
+                periodicalId, name, frequency, request.Description?.Trim(), request.Language?.Trim(), ct);
             if (periodical is null)
             {
                 return Results.NotFound();
@@ -120,7 +124,7 @@ public static class PeriodicalEndpoints
             var root = libraryPath.LibraryRootPath!;
             return Results.Ok(new PeriodicalDto(
                 IdCodec.Encode(periodical.Id), periodical.Name, periodical.Description, periodical.Frequency.ToString(),
-                periodical.Issues.Count, CoverLocator.Find(root, periodical.FolderPath) is not null));
+                periodical.Language, periodical.Issues.Count, CoverLocator.Find(root, periodical.FolderPath) is not null));
         });
 
         group.MapDelete("/{id}", async (string id, IPeriodicalService periodicalService, CancellationToken ct) =>

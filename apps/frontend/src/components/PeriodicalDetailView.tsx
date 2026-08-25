@@ -31,6 +31,7 @@ import {
   type BookSummary,
   type PeriodicalFrequency,
 } from "../api";
+import { DICTIONARY_LANGUAGE_CODES } from "../dictionaryLanguages";
 import { useLanguage } from "../i18n/LanguageContext";
 import type { TranslationKey } from "../i18n/translations";
 import { BrowseViewHeader } from "./BrowseViewHeader";
@@ -154,7 +155,9 @@ export function PeriodicalDetailView({ periodicalId, onBack, onSelectBook }: Per
   const [editing, setEditing] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [granularityOverride, setGranularityOverride] = useState<Granularity | null>(null);
-  const [form, setForm] = useState({ name: "", description: "", frequency: "Occasional" as PeriodicalFrequency });
+  const [form, setForm] = useState({
+    name: "", description: "", frequency: "Occasional" as PeriodicalFrequency, language: "" as string,
+  });
 
   const periodicalQuery = useQuery({ queryKey: ["periodical", periodicalId], queryFn: () => getPeriodical(periodicalId) });
   const issuesQuery = useQuery({
@@ -168,7 +171,9 @@ export function PeriodicalDetailView({ periodicalId, onBack, onSelectBook }: Per
   };
 
   const updateMutation = useMutation({
-    mutationFn: () => updatePeriodical(periodicalId, form.name.trim(), form.frequency, form.description.trim() || null),
+    mutationFn: () => updatePeriodical(
+      periodicalId, form.name.trim(), form.frequency, form.description.trim() || null, form.language || null,
+    ),
     onSuccess: () => {
       setEditing(false);
       invalidate();
@@ -194,6 +199,7 @@ export function PeriodicalDetailView({ periodicalId, onBack, onSelectBook }: Per
       name: periodicalQuery.data.name,
       description: periodicalQuery.data.description ?? "",
       frequency: periodicalQuery.data.frequency,
+      language: periodicalQuery.data.language ?? "",
     });
     setEditing(true);
   };
@@ -261,6 +267,15 @@ export function PeriodicalDetailView({ periodicalId, onBack, onSelectBook }: Per
                   value={form.frequency}
                   onChange={(value) => value && setForm({ ...form, frequency: value as PeriodicalFrequency })}
                   allowDeselect={false}
+                />
+                <Select
+                  label={t("periodicalsView.language")}
+                  placeholder={t("periodicalsView.language")}
+                  data={DICTIONARY_LANGUAGE_CODES.map((code) => ({ value: code, label: t(`language.${code}` as TranslationKey) }))}
+                  value={form.language || null}
+                  onChange={(value) => setForm({ ...form, language: value ?? "" })}
+                  searchable
+                  clearable
                 />
                 <Textarea
                   label={t("periodicalDetail.description")}

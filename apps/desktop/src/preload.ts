@@ -154,4 +154,21 @@ contextBridge.exposeInMainWorld("maktaba", {
     ipcRenderer.on("maktaba:replay-onboarding-tour", listener);
     return () => ipcRenderer.removeListener("maktaba:replay-onboarding-tour", listener);
   },
+
+  // Issue #30: offline Hunspell dictionaries (.aff/.dic) for the reader's spell-check, stored
+  // app-wide in Electron's userData folder (see native.ts's dictionariesDir) - not library data,
+  // so this never goes through the Maktaba.Api sidecar.
+  pickDictionaryFile: (extension: "aff" | "dic"): Promise<string | null> =>
+    ipcRenderer.invoke("maktaba:pick-dictionary-file", extension),
+
+  listDictionaries: (): Promise<string[]> => ipcRenderer.invoke("maktaba:list-dictionaries"),
+
+  saveDictionary: (language: string, affSourcePath: string, dicSourcePath: string): Promise<void> =>
+    ipcRenderer.invoke("maktaba:save-dictionary", language, affSourcePath, dicSourcePath),
+
+  removeDictionary: (language: string): Promise<void> =>
+    ipcRenderer.invoke("maktaba:remove-dictionary", language),
+
+  readDictionary: (language: string): Promise<{ aff: Uint8Array; dic: Uint8Array } | null> =>
+    ipcRenderer.invoke("maktaba:read-dictionary", language),
 });

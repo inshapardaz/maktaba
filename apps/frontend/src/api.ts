@@ -543,6 +543,9 @@ export interface Periodical {
   name: string;
   description: string | null;
   frequency: PeriodicalFrequency;
+  // Issue #30: an issue has no language of its own - the reader falls back to its periodical's
+  // language, then to English, to pick a Hunspell dictionary (see ReaderOverlay.tsx).
+  language: string | null;
   issueCount: number;
   hasCover: boolean;
 }
@@ -557,19 +560,21 @@ export function getPeriodical(id: string): Promise<Periodical> {
 
 // Upserts by name (same semantics as createCollection) - a repeated quick-add of the same
 // periodical name resolves to the one existing row instead of creating a duplicate.
-export function createPeriodical(name: string, frequency: PeriodicalFrequency, description?: string | null): Promise<Periodical> {
+export function createPeriodical(
+  name: string, frequency: PeriodicalFrequency, description?: string | null, language?: string | null,
+): Promise<Periodical> {
   return request<Periodical>("/api/periodicals", {
     method: "POST",
-    body: JSON.stringify({ name, frequency, description: description ?? null }),
+    body: JSON.stringify({ name, frequency, description: description ?? null, language: language ?? null }),
   });
 }
 
 export function updatePeriodical(
-  id: string, name: string, frequency: PeriodicalFrequency, description: string | null,
+  id: string, name: string, frequency: PeriodicalFrequency, description: string | null, language: string | null,
 ): Promise<Periodical> {
   return request<Periodical>(`/api/periodicals/${id}`, {
     method: "PUT",
-    body: JSON.stringify({ name, frequency, description }),
+    body: JSON.stringify({ name, frequency, description, language }),
   });
 }
 
