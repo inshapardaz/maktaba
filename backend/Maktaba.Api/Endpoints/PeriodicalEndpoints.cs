@@ -176,17 +176,20 @@ public static class PeriodicalEndpoints
                 periodical.Issues.Count, CoverLocator.Find(root, periodical.FolderPath) is not null));
         });
 
-        group.MapDelete("/{id}", async (string id, IPeriodicalService periodicalService, CancellationToken ct) =>
+        // deleteIssues=true opts into cascading the delete onto every issue - see
+        // PeriodicalService.DeleteAsync. Without it, a periodical that still has issues comes back
+        // as a 409 instead, so the frontend can show a confirmation (with the issue count) first.
+        group.MapDelete("/{id}", async (string id, bool? deleteIssues, IPeriodicalService periodicalService, CancellationToken ct) =>
         {
             if (!IdCodec.TryDecode(id, out var periodicalId))
             {
                 return Results.NotFound();
             }
 
-            var outcome = await periodicalService.DeleteAsync(periodicalId, ct);
-            return outcome switch
+            var result = await periodicalService.DeleteAsync(periodicalId, deleteIssues == true, ct);
+            return result.Outcome switch
             {
-                PeriodicalDeleteOutcome.Deleted => Results.NoContent(),
+                PeriodicalDeleteOutcome.Deleted => Results.Ok(new { folderPath = result.AbsoluteFolderPath }),
                 PeriodicalDeleteOutcome.NotFound => Results.NotFound(),
                 PeriodicalDeleteOutcome.HasIssues => Results.Conflict(
                     new { error = "This periodical still has issues. Move or remove them first." }),

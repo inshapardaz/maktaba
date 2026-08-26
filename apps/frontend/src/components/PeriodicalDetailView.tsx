@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ActionIcon,
+  Alert,
   Autocomplete,
   Badge,
   Box,
@@ -10,6 +11,7 @@ import {
   Group,
   Image,
   Loader,
+  Modal,
   MultiSelect,
   NavLink,
   Select,
@@ -21,7 +23,7 @@ import {
   Tooltip,
   UnstyledButton,
 } from "@mantine/core";
-import { IconCamera, IconPencil, IconTrash } from "@tabler/icons-react";
+import { IconAlertCircle, IconCamera, IconPencil, IconTrash } from "@tabler/icons-react";
 import {
   coverUrl,
   deletePeriodical,
@@ -218,7 +220,10 @@ export function PeriodicalDetailView({ periodicalId, onBack, onSelectBook }: Per
   });
 
   const deleteMutation = useMutation({
-    mutationFn: () => deletePeriodical(periodicalId),
+    mutationFn: async () => {
+      const { folderPath } = await deletePeriodical(periodicalId, (periodicalQuery.data?.issueCount ?? 0) > 0);
+      await window.maktaba.trashPath(folderPath);
+    },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["periodicals"] });
       onBack();
@@ -261,56 +266,60 @@ export function PeriodicalDetailView({ periodicalId, onBack, onSelectBook }: Per
 
   return (
     <Box display="flex" style={{ flexDirection: "column", height: "100%" }}>
-      <BrowseViewHeader title={periodical.name} onBack={onBack} />
+      <BrowseViewHeader title={periodical.name} onBack={onBack} parentLabel={t("periodicalsView.title")} />
 
       <Box p="xl" style={{ flex: 1, overflow: "auto" }}>
-        <Group align="flex-start" gap="lg" mb="xl" wrap="nowrap">
-          <FileButton onChange={(file) => file && coverMutation.mutate(file)} accept="image/jpeg,image/png">
-            {(props) => (
-              <Box {...props} pos="relative" style={{ cursor: "pointer", flexShrink: 0 }}>
-                {periodical.hasCover ? (
-                  <Image src={periodicalCoverUrl(periodical.id)} w={120} h={160} radius="sm" fit="cover" />
-                ) : (
-                  <Box
-                    w={120}
-                    h={160}
-                    style={{
-                      borderRadius: "var(--mantine-radius-sm)",
-                      border: "1px dashed var(--mantine-color-default-border)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <IconCamera size={24} color="var(--mantine-color-dimmed)" />
-                  </Box>
-                )}
-              </Box>
-            )}
-          </FileButton>
+        <Group align="flex-start" gap="xl" wrap="nowrap">
+          {/* Left column (right in RTL, via the browser's own flex-row mirroring under dir="rtl" -
+              no special-casing needed): cover on top, periodical info underneath, then the
+              year/month nav below that - a single vertical rail rather than the cover+info pair
+              sitting beside a separate nav+grid row like before. */}
+          <Stack gap="md" w={170} style={{ flexShrink: 0 }}>
+            <FileButton onChange={(file) => file && coverMutation.mutate(file)} accept="image/jpeg,image/png">
+              {(props) => (
+                <Box {...props} pos="relative" style={{ cursor: "pointer" }}>
+                  {periodical.hasCover ? (
+                    <Image src={periodicalCoverUrl(periodical.id)} w={120} h={160} radius="sm" fit="cover" />
+                  ) : (
+                    <Box
+                      w={120}
+                      h={160}
+                      style={{
+                        borderRadius: "var(--mantine-radius-sm)",
+                        border: "1px dashed var(--mantine-color-default-border)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <IconCamera size={24} color="var(--mantine-color-dimmed)" />
+                    </Box>
+                  )}
+                </Box>
+              )}
+            </FileButton>
 
-          <Box style={{ flex: 1 }}>
-            {editing ? (
-              <Stack gap="xs" maw={420}>
-                <TextInput
-                  label={t("periodicalsView.namePlaceholder")}
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.currentTarget.value })}
-                />
-                <Select
-                  label={t("periodicalsView.frequency")}
-                  data={FREQUENCIES.map((f) => ({ value: f, label: t(`periodicalsView.frequency.${f}` as TranslationKey) }))}
-                  value={form.frequency}
-                  onChange={(value) => value && setForm({ ...form, frequency: value as PeriodicalFrequency })}
-                  allowDeselect={false}
-                />
-                <Textarea
-                  label={t("periodicalDetail.description")}
-                  rows={3}
-                  value={form.description}
-                  onChange={(e) => setForm({ ...form, description: e.currentTarget.value })}
-                />
-                <Group grow align="flex-start">
+            <Box>
+              {editing ? (
+                <Stack gap="xs">
+                  <TextInput
+                    label={t("periodicalsView.namePlaceholder")}
+                    value={form.name}
+                    onChange={(e) => setForm({ ...form, name: e.currentTarget.value })}
+                  />
+                  <Select
+                    label={t("periodicalsView.frequency")}
+                    data={FREQUENCIES.map((f) => ({ value: f, label: t(`periodicalsView.frequency.${f}` as TranslationKey) }))}
+                    value={form.frequency}
+                    onChange={(value) => value && setForm({ ...form, frequency: value as PeriodicalFrequency })}
+                    allowDeselect={false}
+                  />
+                  <Textarea
+                    label={t("periodicalDetail.description")}
+                    rows={3}
+                    value={form.description}
+                    onChange={(e) => setForm({ ...form, description: e.currentTarget.value })}
+                  />
                   <Autocomplete
                     label={t("bookEdit.publisher")}
                     data={publishersQuery.data ?? []}
@@ -325,199 +334,215 @@ export function PeriodicalDetailView({ periodicalId, onBack, onSelectBook }: Per
                     searchable
                     clearable
                   />
-                </Group>
-                <TextInput
-                  label={t("periodicalDetail.editor")}
-                  value={form.editor}
-                  onChange={(e) => setForm({ ...form, editor: e.currentTarget.value })}
-                />
-                <MultiSelect
-                  label={t("bookEdit.tags")}
-                  data={tagOptions}
-                  value={form.tags}
-                  onChange={(values) => {
-                    setForm({ ...form, tags: values });
-                    setTagSearch("");
-                  }}
-                  searchable
-                  searchValue={tagSearch}
-                  onSearchChange={setTagSearch}
-                  onBlur={() => {
-                    const trimmed = tagSearch.trim();
-                    if (trimmed.length > 0 && !form.tags.some((tag) => tag.toLowerCase() === trimmed.toLowerCase())) {
-                      setForm((prev) => ({ ...prev, tags: [...prev.tags, trimmed] }));
-                    }
-                    setTagSearch("");
-                  }}
-                />
-                <Group>
-                  <Button size="xs" loading={updateMutation.isPending} onClick={() => updateMutation.mutate()}>
-                    {t("common.save")}
-                  </Button>
-                  <Button size="xs" variant="default" onClick={() => setEditing(false)}>
-                    {t("common.cancel")}
-                  </Button>
-                </Group>
-              </Stack>
-            ) : (
-              <Stack gap={4}>
-                <Group gap="xs">
-                  <Badge variant="light">{t(`periodicalsView.frequency.${periodical.frequency}` as TranslationKey)}</Badge>
-                  <ActionIcon variant="subtle" size="sm" onClick={startEditing} aria-label={t("bookDetail.edit")}>
-                    <IconPencil size={14} />
-                  </ActionIcon>
-                  {confirmingDelete ? (
-                    <Group gap={4}>
-                      <Button size="xs" color="red" loading={deleteMutation.isPending} onClick={() => deleteMutation.mutate()}>
-                        {t("common.confirm")}
-                      </Button>
-                      <Button size="xs" variant="subtle" onClick={() => setConfirmingDelete(false)}>
-                        {t("common.cancel")}
-                      </Button>
-                    </Group>
-                  ) : (
-                    <Tooltip label={periodical.issueCount > 0 ? t("periodicalsView.cannotDelete") : t("periodicalsView.confirmDelete")}>
+                  <TextInput
+                    label={t("periodicalDetail.editor")}
+                    value={form.editor}
+                    onChange={(e) => setForm({ ...form, editor: e.currentTarget.value })}
+                  />
+                  <MultiSelect
+                    label={t("bookEdit.tags")}
+                    data={tagOptions}
+                    value={form.tags}
+                    onChange={(values) => {
+                      setForm({ ...form, tags: values });
+                      setTagSearch("");
+                    }}
+                    searchable
+                    searchValue={tagSearch}
+                    onSearchChange={setTagSearch}
+                    onBlur={() => {
+                      const trimmed = tagSearch.trim();
+                      if (trimmed.length > 0 && !form.tags.some((tag) => tag.toLowerCase() === trimmed.toLowerCase())) {
+                        setForm((prev) => ({ ...prev, tags: [...prev.tags, trimmed] }));
+                      }
+                      setTagSearch("");
+                    }}
+                  />
+                  <Group>
+                    <Button size="xs" loading={updateMutation.isPending} onClick={() => updateMutation.mutate()}>
+                      {t("common.save")}
+                    </Button>
+                    <Button size="xs" variant="default" onClick={() => setEditing(false)}>
+                      {t("common.cancel")}
+                    </Button>
+                  </Group>
+                </Stack>
+              ) : (
+                <Stack gap={4}>
+                  <Group gap="xs">
+                    <Badge variant="light">{t(`periodicalsView.frequency.${periodical.frequency}` as TranslationKey)}</Badge>
+                    <ActionIcon variant="subtle" size="sm" onClick={startEditing} aria-label={t("bookDetail.edit")}>
+                      <IconPencil size={14} />
+                    </ActionIcon>
+                    <Tooltip label={t("periodicalsView.confirmDelete")}>
                       <ActionIcon
                         variant="subtle"
                         color="red"
                         size="sm"
-                        disabled={periodical.issueCount > 0}
                         onClick={() => setConfirmingDelete(true)}
                         aria-label={t("periodicalsView.confirmDelete")}
                       >
                         <IconTrash size={14} />
                       </ActionIcon>
                     </Tooltip>
-                  )}
-                </Group>
-                {periodical.description && (
-                  <Text size="sm" c="dimmed">
-                    {periodical.description}
-                  </Text>
-                )}
-                {(periodical.publisher || periodical.language || periodical.editor) && (
-                  <Text size="sm" c="dimmed">
-                    {[
-                      periodical.publisher,
-                      periodical.language ? languageDisplayName(periodical.language, t) : null,
-                      periodical.editor,
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </Text>
-                )}
-                {periodical.tags.length > 0 && (
-                  <Group gap={4}>
-                    {periodical.tags.map((tag) => (
-                      <Badge key={tag} size="sm" variant="outline" color="gray" tt="none">
-                        {tag}
-                      </Badge>
-                    ))}
                   </Group>
+                  {periodical.description && (
+                    <Text size="sm" c="dimmed">
+                      {periodical.description}
+                    </Text>
+                  )}
+                  {(periodical.publisher || periodical.language || periodical.editor) && (
+                    <Text size="sm" c="dimmed">
+                      {[
+                        periodical.publisher,
+                        periodical.language ? languageDisplayName(periodical.language, t) : null,
+                        periodical.editor,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </Text>
+                  )}
+                  {periodical.tags.length > 0 && (
+                    <Group gap={4}>
+                      {periodical.tags.map((tag) => (
+                        <Badge key={tag} size="sm" variant="outline" color="gray" tt="none">
+                          {tag}
+                        </Badge>
+                      ))}
+                    </Group>
+                  )}
+                </Stack>
+              )}
+            </Box>
+
+            {/* Year/month nav: All, then one row per year with an issue count - a Weekly
+                periodical's year rows expand (Mantine NavLink's own children/chevron) into
+                per-month counts, since a flat year of weekly issues is too many to browse at
+                once; other frequencies just filter straight to that year on click. */}
+            {allIssues.length > 0 && (
+              <Stack gap={2}>
+                <NavLink
+                  label={t("periodicalDetail.allIssues")}
+                  active={selection.type === "all"}
+                  onClick={() => setSelection({ type: "all" })}
+                  rightSection={
+                    <Badge size="sm" variant="light" color="gray">
+                      {allIssues.length}
+                    </Badge>
+                  }
+                  styles={{ label: { fontWeight: 600 } }}
+                />
+                {yearBuckets.map((bucket) =>
+                  periodical.frequency === "Weekly" ? (
+                    <NavLink
+                      key={bucket.year}
+                      label={String(bucket.year)}
+                      active={selection.type === "year" && selection.year === bucket.year}
+                      onClick={() => setSelection({ type: "year", year: bucket.year })}
+                      rightSection={
+                        <Badge size="sm" variant="light" color="gray">
+                          {bucket.count}
+                        </Badge>
+                      }
+                      childrenOffset={16}
+                    >
+                      {bucket.months.map((monthBucket) => (
+                        <NavLink
+                          key={monthBucket.month}
+                          label={monthName(monthBucket.month)}
+                          active={selection.type === "month" && selection.year === bucket.year && selection.month === monthBucket.month}
+                          onClick={() => setSelection({ type: "month", year: bucket.year, month: monthBucket.month })}
+                          rightSection={
+                            <Badge size="xs" variant="light" color="gray">
+                              {monthBucket.count}
+                            </Badge>
+                          }
+                        />
+                      ))}
+                    </NavLink>
+                  ) : (
+                    <NavLink
+                      key={bucket.year}
+                      label={String(bucket.year)}
+                      active={selection.type === "year" && selection.year === bucket.year}
+                      onClick={() => setSelection({ type: "year", year: bucket.year })}
+                      rightSection={
+                        <Badge size="sm" variant="light" color="gray">
+                          {bucket.count}
+                        </Badge>
+                      }
+                    />
+                  ),
                 )}
-              </Stack>
-            )}
-          </Box>
-        </Group>
-
-        <Text fz={10.5} fw={600} c="dimmed" tt="uppercase" mb="md" style={{ letterSpacing: "0.1em" }}>
-          {t("periodicalDetail.issues")}
-        </Text>
-
-        {allIssues.length === 0 ? (
-          <Text size="sm" c="dimmed">
-            {t("periodicalDetail.noIssues")}
-          </Text>
-        ) : (
-          <Group align="flex-start" gap="xl" wrap="nowrap">
-            {/* Left nav: All, then one row per year with an issue count - a Weekly periodical's
-                year rows expand (Mantine NavLink's own children/chevron) into per-month counts,
-                since a flat year of weekly issues is too many to browse at once; other frequencies
-                just filter straight to that year on click. */}
-            <Stack gap={2} w={200} style={{ flexShrink: 0 }}>
-              <NavLink
-                label={t("periodicalDetail.allIssues")}
-                active={selection.type === "all"}
-                onClick={() => setSelection({ type: "all" })}
-                rightSection={
-                  <Badge size="sm" variant="light" color="gray">
-                    {allIssues.length}
-                  </Badge>
-                }
-                styles={{ label: { fontWeight: 600 } }}
-              />
-              {yearBuckets.map((bucket) =>
-                periodical.frequency === "Weekly" ? (
+                {undatedCount > 0 && (
                   <NavLink
-                    key={bucket.year}
-                    label={String(bucket.year)}
-                    active={selection.type === "year" && selection.year === bucket.year}
-                    onClick={() => setSelection({ type: "year", year: bucket.year })}
+                    label={t("periodicalDetail.undated")}
+                    active={selection.type === "undated"}
+                    onClick={() => setSelection({ type: "undated" })}
                     rightSection={
                       <Badge size="sm" variant="light" color="gray">
-                        {bucket.count}
-                      </Badge>
-                    }
-                    childrenOffset={16}
-                  >
-                    {bucket.months.map((monthBucket) => (
-                      <NavLink
-                        key={monthBucket.month}
-                        label={monthName(monthBucket.month)}
-                        active={selection.type === "month" && selection.year === bucket.year && selection.month === monthBucket.month}
-                        onClick={() => setSelection({ type: "month", year: bucket.year, month: monthBucket.month })}
-                        rightSection={
-                          <Badge size="xs" variant="light" color="gray">
-                            {monthBucket.count}
-                          </Badge>
-                        }
-                      />
-                    ))}
-                  </NavLink>
-                ) : (
-                  <NavLink
-                    key={bucket.year}
-                    label={String(bucket.year)}
-                    active={selection.type === "year" && selection.year === bucket.year}
-                    onClick={() => setSelection({ type: "year", year: bucket.year })}
-                    rightSection={
-                      <Badge size="sm" variant="light" color="gray">
-                        {bucket.count}
+                        {undatedCount}
                       </Badge>
                     }
                   />
-                ),
-              )}
-              {undatedCount > 0 && (
-                <NavLink
-                  label={t("periodicalDetail.undated")}
-                  active={selection.type === "undated"}
-                  onClick={() => setSelection({ type: "undated" })}
-                  rightSection={
-                    <Badge size="sm" variant="light" color="gray">
-                      {undatedCount}
-                    </Badge>
-                  }
-                />
-              )}
-            </Stack>
+                )}
+              </Stack>
+            )}
+          </Stack>
 
-            <Box style={{ flex: 1, minWidth: 0 }}>
-              {visibleIssues.length === 0 ? (
-                <Text size="sm" c="dimmed">
-                  {t("periodicalDetail.noIssues")}
-                </Text>
-              ) : (
-                <SimpleGrid cols={{ base: 2, sm: 3, md: 4, lg: 5 }} spacing="lg">
-                  {visibleIssues.map((issue) => (
-                    <IssueCard key={issue.id} issue={issue} onClick={() => onSelectBook(issue.id)} />
-                  ))}
-                </SimpleGrid>
-              )}
-            </Box>
-          </Group>
-        )}
+          <Box style={{ flex: 1, minWidth: 0 }}>
+            <Text fz={10.5} fw={600} c="dimmed" tt="uppercase" mb="md" style={{ letterSpacing: "0.1em" }}>
+              {t("periodicalDetail.issues")}
+            </Text>
+
+            {visibleIssues.length === 0 ? (
+              <Text size="sm" c="dimmed">
+                {t("periodicalDetail.noIssues")}
+              </Text>
+            ) : (
+              <SimpleGrid cols={{ base: 2, sm: 3, md: 4, lg: 5 }} spacing="lg">
+                {visibleIssues.map((issue) => (
+                  <IssueCard key={issue.id} issue={issue} onClick={() => onSelectBook(issue.id)} />
+                ))}
+              </SimpleGrid>
+            )}
+          </Box>
+        </Group>
       </Box>
+
+      <Modal
+        opened={confirmingDelete}
+        onClose={() => setConfirmingDelete(false)}
+        title={t("periodicalsView.deleteConfirmTitle")}
+        centered
+      >
+        <Stack gap="md">
+          <Text size="sm">
+            {periodical.issueCount > 0
+              ? t("periodicalsView.deleteWarning", {
+                  name: periodical.name,
+                  issues: t(
+                    periodical.issueCount === 1 ? "periodicalsView.issueCount_one" : "periodicalsView.issueCount_other",
+                    { count: periodical.issueCount },
+                  ),
+                })
+              : t("periodicalsView.confirmDelete")}
+          </Text>
+          {deleteMutation.isError && (
+            <Alert color="red" icon={<IconAlertCircle size={16} />}>
+              {deleteMutation.error instanceof Error ? deleteMutation.error.message : String(deleteMutation.error)}
+            </Alert>
+          )}
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setConfirmingDelete(false)}>
+              {t("common.cancel")}
+            </Button>
+            <Button color="red" loading={deleteMutation.isPending} onClick={() => deleteMutation.mutate()}>
+              {t("common.confirm")}
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </Box>
   );
 }

@@ -602,10 +602,15 @@ export function updatePeriodical(id: string, fields: PeriodicalEditFields): Prom
   });
 }
 
-// Rejects with a 409 (surfaced as a thrown ApiError) if the periodical still has issues - no
-// cascade delete, matching the deliberately-cautious style of collection/book removal.
-export function deletePeriodical(id: string): Promise<void> {
-  return request<void>(`/api/periodicals/${id}`, { method: "DELETE" });
+// Rejects with a 409 (surfaced as a thrown ApiError) if the periodical still has issues and
+// deleteIssues isn't passed - the caller is expected to confirm with the user first (showing the
+// issue count) and retry with deleteIssues: true, same "confirm, then cascade" shape as the
+// dedicated confirmation UI in PeriodicalsView.tsx/PeriodicalDetailView.tsx. On success, returns
+// the periodical's absolute folder path (which already contains every issue's own subfolder) for
+// the caller to move to the OS trash via window.maktaba.trashPath - mirrors deleteBook's contract.
+export function deletePeriodical(id: string, deleteIssues?: boolean): Promise<{ folderPath: string }> {
+  const query = deleteIssues ? "?deleteIssues=true" : "";
+  return request<{ folderPath: string }>(`/api/periodicals/${id}${query}`, { method: "DELETE" });
 }
 
 export function periodicalCoverUrl(id: string): string {
