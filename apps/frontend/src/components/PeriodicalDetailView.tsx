@@ -7,6 +7,7 @@ import {
   Badge,
   Box,
   Button,
+  Divider,
   FileButton,
   Group,
   Image,
@@ -14,16 +15,19 @@ import {
   Modal,
   MultiSelect,
   NavLink,
+  ScrollArea,
+  SegmentedControl,
   Select,
   SimpleGrid,
   Stack,
+  Table,
   Text,
   Textarea,
   TextInput,
   Tooltip,
   UnstyledButton,
 } from "@mantine/core";
-import { IconAlertCircle, IconCamera, IconPencil, IconTrash } from "@tabler/icons-react";
+import { IconAlertCircle, IconCamera, IconLayoutGrid, IconList, IconPencil, IconTrash } from "@tabler/icons-react";
 import {
   coverUrl,
   deletePeriodical,
@@ -42,6 +46,7 @@ import { useLanguage } from "../i18n/LanguageContext";
 import type { TranslationKey } from "../i18n/translations";
 import { getLanguageOptions, withCurrentLanguage } from "../languageOptions";
 import { BrowseViewHeader } from "./BrowseViewHeader";
+import type { ViewMode } from "./FilterBar";
 import { languageDisplayName } from "./Sidebar";
 import { SpineCover } from "./SpineCover";
 
@@ -131,17 +136,25 @@ function monthName(month: number): string {
   return new Date(2000, month, 1).toLocaleDateString(undefined, { month: "long" });
 }
 
+// Deliberately not displayTitle/displaySubtitle (issueDisplay.ts) here - those resolve an issue's
+// "title" to its periodical's own name, which is exactly what every card/row on this page would
+// otherwise repeat back at the user since they're already looking at that periodical. Volume/
+// issue number and date are what actually distinguish one issue from another in this view.
+function issueBadge(issue: BookSummary, t: (key: TranslationKey, vars?: Record<string, string | number>) => string): string {
+  return [
+    issue.volumeNumber != null ? t("periodicalDetail.volumeShort", { number: issue.volumeNumber }) : null,
+    issue.issueNumber != null ? t("periodicalDetail.issueShort", { number: issue.issueNumber }) : null,
+    issue.issueDate ? new Date(issue.issueDate).toLocaleDateString() : null,
+  ].filter(Boolean).join(" · ");
+}
+
 // A grouped-by-date view is expected to render many small groups rather than one huge list, so
 // this uses a plain SimpleGrid instead of BookGrid's virtualized one - BookGrid's virtualizer
 // assumes it owns the page's scroll container, which doesn't hold when several instances are
 // stacked inside one already-scrolling parent (each group here).
 function IssueCard({ issue, onClick }: { issue: BookSummary; onClick: () => void }) {
   const { t } = useLanguage();
-  const badge = [
-    issue.volumeNumber != null ? t("periodicalDetail.volumeShort", { number: issue.volumeNumber }) : null,
-    issue.issueNumber != null ? t("periodicalDetail.issueShort", { number: issue.issueNumber }) : null,
-    issue.issueDate ? new Date(issue.issueDate).toLocaleDateString() : null,
-  ].filter(Boolean).join(" · ");
+  const badge = issueBadge(issue, t);
 
   return (
     <UnstyledButton onClick={onClick} style={{ display: "flex", flexDirection: "column" }}>
@@ -162,12 +175,47 @@ function IssueCard({ issue, onClick }: { issue: BookSummary; onClick: () => void
   );
 }
 
+// List-view counterpart to IssueCard, above - same reasoning (custom rather than reusing
+// BookList.tsx, which would show the redundant periodical name as every row's title).
+function IssueTable({ issues, onSelectIssue }: { issues: BookSummary[]; onSelectIssue: (id: string) => void }) {
+  const { t } = useLanguage();
+
+  return (
+    <Table verticalSpacing="xs" highlightOnHover>
+      <Table.Tbody>
+        {issues.map((issue) => (
+          <Table.Tr key={issue.id} onClick={() => onSelectIssue(issue.id)} style={{ cursor: "pointer" }}>
+            <Table.Td w={44}>
+              {issue.hasCover ? (
+                <Image src={coverUrl(issue.id)} w={30} h={42} radius="sm" fit="cover" />
+              ) : (
+                <SpineCover id={issue.id} title={issue.title} width={30} height={42} />
+              )}
+            </Table.Td>
+            <Table.Td>
+              <Text size="sm" fw={600} lineClamp={1} title={issue.title}>
+                {issue.title}
+              </Text>
+            </Table.Td>
+            <Table.Td>
+              <Text size="xs" c="dimmed">
+                {issueBadge(issue, t)}
+              </Text>
+            </Table.Td>
+          </Table.Tr>
+        ))}
+      </Table.Tbody>
+    </Table>
+  );
+}
+
 export function PeriodicalDetailView({ periodicalId, onBack, onSelectBook }: PeriodicalDetailViewProps) {
   const { t } = useLanguage();
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [selection, setSelection] = useState<IssueSelection>({ type: "all" });
+  const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [form, setForm] = useState({
     name: "",
     description: "",
@@ -268,13 +316,15 @@ export function PeriodicalDetailView({ periodicalId, onBack, onSelectBook }: Per
     <Box display="flex" style={{ flexDirection: "column", height: "100%" }}>
       <BrowseViewHeader title={periodical.name} onBack={onBack} parentLabel={t("periodicalsView.title")} />
 
-      <Box p="xl" style={{ flex: 1, overflow: "auto" }}>
-        <Group align="flex-start" gap="xl" wrap="nowrap">
+      <Box style={{ flex: 1, minHeight: 0 }}>
+        <Group align="stretch" gap="xl" wrap="nowrap" h="100%" p="xl" style={{ minHeight: 0 }}>
           {/* Left column (right in RTL, via the browser's own flex-row mirroring under dir="rtl" -
               no special-casing needed): cover on top, periodical info underneath, then the
               year/month nav below that - a single vertical rail rather than the cover+info pair
-              sitting beside a separate nav+grid row like before. */}
-          <Stack gap="md" w={170} style={{ flexShrink: 0 }}>
+              sitting beside a separate nav+grid row like before. Scrolls independently of the
+              issues panel (own ScrollArea) since the row itself no longer scrolls as a whole. */}
+          <ScrollArea style={{ width: 170, flexShrink: 0 }} type="auto">
+          <Stack gap="md">
             <FileButton onChange={(file) => file && coverMutation.mutate(file)} accept="image/jpeg,image/png">
               {(props) => (
                 <Box {...props} pos="relative" style={{ cursor: "pointer" }}>
@@ -489,22 +539,62 @@ export function PeriodicalDetailView({ periodicalId, onBack, onSelectBook }: Per
               </Stack>
             )}
           </Stack>
+          </ScrollArea>
 
-          <Box style={{ flex: 1, minWidth: 0 }}>
-            <Text fz={10.5} fw={600} c="dimmed" tt="uppercase" mb="md" style={{ letterSpacing: "0.1em" }}>
-              {t("periodicalDetail.issues")}
-            </Text>
+          <Divider orientation="vertical" />
+
+          <Box style={{ flex: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column" }}>
+            <Group justify="space-between" mb="md">
+              <Text fz={10.5} fw={600} c="dimmed" tt="uppercase" style={{ letterSpacing: "0.1em" }}>
+                {t("periodicalDetail.issues")}
+              </Text>
+              {visibleIssues.length > 0 && (
+                <SegmentedControl
+                  size="xs"
+                  value={viewMode}
+                  onChange={(value) => setViewMode(value as ViewMode)}
+                  data={[
+                    {
+                      value: "grid",
+                      label: (
+                        <Tooltip label={t("toolbar.gridLabel")} openDelay={300} withinPortal>
+                          <Group gap={0} wrap="nowrap" px={4}>
+                            <IconLayoutGrid size={14} />
+                          </Group>
+                        </Tooltip>
+                      ),
+                    },
+                    {
+                      value: "list",
+                      label: (
+                        <Tooltip label={t("toolbar.listLabel")} openDelay={300} withinPortal>
+                          <Group gap={0} wrap="nowrap" px={4}>
+                            <IconList size={14} />
+                          </Group>
+                        </Tooltip>
+                      ),
+                    },
+                  ]}
+                />
+              )}
+            </Group>
 
             {visibleIssues.length === 0 ? (
               <Text size="sm" c="dimmed">
                 {t("periodicalDetail.noIssues")}
               </Text>
             ) : (
-              <SimpleGrid cols={{ base: 2, sm: 3, md: 4, lg: 5 }} spacing="lg">
-                {visibleIssues.map((issue) => (
-                  <IssueCard key={issue.id} issue={issue} onClick={() => onSelectBook(issue.id)} />
-                ))}
-              </SimpleGrid>
+              <ScrollArea style={{ flex: 1 }} type="auto">
+                {viewMode === "grid" ? (
+                  <SimpleGrid cols={{ base: 2, sm: 3, md: 4, lg: 5 }} spacing="lg">
+                    {visibleIssues.map((issue) => (
+                      <IssueCard key={issue.id} issue={issue} onClick={() => onSelectBook(issue.id)} />
+                    ))}
+                  </SimpleGrid>
+                ) : (
+                  <IssueTable issues={visibleIssues} onSelectIssue={onSelectBook} />
+                )}
+              </ScrollArea>
             )}
           </Box>
         </Group>
