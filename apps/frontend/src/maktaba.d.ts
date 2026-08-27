@@ -54,11 +54,11 @@ declare global {
       openHelpWindow: () => Promise<void>;
       replayOnboardingTour: () => Promise<void>;
       onReplayOnboardingTour: (callback: () => void) => () => void;
-      pickDictionaryFile: (extension: "aff" | "dic") => Promise<string | null>;
-      listDictionaries: () => Promise<string[]>;
-      saveDictionary: (language: string, affSourcePath: string, dicSourcePath: string) => Promise<void>;
-      removeDictionary: (language: string) => Promise<void>;
-      readDictionary: (language: string) => Promise<{ aff: Uint8Array; dic: Uint8Array } | null>;
+      pickStarDictZipFile: () => Promise<string | null>;
+      listStarDictDictionaries: () => Promise<string[]>;
+      saveStarDictDictionary: (language: string, zipSourcePath: string) => Promise<void>;
+      removeStarDictDictionary: (language: string) => Promise<void>;
+      getStarDictDictionaryUrls: (language: string) => Promise<{ ifoUrl: string; idxUrl: string; dictUrl: string } | null>;
     };
   }
 }

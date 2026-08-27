@@ -7,47 +7,45 @@ import { useLanguage } from "../i18n/LanguageContext";
 import type { TranslationKey } from "../i18n/translations";
 import { languageDisplayName } from "./Sidebar";
 
-// Issue #30: lets the user provide offline Hunspell .aff/.dic dictionary files per language - see
-// native.ts's maktaba:*-dictionary IPC handlers (app-wide storage, not tied to any one library)
-// and ReaderOverlay.tsx (which loads the configured dictionary for a book's language when reading).
-export function DictionariesSettings() {
+// qari issue #17: lets the user provide an offline StarDict/GoldenDict dictionary (as a single zip
+// containing its .ifo/.idx/.dict[.dz] files) per language, for real word-lookup definitions in the
+// reader - see native.ts's maktaba:*-stardict-dictionary IPC handlers (app-wide storage, not tied
+// to any one library, unpacked from the zip there) and ReaderOverlay.tsx (which loads the
+// configured dictionary for a book's language when reading).
+export function StarDictSettings() {
   const { t } = useLanguage();
   const queryClient = useQueryClient();
   const [language, setLanguage] = useState<string | null>(null);
-  const [affPath, setAffPath] = useState<string | null>(null);
-  const [dicPath, setDicPath] = useState<string | null>(null);
+  const [zipPath, setZipPath] = useState<string | null>(null);
   const [confirmingRemove, setConfirmingRemove] = useState<string | null>(null);
 
-  const dictionariesQuery = useQuery({ queryKey: ["dictionaries"], queryFn: () => window.maktaba.listDictionaries() });
+  const dictionariesQuery = useQuery({
+    queryKey: ["stardictDictionaries"],
+    queryFn: () => window.maktaba.listStarDictDictionaries(),
+  });
 
-  const invalidate = () => void queryClient.invalidateQueries({ queryKey: ["dictionaries"] });
+  const invalidate = () => void queryClient.invalidateQueries({ queryKey: ["stardictDictionaries"] });
 
   const saveMutation = useMutation({
-    mutationFn: () => window.maktaba.saveDictionary(language!, affPath!, dicPath!),
+    mutationFn: () => window.maktaba.saveStarDictDictionary(language!, zipPath!),
     onSuccess: () => {
       setLanguage(null);
-      setAffPath(null);
-      setDicPath(null);
+      setZipPath(null);
       invalidate();
     },
   });
 
   const removeMutation = useMutation({
-    mutationFn: (lang: string) => window.maktaba.removeDictionary(lang),
+    mutationFn: (lang: string) => window.maktaba.removeStarDictDictionary(lang),
     onSuccess: () => {
       setConfirmingRemove(null);
       invalidate();
     },
   });
 
-  const handlePickAff = async () => {
-    const path = await window.maktaba.pickDictionaryFile("aff");
-    if (path) setAffPath(path);
-  };
-
-  const handlePickDic = async () => {
-    const path = await window.maktaba.pickDictionaryFile("dic");
-    if (path) setDicPath(path);
+  const handlePickZip = async () => {
+    const path = await window.maktaba.pickStarDictZipFile();
+    if (path) setZipPath(path);
   };
 
   const fileName = (path: string) => path.split(/[/\\]/).pop() ?? path;
@@ -58,13 +56,13 @@ export function DictionariesSettings() {
   return (
     <Stack gap="md">
       <Text size="sm" c="dimmed">
-        {t("dictionariesSettings.description")}
+        {t("starDictSettings.description")}
       </Text>
 
       <Stack gap={2}>
         {(dictionariesQuery.data ?? []).length === 0 && (
           <Text size="sm" c="dimmed">
-            {t("dictionariesSettings.empty")}
+            {t("starDictSettings.empty")}
           </Text>
         )}
 
@@ -88,12 +86,12 @@ export function DictionariesSettings() {
                 </Button>
               </Group>
             ) : (
-              <Tooltip label={t("dictionariesSettings.remove")}>
+              <Tooltip label={t("starDictSettings.remove")}>
                 <ActionIcon
                   variant="subtle"
                   color="red"
                   onClick={() => setConfirmingRemove(lang)}
-                  aria-label={t("dictionariesSettings.remove")}
+                  aria-label={t("starDictSettings.remove")}
                 >
                   <IconTrash size={14} />
                 </ActionIcon>
@@ -105,33 +103,25 @@ export function DictionariesSettings() {
 
       <Stack gap="xs" p="sm" style={{ border: "1px solid var(--mantine-color-default-border)", borderRadius: "var(--mantine-radius-sm)" }}>
         <Text fz={10.5} fw={600} c="dimmed" tt="uppercase" style={{ letterSpacing: "0.1em" }}>
-          {t("dictionariesSettings.add")}
+          {t("starDictSettings.add")}
         </Text>
         <Group grow align="flex-end">
           <Select
-            label={t("dictionariesSettings.language")}
-            placeholder={t("dictionariesSettings.language")}
+            label={t("starDictSettings.language")}
+            placeholder={t("starDictSettings.language")}
             data={availableLanguages.map((code) => ({ value: code, label: t(`language.${code}` as TranslationKey) }))}
             value={language}
             onChange={(value) => setLanguage(value)}
             searchable
             disabled={availableLanguages.length === 0}
           />
-          <Button variant="default" leftSection={<IconFileUpload size={14} />} onClick={() => void handlePickAff()}>
-            {affPath ? fileName(affPath) : t("dictionariesSettings.chooseAff")}
-          </Button>
-          <Button variant="default" leftSection={<IconFileUpload size={14} />} onClick={() => void handlePickDic()}>
-            {dicPath ? fileName(dicPath) : t("dictionariesSettings.chooseDic")}
+          <Button variant="default" leftSection={<IconFileUpload size={14} />} onClick={() => void handlePickZip()}>
+            {zipPath ? fileName(zipPath) : t("starDictSettings.chooseZip")}
           </Button>
         </Group>
         <Group justify="flex-end">
-          <Button
-            size="sm"
-            loading={saveMutation.isPending}
-            disabled={!language || !affPath || !dicPath}
-            onClick={() => saveMutation.mutate()}
-          >
-            {t("dictionariesSettings.save")}
+          <Button size="sm" loading={saveMutation.isPending} disabled={!language || !zipPath} onClick={() => saveMutation.mutate()}>
+            {t("starDictSettings.save")}
           </Button>
         </Group>
         {saveMutation.isError && (

@@ -172,20 +172,35 @@ export function ReaderOverlay({ bookId, format, onClose, embedded }: ReaderOverl
       : (bookQuery.data.language ?? "en")
     : "en";
 
-  // Offline Hunspell spell-check (Settings -> Dictionaries) - only loaded once the book's actual
-  // language is known (see languageReady above), so this never briefly fetches the wrong language's
-  // dictionary while the book/periodical queries are still in flight.
-  const dictionaryQuery = useQuery({
-    queryKey: ["dictionary", effectiveLanguage],
-    queryFn: () => window.maktaba.readDictionary(effectiveLanguage),
+  // Offline StarDict/GoldenDict word-lookup dictionary (Settings -> Dictionaries, qari issue #17) -
+  // only loaded once the book's actual language is known (see languageReady above), so this never
+  // briefly fetches the wrong language's dictionary while the book/periodical queries are still in
+  // flight. getStarDictDictionaryUrls itself returns null when nothing's configured for the
+  // language; only these three short URL strings cross IPC (see native.ts's stardict:// protocol
+  // handler) rather than the dictionary's own - potentially tens-of-MB - file contents.
+  const starDictQuery = useQuery({
+    queryKey: ["stardictDictionaryUrls", effectiveLanguage],
+    queryFn: () => window.maktaba.getStarDictDictionaryUrls(effectiveLanguage),
     enabled: languageReady,
     staleTime: Infinity,
   });
 
-  const hunspellDictionaries = useMemo(
-    () => (dictionaryQuery.data ? [{ language: effectiveLanguage, aff: dictionaryQuery.data.aff, dic: dictionaryQuery.data.dic }] : undefined),
-    [dictionaryQuery.data, effectiveLanguage],
+  const stardictDictionaries = useMemo(
+    () =>
+      starDictQuery.data
+        ? [{ language: effectiveLanguage, ifoUrl: starDictQuery.data.ifoUrl, idxUrl: starDictQuery.data.idxUrl, dictUrl: starDictQuery.data.dictUrl }]
+        : undefined,
+    [starDictQuery.data, effectiveLanguage],
   );
+
+  // Word-lookup is an optional, non-blocking feature - a failed fetch here shouldn't interrupt
+  // reading with an Alert the way fileQuery.isError does, but it should still be visible somewhere
+  // rather than silently looking identical to "no dictionary configured for this language".
+  useEffect(() => {
+    if (starDictQuery.isError) {
+      console.error(`Failed to load the StarDict dictionary for "${effectiveLanguage}":`, starDictQuery.error);
+    }
+  }, [starDictQuery.isError, starDictQuery.error, effectiveLanguage]);
 
   // Reader reloads the whole book whenever this object's *reference* changes (its internal
   // load-book effect depends on `source` by identity) - memoized so a settings/progress-driven
@@ -389,7 +404,7 @@ export function ReaderOverlay({ bookId, format, onClose, embedded }: ReaderOverl
           onSettingsChange={handleSettingsChange}
           onProgressChange={scheduleProgressSave}
           onError={(event) => setReaderError(event)}
-          hunspellDictionaries={hunspellDictionaries}
+          stardictDictionaries={stardictDictionaries}
         />
       )}
     </Box>

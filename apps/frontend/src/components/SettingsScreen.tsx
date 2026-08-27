@@ -20,9 +20,9 @@ import { THEME_COLOR_OPTIONS } from "../theme";
 import { URDU_FONT_OPTIONS, type UrduFontName } from "../urduFont";
 import { AboutSettings } from "./AboutSettings";
 import { ColorSchemeToggle } from "./ColorSchemeToggle";
-import { DictionariesSettings } from "./DictionariesSettings";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { LibrariesSettings } from "./LibrariesSettings";
+import { StarDictSettings } from "./StarDictSettings";
 
 export type SettingsTab = "general" | "libraries" | "reading" | "dictionaries" | "about";
 
@@ -261,7 +261,7 @@ export function SettingsScreen({ opened, onClose, onLibraryChanged, initialTab }
         </Tabs.Panel>
 
         <Tabs.Panel value="dictionaries" pt="lg">
-          <DictionariesSettings />
+          <StarDictSettings />
         </Tabs.Panel>
 
         <Tabs.Panel value="about" pt="lg">

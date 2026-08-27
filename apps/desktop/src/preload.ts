@@ -155,20 +155,24 @@ contextBridge.exposeInMainWorld("maktaba", {
     return () => ipcRenderer.removeListener("maktaba:replay-onboarding-tour", listener);
   },
 
-  // Issue #30: offline Hunspell dictionaries (.aff/.dic) for the reader's spell-check, stored
-  // app-wide in Electron's userData folder (see native.ts's dictionariesDir) - not library data,
-  // so this never goes through the Maktaba.Api sidecar.
-  pickDictionaryFile: (extension: "aff" | "dic"): Promise<string | null> =>
-    ipcRenderer.invoke("maktaba:pick-dictionary-file", extension),
+  // qari issue #17: offline StarDict/GoldenDict word-lookup dictionaries (.ifo/.idx/.dict[.dz]) -
+  // stored app-wide in Electron's userData folder (see native.ts's starDictDictionariesDir), not
+  // library data, so this never goes through the Maktaba.Api sidecar. The user picks a single zip
+  // containing the dictionary's three files (see ReaderOverlay.tsx's stardictDictionaries prop for
+  // how the reader consumes the result).
+  pickStarDictZipFile: (): Promise<string | null> => ipcRenderer.invoke("maktaba:pick-stardict-zip"),
 
-  listDictionaries: (): Promise<string[]> => ipcRenderer.invoke("maktaba:list-dictionaries"),
+  listStarDictDictionaries: (): Promise<string[]> => ipcRenderer.invoke("maktaba:list-stardict-dictionaries"),
 
-  saveDictionary: (language: string, affSourcePath: string, dicSourcePath: string): Promise<void> =>
-    ipcRenderer.invoke("maktaba:save-dictionary", language, affSourcePath, dicSourcePath),
+  saveStarDictDictionary: (language: string, zipSourcePath: string): Promise<void> =>
+    ipcRenderer.invoke("maktaba:save-stardict-dictionary", language, zipSourcePath),
 
-  removeDictionary: (language: string): Promise<void> =>
-    ipcRenderer.invoke("maktaba:remove-dictionary", language),
+  removeStarDictDictionary: (language: string): Promise<void> =>
+    ipcRenderer.invoke("maktaba:remove-stardict-dictionary", language),
 
-  readDictionary: (language: string): Promise<{ aff: Uint8Array; dic: Uint8Array } | null> =>
-    ipcRenderer.invoke("maktaba:read-dictionary", language),
+  // Returns stardict:// URLs rather than file contents - the dictionary's own bytes (its .dict file
+  // especially can be tens of MB) are fetched by the reader directly via net.fetch's stardict://
+  // handler (see native.ts's registerStarDictProtocol) rather than crossing the IPC boundary.
+  getStarDictDictionaryUrls: (language: string): Promise<{ ifoUrl: string; idxUrl: string; dictUrl: string } | null> =>
+    ipcRenderer.invoke("maktaba:get-stardict-dictionary-urls", language),
 });

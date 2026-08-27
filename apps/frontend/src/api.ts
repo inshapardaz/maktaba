@@ -544,7 +544,7 @@ export interface Periodical {
   description: string | null;
   frequency: PeriodicalFrequency;
   // Issue #30: an issue has no language of its own - the reader falls back to its periodical's
-  // language, then to English, to pick a Hunspell dictionary (see ReaderOverlay.tsx).
+  // language, then to English, to pick a word-lookup dictionary (see ReaderOverlay.tsx).
   language: string | null;
   issueCount: number;
   hasCover: boolean;

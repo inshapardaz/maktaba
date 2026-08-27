@@ -305,14 +305,13 @@ const en = {
 
   "settings.dictionaries": "Dictionaries",
 
-  "dictionariesSettings.description": "Provide offline Hunspell dictionary files (.aff and .dic) per language for spell-check in the reader - checked before any online lookup, and works without an internet connection.",
-  "dictionariesSettings.empty": "No dictionaries configured yet.",
-  "dictionariesSettings.add": "Add a dictionary",
-  "dictionariesSettings.language": "Language",
-  "dictionariesSettings.chooseAff": "Choose .aff file…",
-  "dictionariesSettings.chooseDic": "Choose .dic file…",
-  "dictionariesSettings.save": "Save",
-  "dictionariesSettings.remove": "Remove",
+  "starDictSettings.description": "Provide an offline StarDict/GoldenDict dictionary per language for real word definitions in the reader - select a word and right-click it (or long-press on touch) to look it up. Works without an internet connection. GoldenDict-distributed dictionaries ship as a zip containing the .ifo/.idx/.dict (or .dict.dz) file set used by StarDict and GoldenDict - choose that zip file below.",
+  "starDictSettings.empty": "No dictionaries configured yet.",
+  "starDictSettings.add": "Add a dictionary",
+  "starDictSettings.language": "Language",
+  "starDictSettings.chooseZip": "Choose dictionary .zip file…",
+  "starDictSettings.save": "Save",
+  "starDictSettings.remove": "Remove",
 
   "librariesSettings.description": "Only one library is open at a time. Switch, rename, relocate, resync, or remove any of the libraries you've opened before.",
   "librariesSettings.addLibrary": "Add library…",
@@ -673,14 +672,13 @@ const ur: TranslationDict = {
 
   "settings.dictionaries": "لغات",
 
-  "dictionariesSettings.description": "ریڈر میں ہجے کی جانچ کے لیے فی زبان آف لائن ہنسپیل لغت کی فائلیں (.aff اور .dic) فراہم کریں — یہ کسی بھی آن لائن تلاش سے پہلے چیک کی جاتی ہیں، اور انٹرنیٹ کنکشن کے بغیر بھی کام کرتی ہیں۔",
-  "dictionariesSettings.empty": "ابھی تک کوئی لغت مقرر نہیں کی گئی۔",
-  "dictionariesSettings.add": "لغت شامل کریں",
-  "dictionariesSettings.language": "زبان",
-  "dictionariesSettings.chooseAff": ".aff فائل منتخب کریں…",
-  "dictionariesSettings.chooseDic": ".dic فائل منتخب کریں…",
-  "dictionariesSettings.save": "محفوظ کریں",
-  "dictionariesSettings.remove": "ہٹا دیں",
+  "starDictSettings.description": "ریڈر میں الفاظ کے حقیقی معانی کے لیے فی زبان آف لائن StarDict/GoldenDict لغت فراہم کریں — کسی لفظ کو منتخب کر کے اس پر دائیں کلک کریں (یا ٹچ پر دیر تک دبائیں) تاکہ اس کا معنی معلوم ہو۔ یہ انٹرنیٹ کنکشن کے بغیر بھی کام کرتی ہے۔ GoldenDict کی تقسیم شدہ لغات ایک زپ فائل کی صورت میں آتی ہیں جس میں .ifo/.idx/.dict (یا .dict.dz) فائلوں کا مجموعہ ہوتا ہے جو StarDict اور GoldenDict استعمال کرتے ہیں — نیچے وہی زپ فائل منتخب کریں۔",
+  "starDictSettings.empty": "ابھی تک کوئی لغت مقرر نہیں کی گئی۔",
+  "starDictSettings.add": "لغت شامل کریں",
+  "starDictSettings.language": "زبان",
+  "starDictSettings.chooseZip": "لغت کی .zip فائل منتخب کریں…",
+  "starDictSettings.save": "محفوظ کریں",
+  "starDictSettings.remove": "ہٹا دیں",
 
   "librariesSettings.description": "ایک وقت میں صرف ایک لائبریری کھلی ہوتی ہے۔ اپنی پہلے کھولی گئی کسی بھی لائبریری کو تبدیل، نام تبدیل، مقام تبدیل، دوبارہ ہم آہنگ یا ہٹائیں۔",
   "librariesSettings.addLibrary": "لائبریری شامل کریں…",
