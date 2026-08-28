@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActionIcon,
   Badge,
@@ -23,6 +23,7 @@ import {
   IconFolderOpen,
   IconLanguage,
   IconMoon,
+  IconNews,
   IconPlus,
   IconSettings,
   IconStack2,
@@ -33,9 +34,12 @@ import {
 import type { Icon } from "@tabler/icons-react";
 import {
   createCollection,
+  createPeriodical,
+  getCurrentLibrary,
   listAuthors,
   listCollections,
   listLanguageGroups,
+  listPeriodicals,
   listPublisherGroups,
   listSeries,
   listTags,
@@ -52,6 +56,7 @@ export type GroupFilterKind =
   | "seriesId"
   | "tagId"
   | "collectionId"
+  | "periodicalId"
   | "publisher"
   | "language"
   | "readingStatus";
@@ -69,10 +74,11 @@ export type MainView =
   | "collections"
   | "tags"
   | "series"
+  | "periodicals"
   | "publishers"
   | "languages";
 
-type BrowseSection = "collections" | "authors" | "series" | "tags" | "publishers" | "languages";
+type BrowseSection = "collections" | "authors" | "series" | "tags" | "periodicals" | "publishers" | "languages";
 
 // Drag-to-resize (via the handle rendered at the sidebar's inline-end edge below) is clamped to
 // this range - narrow enough to still fit as an icon rail, wide enough that a long author/series
@@ -116,6 +122,7 @@ interface SidebarProps {
   onOpenCollections: () => void;
   onOpenTags: () => void;
   onOpenSeries: () => void;
+  onOpenPeriodicals: () => void;
   onOpenPublishers: () => void;
   onOpenLanguages: () => void;
   // Optional tab (see SettingsScreen.tsx's SettingsTab) to land on when Settings opens - the
@@ -129,7 +136,7 @@ interface SidebarProps {
   // onto Author normally replaces the book's author(s); holding Shift while dropping appends
   // instead (`shiftKey`, read from the native DragEvent in GroupSection's onDrop below).
   onDropBooks: (
-    kind: "authorId" | "seriesId" | "tagId" | "collectionId" | "publisher" | "language",
+    kind: "authorId" | "seriesId" | "tagId" | "collectionId" | "periodicalId" | "publisher" | "language",
     target: { id: string; name: string },
     bookIds: string[],
     shiftKey: boolean,
@@ -247,6 +254,7 @@ export function Sidebar({
   onOpenCollections,
   onOpenTags,
   onOpenSeries,
+  onOpenPeriodicals,
   onOpenPublishers,
   onOpenLanguages,
   onOpenSettings,
@@ -264,6 +272,11 @@ export function Sidebar({
   const seriesQuery = useQuery({ queryKey: ["series"], queryFn: listSeries });
   const tagsQuery = useQuery({ queryKey: ["tags"], queryFn: listTags });
   const collectionsQuery = useQuery({ queryKey: ["collections"], queryFn: listCollections });
+  // Per-library preference (Settings -> Libraries) - shares the ["library"] query App.tsx already
+  // keeps warm, so this is a cache read, not an extra request.
+  const libraryQuery = useQuery({ queryKey: ["library"], queryFn: getCurrentLibrary });
+  const periodicalsEnabled = libraryQuery.data?.periodicalsEnabled ?? true;
+  const periodicalsQuery = useQuery({ queryKey: ["periodicals"], queryFn: listPeriodicals, enabled: periodicalsEnabled });
 
   // Drag-to-resize: pointer capture on the handle itself means move/up keep firing on it even
   // once the cursor leaves its thin hit area mid-drag, so a fast drag can't "escape" the handle
@@ -365,7 +378,78 @@ export function Sidebar({
     </Popover>
   );
 
+  // Quick-add for periodicals, mirroring addCollectionAction above - name only, since a full
+  // frequency/description form is what PeriodicalsView's own "see all" screen is for. New
+  // periodicals default to "Occasional" (editable from there too).
+  const [addPeriodicalOpen, setAddPeriodicalOpen] = useState(false);
+  const [newPeriodicalName, setNewPeriodicalName] = useState("");
+
+  const createPeriodicalMutation = useMutation({
+    mutationFn: (name: string) => createPeriodical(name, "Occasional"),
+    onSuccess: () => {
+      setNewPeriodicalName("");
+      setAddPeriodicalOpen(false);
+      void queryClient.invalidateQueries({ queryKey: ["periodicals"] });
+    },
+  });
+
+  const handleCreatePeriodical = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = newPeriodicalName.trim();
+    if (trimmed.length > 0) {
+      createPeriodicalMutation.mutate(trimmed);
+    }
+  };
+
+  const addPeriodicalAction = (
+    <Popover opened={addPeriodicalOpen} onChange={setAddPeriodicalOpen} position="bottom-start" withArrow shadow="md">
+      <Popover.Target>
+        <Tooltip label={t("periodicalsView.add")}>
+          <UnstyledButton
+            onClick={() => setAddPeriodicalOpen((o) => !o)}
+            c="dimmed"
+            style={{ display: "flex" }}
+            aria-label={t("periodicalsView.add")}
+          >
+            <IconPlus size={14} stroke={1.5} />
+          </UnstyledButton>
+        </Tooltip>
+      </Popover.Target>
+      <Popover.Dropdown>
+        <form onSubmit={handleCreatePeriodical}>
+          <Group gap={4} wrap="nowrap">
+            <TextInput
+              size="xs"
+              placeholder={t("periodicalsView.namePlaceholder")}
+              value={newPeriodicalName}
+              onChange={(e) => setNewPeriodicalName(e.currentTarget.value)}
+              autoFocus
+            />
+            <ActionIcon
+              type="submit"
+              variant="filled"
+              size="sm"
+              loading={createPeriodicalMutation.isPending}
+              disabled={newPeriodicalName.trim().length === 0}
+              aria-label={t("periodicalsView.add")}
+            >
+              <IconCheck size={14} />
+            </ActionIcon>
+          </Group>
+        </form>
+      </Popover.Dropdown>
+    </Popover>
+  );
+
   const [browseSection, setBrowseSection] = useState<BrowseSection>("authors");
+
+  // Falls back off the Periodicals section if this library's setting (Settings -> Libraries) gets
+  // toggled off while it's the one currently showing - stale local UI state, not persisted.
+  useEffect(() => {
+    if (!periodicalsEnabled && browseSection === "periodicals") {
+      setBrowseSection("authors");
+    }
+  }, [periodicalsEnabled, browseSection]);
 
   // "Active" here means "this is the filter currently applied to the book list" - matched against
   // activeFilter.kind, not the locally-browsed section - so this view bar and the title bar's
@@ -378,6 +462,7 @@ export function Sidebar({
     collections: "collectionId",
     series: "seriesId",
     tags: "tagId",
+    periodicals: "periodicalId",
     publishers: "publisher",
     languages: "language",
   };
@@ -387,6 +472,11 @@ export function Sidebar({
     { key: "collections", icon: IconFolder, label: t("sidebar.collections"), active: activeFilter?.kind === sectionFilterKind.collections },
     { key: "series", icon: IconStack2, label: t("sidebar.series"), active: activeFilter?.kind === sectionFilterKind.series },
     { key: "tags", icon: IconTag, label: t("sidebar.tags"), active: activeFilter?.kind === sectionFilterKind.tags },
+    // Omitted entirely (not just visually disabled) when this library has the feature turned off
+    // (Settings -> Libraries) - see periodicalsEnabled above.
+    ...(periodicalsEnabled
+      ? [{ key: "periodicals" as const, icon: IconNews, label: t("sidebar.periodicals"), active: activeFilter?.kind === sectionFilterKind.periodicals }]
+      : []),
     { key: "publishers", icon: IconBuildingStore, label: t("sidebar.publishers"), active: activeFilter?.kind === sectionFilterKind.publishers },
     { key: "languages", icon: IconLanguage, label: t("sidebar.languages"), active: activeFilter?.kind === sectionFilterKind.languages },
   ];
@@ -494,6 +584,25 @@ export function Sidebar({
               groups={byBookCount(tagsQuery.data)}
               action={seeAllAction(onOpenTags)}
               onDropBooks={(target, bookIds, shiftKey) => onDropBooks("tagId", target, bookIds, shiftKey)}
+            />
+          )}
+          {browseSection === "periodicals" && (
+            <GroupSection
+              title={t("sidebar.periodicals")}
+              kind="periodicalId"
+              icon={IconNews}
+              activeFilter={activeFilter}
+              onSelect={onSelect}
+              groups={byBookCount(
+                (periodicalsQuery.data ?? []).map((p) => ({ id: p.id, name: p.name, bookCount: p.issueCount })),
+              )}
+              action={
+                <Group gap={6} wrap="nowrap">
+                  {addPeriodicalAction}
+                  {seeAllAction(onOpenPeriodicals)}
+                </Group>
+              }
+              onDropBooks={(target, bookIds, shiftKey) => onDropBooks("periodicalId", target, bookIds, shiftKey)}
             />
           )}
           {browseSection === "publishers" && (

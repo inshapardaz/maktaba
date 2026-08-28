@@ -13,6 +13,8 @@ public class MaktabaDbContext(DbContextOptions<MaktabaDbContext> options) : DbCo
     public DbSet<Tag> Tags => Set<Tag>();
     public DbSet<BookTag> BookTags => Set<BookTag>();
     public DbSet<Collection> Collections => Set<Collection>();
+    public DbSet<Periodical> Periodicals => Set<Periodical>();
+    public DbSet<PeriodicalTag> PeriodicalTags => Set<PeriodicalTag>();
     public DbSet<BookCollection> BookCollections => Set<BookCollection>();
     public DbSet<BookFile> BookFiles => Set<BookFile>();
     public DbSet<Identifier> Identifiers => Set<Identifier>();
@@ -43,6 +45,13 @@ public class MaktabaDbContext(DbContextOptions<MaktabaDbContext> options) : DbCo
             e.HasOne(bt => bt.Tag).WithMany(t => t.BookTags).HasForeignKey(bt => bt.TagId);
         });
 
+        modelBuilder.Entity<PeriodicalTag>(e =>
+        {
+            e.HasKey(pt => new { pt.PeriodicalId, pt.TagId });
+            e.HasOne(pt => pt.Periodical).WithMany(p => p.PeriodicalTags).HasForeignKey(pt => pt.PeriodicalId);
+            e.HasOne(pt => pt.Tag).WithMany().HasForeignKey(pt => pt.TagId);
+        });
+
         modelBuilder.Entity<BookCollection>(e =>
         {
             e.HasKey(bc => new { bc.BookId, bc.CollectionId });
@@ -54,6 +63,12 @@ public class MaktabaDbContext(DbContextOptions<MaktabaDbContext> options) : DbCo
             .HasOne(f => f.Book)
             .WithMany(b => b.Files)
             .HasForeignKey(f => f.BookId);
+
+        modelBuilder.Entity<Book>()
+            .HasOne(b => b.Periodical)
+            .WithMany(p => p.Issues)
+            .HasForeignKey(b => b.PeriodicalId)
+            .IsRequired(false);
 
         modelBuilder.Entity<Identifier>()
             .HasOne(i => i.Book)
@@ -80,5 +95,6 @@ public class MaktabaDbContext(DbContextOptions<MaktabaDbContext> options) : DbCo
 
         modelBuilder.Entity<Author>().HasIndex(a => a.Name);
         modelBuilder.Entity<Book>().HasIndex(b => b.SortTitle);
+        modelBuilder.Entity<Periodical>().HasIndex(p => p.Name);
     }
 }

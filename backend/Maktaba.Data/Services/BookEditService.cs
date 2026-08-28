@@ -15,6 +15,7 @@ public class BookEditService(MaktabaDbContext db, ILibraryPathProvider libraryPa
             .Include(b => b.BookTags)
             .Include(b => b.BookCollections)
             .Include(b => b.Files)
+            .Include(b => b.Periodical)
             .FirstOrDefaultAsync(b => b.Id == bookId, ct);
 
         if (book is null)
@@ -75,6 +76,17 @@ public class BookEditService(MaktabaDbContext db, ILibraryPathProvider libraryPa
                 book.BookCollections.Add(new BookCollection { BookId = book.Id, Collection = collection });
             }
         }
+
+        // Periodicals are explicit-create only (like Collections, unlike Authors/Series/Tags), so
+        // PeriodicalId must already reference a real row - an id that fails to resolve just detaches
+        // the book from any periodical rather than blocking the rest of the edit.
+        book.Periodical = request.PeriodicalId is { } periodicalId
+            ? await db.Periodicals.FirstOrDefaultAsync(p => p.Id == periodicalId, ct)
+            : null;
+        book.PeriodicalId = book.Periodical?.Id;
+        book.IssueNumber = book.Periodical is not null ? request.IssueNumber : null;
+        book.VolumeNumber = book.Periodical is not null ? request.VolumeNumber : null;
+        book.IssueDate = book.Periodical is not null ? request.IssueDate : null;
 
         var move = BookFolderRelocator.RelocateIfNeeded(book, oldFolderRelative, libraryPath.LibraryRootPath!);
 

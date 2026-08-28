@@ -14,6 +14,7 @@ import {
 } from "../api";
 import { setBookDragData } from "../bookDrag";
 import { useLanguage } from "../i18n/LanguageContext";
+import { displaySubtitle, displayTitle } from "../issueDisplay";
 import { invalidateLibraryQueries } from "../queries";
 import { useReaderLauncher } from "../ReaderLauncherContext";
 import { READING_STATUS_COLOR, READING_STATUS_LABEL_KEY } from "../readingStatus";
@@ -56,6 +57,10 @@ function BookRow({ book, index, selected, selectedIds, onSelect, onEdit }: BookR
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(book.title);
   const readableFormats = book.formats.filter(isReadableFormat);
+  // An issue's title isn't user-editable anywhere (see BookEditForm.tsx, which hides the field
+  // entirely) - the periodical it belongs to identifies it instead, so the inline-rename affordance
+  // here is skipped too rather than letting it silently rename a value nothing else exposes.
+  const isIssue = book.periodicalId != null;
 
   // Book.title has no dedicated rename endpoint (unlike Author/Series/Tag) - the edit endpoint is
   // a full replace, so the current full detail is fetched first and PUT back with just title
@@ -121,7 +126,7 @@ function BookRow({ book, index, selected, selectedIds, onSelect, onEdit }: BookR
         launchReader({
           bookId: book.id,
           format: file.format,
-          title: detail.title,
+          title: displayTitle(detail),
           absolutePath: file.absolutePath,
           readingStatus: detail.readingStatus,
         });
@@ -160,9 +165,19 @@ function BookRow({ book, index, selected, selectedIds, onSelect, onEdit }: BookR
               style={{ flexShrink: 0, border: "1px solid var(--mantine-color-default-border)" }}
             />
           ) : (
-            <SpineCover id={book.id} title={book.title} width={THUMB_WIDTH} height={THUMB_HEIGHT} titleSize={6} padding={3} />
+            <SpineCover id={book.id} title={displayTitle(book)} width={THUMB_WIDTH} height={THUMB_HEIGHT} titleSize={6} padding={3} />
           )}
-          {editingTitle ? (
+          {isIssue ? (
+            <Group gap={4} wrap="nowrap">
+              <Box component="span">{displayTitle(book)}</Box>
+              {readableFormats.length > 1 &&
+                readableFormats.map((format) => (
+                  <Badge key={format} size="xs" variant="outline" color="gray">
+                    {format}
+                  </Badge>
+                ))}
+            </Group>
+          ) : editingTitle ? (
             <TextInput
               size="xs"
               autoFocus
@@ -213,7 +228,7 @@ function BookRow({ book, index, selected, selectedIds, onSelect, onEdit }: BookR
           )}
         </Group>
       </Table.Td>
-      <Table.Td>{book.authors.join(", ") || t("common.unknownAuthor")}</Table.Td>
+      <Table.Td>{displaySubtitle(book, t)}</Table.Td>
       <Table.Td>
         {"★".repeat(book.rating)}
         {"☆".repeat(5 - book.rating)}

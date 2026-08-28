@@ -150,6 +150,20 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
         return updated;
     }
 
+    public Task<LibraryRegistryEntry?> SetPeriodicalsEnabledAsync(string id, bool enabled, CancellationToken ct = default)
+    {
+        var index = _libraries.FindIndex(l => l.Id == id);
+        if (index < 0)
+        {
+            return Task.FromResult<LibraryRegistryEntry?>(null);
+        }
+
+        var updated = _libraries[index] with { PeriodicalsEnabled = enabled };
+        _libraries[index] = updated;
+        SaveConfig();
+        return Task.FromResult<LibraryRegistryEntry?>(updated);
+    }
+
     public async Task<bool> RemoveAsync(string id, CancellationToken ct = default)
     {
         var index = _libraries.FindIndex(l => l.Id == id);
@@ -229,10 +243,14 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
     }
 
     // Probes the newest columns/tables added by a schema-breaking change (currently: M6's
-    // ReadingStatus/Collections, the Bookmarks/Notes/ReadingProgress tables, and ReadingProgress's
-    // ChapterId/Position resume-anchor columns) - a cheap, representative stand-in for "is this
-    // database current" without needing full EF Core migrations, which this project deliberately
-    // doesn't use.
+    // ReadingStatus/Collections, the Bookmarks/Notes/ReadingProgress tables, ReadingProgress's
+    // ChapterId/Position resume-anchor columns, issue #26's Periodicals table/Book.PeriodicalId
+    // column, and Periodical's Language/Publisher/Editor columns + PeriodicalTags table) - a
+    // cheap, representative stand-in for "is this database current" without needing full EF Core
+    // migrations, which this project deliberately doesn't use. Every future schema-breaking change
+    // needs its own probe added here, or an upgrading user's existing metadata.db won't be
+    // recognized as stale and requests against the new column/table will throw instead of
+    // transparently rebuilding.
     private static async Task<bool> IsCurrentSchemaAsync(MaktabaDbContext db, CancellationToken ct)
     {
         try
@@ -240,6 +258,10 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
             await db.Books.Select(b => b.ReadingStatus).Take(1).ToListAsync(ct);
             await db.Collections.Select(c => c.Id).Take(1).ToListAsync(ct);
             await db.ReadingProgress.Select(rp => new { rp.BookId, rp.ChapterId }).Take(1).ToListAsync(ct);
+            await db.Periodicals.Select(p => p.Id).Take(1).ToListAsync(ct);
+            await db.Books.Select(b => b.PeriodicalId).Take(1).ToListAsync(ct);
+            await db.Periodicals.Select(p => new { p.Language, p.Publisher, p.Editor }).Take(1).ToListAsync(ct);
+            await db.PeriodicalTags.Select(pt => pt.PeriodicalId).Take(1).ToListAsync(ct);
             return true;
         }
         catch (SqliteException)

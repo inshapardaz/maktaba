@@ -38,6 +38,7 @@ builder.Services.AddScoped<ILibraryRescanService, LibraryRescanService>();
 builder.Services.AddSingleton<IRescanProgressTracker, RescanProgressTracker>();
 builder.Services.AddSingleton<ICalibreConverter, CalibreConverter>();
 builder.Services.AddScoped<IBookConversionService, BookConversionService>();
+builder.Services.AddScoped<IPeriodicalService, PeriodicalService>();
 
 var app = builder.Build();
 
@@ -105,5 +106,6 @@ app.MapReaderDataEndpoints();
 app.MapAuthorEndpoints();
 app.MapTagEndpoints();
 app.MapSeriesEndpoints();
+app.MapPeriodicalEndpoints();
 
 app.Run();

@@ -10,5 +10,6 @@ export function invalidateLibraryQueries(queryClient: QueryClient) {
   void queryClient.invalidateQueries({ queryKey: ["publisherGroups"] });
   void queryClient.invalidateQueries({ queryKey: ["languageGroups"] });
   void queryClient.invalidateQueries({ queryKey: ["collections"] });
+  void queryClient.invalidateQueries({ queryKey: ["periodicals"] });
   void queryClient.invalidateQueries({ queryKey: ["readingStatusCounts"] });
 }

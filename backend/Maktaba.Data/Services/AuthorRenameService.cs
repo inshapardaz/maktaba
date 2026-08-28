@@ -30,6 +30,7 @@ public class AuthorRenameService(MaktabaDbContext db, ILibraryPathProvider libra
         var books = await db.Books
             .Include(b => b.BookAuthors).ThenInclude(ba => ba.Author)
             .Include(b => b.Files)
+            .Include(b => b.Periodical)
             .Where(b => b.BookAuthors.Any(ba => ba.AuthorId == authorId))
             .ToListAsync(ct);
 

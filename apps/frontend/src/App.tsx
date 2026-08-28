@@ -31,6 +31,8 @@ import { TagsView } from "./components/TagsView";
 import { SeriesView } from "./components/SeriesView";
 import { PublishersView } from "./components/PublishersView";
 import { LanguagesView } from "./components/LanguagesView";
+import { PeriodicalsView } from "./components/PeriodicalsView";
+import { PeriodicalDetailView } from "./components/PeriodicalDetailView";
 import { FilterBar, type SortDirection, type SortKey, type ViewMode } from "./components/FilterBar";
 import { ImportDialog } from "./components/ImportDialog";
 import { ImportStatusBar, IMPORT_STATUS_BAR_HEIGHT } from "./components/ImportStatusBar";
@@ -43,6 +45,7 @@ import { useLanguage } from "./i18n/LanguageContext";
 import { ReaderLauncherProvider, type ReaderRequest } from "./ReaderLauncherContext";
 import { useImportQueue } from "./ImportContext";
 import { getStoredReaderEngine, getStoredReaderOpenMode } from "./readerSettings";
+import { getStoredShowIssuesInGrid } from "./periodicalSettings";
 import { hasCompletedOnboarding } from "./onboarding";
 
 function compareBooks(a: BookSummary, b: BookSummary, sortKey: SortKey): number {
@@ -126,12 +129,22 @@ function App() {
   const [format, setFormat] = useState("");
   const [minRating, setMinRating] = useState(0);
   const [groupFilter, setGroupFilter] = useState<GroupFilter | null>(null);
+  // Which periodical's detail view (cover/description/issues grouped by date) to show within
+  // mainView === "periodicals" - null shows the plain list (PeriodicalsView) instead, same
+  // "toggle between list and detail within one mainView" shape as selectedBookId/BookDetailPanel.
+  const [selectedPeriodicalId, setSelectedPeriodicalId] = useState<string | null>(null);
   const debouncedSearch = useDebounced(search, 300);
 
   // Multi-selection is scoped to whatever book list is currently on screen - switching views
   // (library/authors/collections/...) or changing the active group filter shows a different set
   // of books entirely, so a selection carried over from before would silently apply drag/drop or
   // other multi-select actions to books the user can no longer even see.
+  //
+  // selectedPeriodicalId is deliberately NOT reset here (unlike before) - selecting a periodical
+  // from the sidebar sets mainView to "periodicals" and selectedPeriodicalId in the same handler
+  // (see handleSelectFilter's periodicalId branch below), and since both changes are batched into
+  // one render, this effect would otherwise fire right after and immediately null the id back out.
+  // It's reset explicitly instead, at every point that should land on the plain periodicals list.
   useEffect(() => {
     setSelectedBookIds(new Set());
     setLastClickedIndex(null);
@@ -145,6 +158,8 @@ function App() {
     seriesId: groupFilter?.kind === "seriesId" ? groupFilter.id : undefined,
     tagId: groupFilter?.kind === "tagId" ? groupFilter.id : undefined,
     collectionId: groupFilter?.kind === "collectionId" ? groupFilter.id : undefined,
+    periodicalId: groupFilter?.kind === "periodicalId" ? groupFilter.id : undefined,
+    includeIssues: getStoredShowIssuesInGrid(),
     publisher: groupFilter?.kind === "publisher" ? groupFilter.id : undefined,
     language: groupFilter?.kind === "language" ? groupFilter.id : undefined,
     readingStatus: groupFilter?.kind === "readingStatus" ? (groupFilter.id as BookFilters["readingStatus"]) : undefined,
@@ -154,6 +169,16 @@ function App() {
     queryKey: ["library"],
     queryFn: getCurrentLibrary,
   });
+
+  // Falls back off the Periodicals view if this library's setting (Settings -> Libraries) gets
+  // toggled off while it's the one currently showing, or a different library (with the feature
+  // off) is switched to while it was showing - stale local UI state, not persisted.
+  useEffect(() => {
+    if (libraryQuery.data && !libraryQuery.data.periodicalsEnabled && mainView === "periodicals") {
+      setMainView("library");
+      setSelectedPeriodicalId(null);
+    }
+  }, [libraryQuery.data, mainView]);
 
   const booksQuery = useQuery({
     queryKey: ["books", filters],
@@ -190,15 +215,28 @@ function App() {
   // back on the library grid/list — without this, picking a filter while Settings/Authors/
   // Collections was open would silently update groupFilter behind whatever view was showing,
   // with no way back to the library short of changing libraries.
+  //
+  // Periodicals are the one exception: picking one from the sidebar should open the same
+  // cover/description/year-nav detail view as PeriodicalsView's "see all" screen, not just filter
+  // the plain library grid down to that periodical's issues - so this routes to mainView
+  // "periodicals" instead, still keeping groupFilter in sync purely so the sidebar row highlights
+  // as active while its detail view is showing.
   const handleSelectFilter = (filter: GroupFilter | null) => {
     setGroupFilter(filter);
+    if (filter?.kind === "periodicalId") {
+      setMainView("periodicals");
+      setSelectedPeriodicalId(filter.id);
+      return;
+    }
     setMainView("library");
+    setSelectedPeriodicalId(null);
     applyDefaultSort(filter);
   };
 
   const handleShowAllBooks = () => {
     setGroupFilter(null);
     setMainView("library");
+    setSelectedPeriodicalId(null);
     applyDefaultSort(null);
   };
 
@@ -232,7 +270,7 @@ function App() {
   };
 
   const dragDropMessageKey: Record<
-    "authorId" | "authorIdAppend" | "seriesId" | "tagId" | "collectionId" | "publisher" | "language",
+    "authorId" | "authorIdAppend" | "seriesId" | "tagId" | "collectionId" | "periodicalId" | "publisher" | "language",
     { one: TranslationKey; other: TranslationKey }
   > = {
     authorId: { one: "dragDrop.authorSet_one", other: "dragDrop.authorSet_other" },
@@ -240,6 +278,7 @@ function App() {
     seriesId: { one: "dragDrop.series_one", other: "dragDrop.series_other" },
     tagId: { one: "dragDrop.tag_one", other: "dragDrop.tag_other" },
     collectionId: { one: "dragDrop.collection_one", other: "dragDrop.collection_other" },
+    periodicalId: { one: "dragDrop.periodical_one", other: "dragDrop.periodical_other" },
     publisher: { one: "dragDrop.publisher_one", other: "dragDrop.publisher_other" },
     language: { one: "dragDrop.language_one", other: "dragDrop.language_other" },
   };
@@ -254,7 +293,7 @@ function App() {
   // DragEvent's shiftKey. Series/publisher/language replace (a book has at most one of each);
   // tag/collection both add.
   const handleDropBooksOnGroup = async (
-    kind: "authorId" | "seriesId" | "tagId" | "collectionId" | "publisher" | "language",
+    kind: "authorId" | "seriesId" | "tagId" | "collectionId" | "periodicalId" | "publisher" | "language",
     target: { id: string; name: string },
     bookIds: string[],
     shiftKey: boolean,
@@ -274,6 +313,10 @@ function App() {
           seriesIndex: book.seriesIndex,
           tags: book.tags,
           collectionIds: book.collections.map((c) => c.id),
+          periodicalId: book.periodicalId,
+          issueNumber: book.issueNumber,
+          volumeNumber: book.volumeNumber,
+          issueDate: book.issueDate,
         };
 
         if (kind === "authorId") {
@@ -291,6 +334,17 @@ function App() {
           }
         } else if (kind === "tagId") {
           if (!edit.tags.includes(target.name)) edit.tags = [...edit.tags, target.name];
+        } else if (kind === "periodicalId") {
+          // This *is* "convert a book into an issue" (issue #26) - dropping a book onto a
+          // Periodical row sets its periodicalId, same replace-and-reset-index shape as seriesId
+          // above. Reset only when actually changing periodical, so re-dropping onto the same one
+          // doesn't wipe an already-set issue/volume number for no reason.
+          if (edit.periodicalId !== target.id) {
+            edit.periodicalId = target.id;
+            edit.issueNumber = null;
+            edit.volumeNumber = null;
+            edit.issueDate = null;
+          }
         } else if (kind === "publisher") {
           edit.publisher = target.name;
         } else if (kind === "language") {
@@ -467,6 +521,11 @@ function App() {
                 onOpenCollections={() => setMainView("collections")}
                 onOpenTags={() => setMainView("tags")}
                 onOpenSeries={() => setMainView("series")}
+                onOpenPeriodicals={() => {
+                  setMainView("periodicals");
+                  setSelectedPeriodicalId(null);
+                  setGroupFilter(null);
+                }}
                 onOpenPublishers={() => setMainView("publishers")}
                 onOpenLanguages={() => setMainView("languages")}
                 onOpenSettings={(tab) => {
@@ -505,6 +564,16 @@ function App() {
               <PublishersView onSelect={handleSelectFilter} onBack={() => setMainView("library")} />
             ) : mainView === "languages" ? (
               <LanguagesView onSelect={handleSelectFilter} onBack={() => setMainView("library")} />
+            ) : mainView === "periodicals" ? (
+              selectedPeriodicalId ? (
+                <PeriodicalDetailView
+                  periodicalId={selectedPeriodicalId}
+                  onBack={() => setSelectedPeriodicalId(null)}
+                  onSelectBook={setSelectedBookId}
+                />
+              ) : (
+                <PeriodicalsView onOpen={setSelectedPeriodicalId} onBack={() => setMainView("library")} />
+              )
             ) : (
               <>
                 <FilterBar

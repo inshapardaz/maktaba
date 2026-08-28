@@ -17,6 +17,13 @@ export interface BookSummary {
   // decide whether to show a split "Read" button without a per-row detail fetch; the file's
   // AbsolutePath is only resolved (via getBook) once a specific format is actually chosen.
   formats: string[];
+  // Null unless this book is an issue of a Periodical (see PeriodicalsView.tsx) - lets the
+  // frontend render issue badges (volume/number/date) without a second request per book.
+  periodicalId: string | null;
+  periodicalName: string | null;
+  issueNumber: number | null;
+  volumeNumber: number | null;
+  issueDate: string | null;
 }
 
 export interface BookFileInfo {
@@ -50,6 +57,11 @@ export interface BookDetail extends BookSummary {
 
 export interface LibraryInfo {
   path: string;
+  id: string;
+  name: string;
+  // Per-library preference (Settings -> Libraries) - hides the Periodicals sidebar section and the
+  // book-edit form's Periodical fieldset when off, without touching this library's own data.
+  periodicalsEnabled: boolean;
 }
 
 export interface BrowseGroup {
@@ -70,6 +82,10 @@ export interface BookEditRequest {
   seriesIndex: number | null;
   tags: string[];
   collectionIds: string[];
+  periodicalId?: string | null;
+  issueNumber?: number | null;
+  volumeNumber?: number | null;
+  issueDate?: string | null;
 }
 
 export interface BookFilters {
@@ -78,6 +94,11 @@ export interface BookFilters {
   seriesId?: string;
   tagId?: string;
   collectionId?: string;
+  periodicalId?: string;
+  // Issues are hidden from the main library view unless this is explicitly true - see
+  // periodicalSettings.ts's localStorage-backed toggle. Ignored (issues always included) when
+  // periodicalId is set, since browsing a specific periodical should always show its own issues.
+  includeIssues?: boolean;
   publisher?: string;
   language?: string;
   readingStatus?: ReadingStatus;
@@ -168,6 +189,7 @@ export interface LibraryEntry {
   name: string;
   path: string;
   isActive: boolean;
+  periodicalsEnabled: boolean;
 }
 
 // Every library the user has ever opened - only one (isActive) is the one every other request
@@ -194,6 +216,13 @@ export function relocateLibrary(id: string, path: string): Promise<LibraryEntry>
   });
 }
 
+export function setLibraryPeriodicalsEnabled(id: string, enabled: boolean): Promise<LibraryEntry> {
+  return request<LibraryEntry>(`/api/libraries/${id}/periodicals-enabled`, {
+    method: "PUT",
+    body: JSON.stringify({ enabled }),
+  });
+}
+
 export function removeLibrary(id: string): Promise<void> {
   return request<void>(`/api/libraries/${id}`, { method: "DELETE" });
 }
@@ -211,6 +240,8 @@ export function listBooks(filters: BookFilters = {}): Promise<BookSummary[]> {
   if (filters.seriesId) params.set("seriesId", filters.seriesId);
   if (filters.tagId) params.set("tagId", filters.tagId);
   if (filters.collectionId) params.set("collectionId", filters.collectionId);
+  if (filters.periodicalId) params.set("periodicalId", filters.periodicalId);
+  if (filters.includeIssues) params.set("includeIssues", "true");
   if (filters.publisher) params.set("publisher", filters.publisher);
   if (filters.language) params.set("language", filters.language);
   if (filters.readingStatus) params.set("readingStatus", filters.readingStatus);
@@ -224,8 +255,12 @@ export function listBooks(filters: BookFilters = {}): Promise<BookSummary[]> {
 // Newest books by DateAdded, independent of reading progress - see backend BookEndpoints.cs's
 // /recently-added (a freshly imported library has nothing in listContinueReading yet, since that
 // feed requires a ReadingProgress row).
-export function listRecentlyAdded(limit?: number): Promise<BookSummary[]> {
-  return request<BookSummary[]>(`/api/books/recently-added${limit ? `?limit=${limit}` : ""}`);
+export function listRecentlyAdded(limit?: number, includeIssues?: boolean): Promise<BookSummary[]> {
+  const params = new URLSearchParams();
+  if (limit) params.set("limit", String(limit));
+  if (includeIssues) params.set("includeIssues", "true");
+  const query = params.toString();
+  return request<BookSummary[]>(`/api/books/recently-added${query ? `?${query}` : ""}`);
 }
 
 export function getBook(id: string): Promise<BookDetail> {
@@ -266,8 +301,12 @@ export interface ContinueReadingBook {
 // Every book with saved reading progress, most recently updated first (see backend
 // BookEndpoints.cs's /continue-reading) - the Home view takes items[0] as "last read" and filters
 // readingStatus === "Reading" for the "currently reading" list from this one ordered feed.
-export function listContinueReading(limit?: number): Promise<ContinueReadingBook[]> {
-  return request<ContinueReadingBook[]>(`/api/books/continue-reading${limit ? `?limit=${limit}` : ""}`);
+export function listContinueReading(limit?: number, includeIssues?: boolean): Promise<ContinueReadingBook[]> {
+  const params = new URLSearchParams();
+  if (limit) params.set("limit", String(limit));
+  if (includeIssues) params.set("includeIssues", "true");
+  const query = params.toString();
+  return request<ContinueReadingBook[]>(`/api/books/continue-reading${query ? `?${query}` : ""}`);
 }
 
 export function importBook(filePath: string, duplicateAction?: DuplicateAction): Promise<{ id: string; title: string }> {
@@ -508,4 +547,92 @@ export function saveReadingProgress(
 export function coverUrl(id: string): string {
   const { apiBaseUrl, token } = window.maktaba;
   return `${apiBaseUrl}/api/books/${id}/cover?access_token=${encodeURIComponent(token)}`;
+}
+
+export type PeriodicalFrequency = "Daily" | "Weekly" | "BiWeekly" | "Monthly" | "Quarterly" | "Yearly" | "Occasional";
+
+export interface Periodical {
+  id: string;
+  name: string;
+  description: string | null;
+  frequency: PeriodicalFrequency;
+  // Metadata that lives at the periodical level rather than per-issue - see BookEditForm.tsx,
+  // which hides its own language/publisher/tags fields once a book is an issue in favor of these.
+  language: string | null;
+  publisher: string | null;
+  editor: string | null;
+  tags: string[];
+  issueCount: number;
+  hasCover: boolean;
+}
+
+export interface PeriodicalEditFields {
+  name: string;
+  frequency: PeriodicalFrequency;
+  description: string | null;
+  language: string | null;
+  publisher: string | null;
+  editor: string | null;
+  tags: string[];
+}
+
+export function listPeriodicals(): Promise<Periodical[]> {
+  return request<Periodical[]>("/api/periodicals");
+}
+
+export function getPeriodical(id: string): Promise<Periodical> {
+  return request<Periodical>(`/api/periodicals/${id}`);
+}
+
+// Upserts by name (same semantics as createCollection) - a repeated quick-add of the same
+// periodical name resolves to the one existing row instead of creating a duplicate. Kept as this
+// minimal name+frequency signature since it's only ever called from Sidebar's quick-add popover -
+// the full field set is edited afterward via updatePeriodical, from PeriodicalDetailView.
+export function createPeriodical(name: string, frequency: PeriodicalFrequency, description?: string | null): Promise<Periodical> {
+  return request<Periodical>("/api/periodicals", {
+    method: "POST",
+    body: JSON.stringify({ name, frequency, description: description ?? null }),
+  });
+}
+
+export function updatePeriodical(id: string, fields: PeriodicalEditFields): Promise<Periodical> {
+  return request<Periodical>(`/api/periodicals/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(fields),
+  });
+}
+
+// Rejects with a 409 (surfaced as a thrown ApiError) if the periodical still has issues and
+// deleteIssues isn't passed - the caller is expected to confirm with the user first (showing the
+// issue count) and retry with deleteIssues: true, same "confirm, then cascade" shape as the
+// dedicated confirmation UI in PeriodicalsView.tsx/PeriodicalDetailView.tsx. On success, returns
+// the periodical's absolute folder path (which already contains every issue's own subfolder) for
+// the caller to move to the OS trash via window.maktaba.trashPath - mirrors deleteBook's contract.
+export function deletePeriodical(id: string, deleteIssues?: boolean): Promise<{ folderPath: string }> {
+  const query = deleteIssues ? "?deleteIssues=true" : "";
+  return request<{ folderPath: string }>(`/api/periodicals/${id}${query}`, { method: "DELETE" });
+}
+
+export function periodicalCoverUrl(id: string): string {
+  const { apiBaseUrl, token } = window.maktaba;
+  return `${apiBaseUrl}/api/periodicals/${id}/cover?access_token=${encodeURIComponent(token)}`;
+}
+
+// Bypasses request() - a cover upload needs to send FormData with a browser-generated multipart
+// boundary, not the JSON Content-Type request() always forces onto a body.
+export async function uploadPeriodicalCover(id: string, file: File): Promise<void> {
+  const { apiBaseUrl, token } = window.maktaba;
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const res = await fetch(`${apiBaseUrl}/api/periodicals/${id}/cover`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { error?: string } | null;
+    throw new ApiError(body?.error ?? `Request failed: ${res.status}`, res.status);
+  }
 }

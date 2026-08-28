@@ -21,6 +21,8 @@ public static class BookEndpoints
             string? seriesId,
             string? tagId,
             string? collectionId,
+            string? periodicalId,
+            bool? includeIssues,
             string? readingStatus,
             string? format,
             int? minRating,
@@ -34,6 +36,7 @@ public static class BookEndpoints
                 .Include(b => b.BookSeries).ThenInclude(bs => bs.Series)
                 .Include(b => b.BookTags).ThenInclude(bt => bt.Tag)
                 .Include(b => b.Files)
+                .Include(b => b.Periodical)
                 .AsNoTracking()
                 .AsQueryable();
 
@@ -62,6 +65,19 @@ public static class BookEndpoints
             {
                 var cId = IdCodec.TryDecode(collectionId, out var decoded) ? decoded : -1;
                 query = query.Where(b => b.BookCollections.Any(bc => bc.CollectionId == cId));
+            }
+
+            // Issues are hidden from the main library view by default (a daily/weekly periodical
+            // would otherwise flood it) - see periodicalSettings.ts's localStorage-backed toggle on
+            // the frontend. Browsing a specific periodical always shows its own issues regardless.
+            if (periodicalId is not null)
+            {
+                var pId = IdCodec.TryDecode(periodicalId, out var decoded) ? decoded : -1;
+                query = query.Where(b => b.PeriodicalId == pId);
+            }
+            else if (includeIssues != true)
+            {
+                query = query.Where(b => b.PeriodicalId == null);
             }
 
             // Unlike authorId/seriesId/etc., Publisher is a plain string column (see
@@ -129,7 +145,12 @@ public static class BookEndpoints
                     b.ReadingStatus.ToString(),
                     b.BookSeries.FirstOrDefault()?.SeriesIndex,
                     lastReadByBookId.TryGetValue(b.Id, out var lastRead) ? lastRead : null,
-                    b.Files.Select(f => f.Format.ToString()).Distinct().ToArray()))
+                    b.Files.Select(f => f.Format.ToString()).Distinct().ToArray(),
+                    b.PeriodicalId is not null ? IdCodec.Encode(b.PeriodicalId.Value) : null,
+                    b.Periodical?.Name,
+                    b.IssueNumber,
+                    b.VolumeNumber,
+                    b.IssueDate))
                 .ToList();
 
             return Results.Ok(dtos);
@@ -139,14 +160,23 @@ public static class BookEndpoints
         // reader at least once), most recently updated first. The frontend takes items[0] as "last
         // read" and filters ReadingStatus == "Reading" for the "currently reading" list, rather
         // than this endpoint exposing two separate shapes for what's really one ordered feed.
-        group.MapGet("/continue-reading", async (MaktabaDbContext db, ILibraryPathProvider libraryPath, int? limit) =>
+        group.MapGet("/continue-reading", async (
+            MaktabaDbContext db, ILibraryPathProvider libraryPath, int? limit, bool? includeIssues) =>
         {
             var root = libraryPath.LibraryRootPath!;
 
-            var rows = await db.ReadingProgress
+            var query = db.ReadingProgress
                 .Include(rp => rp.Book).ThenInclude(b => b.BookAuthors).ThenInclude(ba => ba.Author)
                 .Include(rp => rp.Book).ThenInclude(b => b.Files)
                 .AsNoTracking()
+                .AsQueryable();
+
+            if (includeIssues != true)
+            {
+                query = query.Where(rp => rp.Book.PeriodicalId == null);
+            }
+
+            var rows = await query
                 .OrderByDescending(rp => rp.UpdatedAt)
                 .Take(limit is > 0 ? limit.Value : 20)
                 .ToListAsync();
@@ -177,14 +207,24 @@ public static class BookEndpoints
         // reading progress. Deliberately separate from /continue-reading: that feed only includes
         // books with a ReadingProgress row, so a freshly imported library (nothing opened yet) would
         // show nothing there even though there's plenty to display here.
-        group.MapGet("/recently-added", async (MaktabaDbContext db, ILibraryPathProvider libraryPath, int? limit) =>
+        group.MapGet("/recently-added", async (
+            MaktabaDbContext db, ILibraryPathProvider libraryPath, int? limit, bool? includeIssues) =>
         {
             var root = libraryPath.LibraryRootPath!;
 
-            var books = await db.Books
+            var query = db.Books
                 .Include(b => b.BookAuthors).ThenInclude(ba => ba.Author)
                 .Include(b => b.Files)
+                .Include(b => b.Periodical)
                 .AsNoTracking()
+                .AsQueryable();
+
+            if (includeIssues != true)
+            {
+                query = query.Where(b => b.PeriodicalId == null);
+            }
+
+            var books = await query
                 .OrderByDescending(b => b.DateAdded)
                 .Take(limit is > 0 ? limit.Value : 12)
                 .ToListAsync();
@@ -201,7 +241,12 @@ public static class BookEndpoints
                     b.ReadingStatus.ToString(),
                     null,
                     null,
-                    b.Files.Select(f => f.Format.ToString()).Distinct().ToArray()))
+                    b.Files.Select(f => f.Format.ToString()).Distinct().ToArray(),
+                    b.PeriodicalId is not null ? IdCodec.Encode(b.PeriodicalId.Value) : null,
+                    b.Periodical?.Name,
+                    b.IssueNumber,
+                    b.VolumeNumber,
+                    b.IssueDate))
                 .ToList();
 
             return Results.Ok(dtos);
@@ -223,6 +268,7 @@ public static class BookEndpoints
                 .Include(b => b.BookCollections).ThenInclude(bc => bc.Collection)
                 .Include(b => b.Files)
                 .Include(b => b.Identifiers)
+                .Include(b => b.Periodical)
                 .AsNoTracking()
                 .FirstOrDefaultAsync(b => b.Id == bookId);
 
@@ -254,7 +300,12 @@ public static class BookEndpoints
                 book.ReadingStatus.ToString(),
                 book.BookCollections
                     .Select(bc => new BookCollectionDto(IdCodec.Encode(bc.CollectionId), bc.Collection.Name))
-                    .ToArray());
+                    .ToArray(),
+                book.PeriodicalId is not null ? IdCodec.Encode(book.PeriodicalId.Value) : null,
+                book.Periodical?.Name,
+                book.IssueNumber,
+                book.VolumeNumber,
+                book.IssueDate);
 
             return Results.Ok(dto);
         });
@@ -340,6 +391,11 @@ public static class BookEndpoints
                 .Select(cid => cid!.Value)
                 .ToList();
 
+            // Same "silently drop an unresolvable id" rule as collectionIds above.
+            var periodicalId = request.PeriodicalId is not null && IdCodec.TryDecode(request.PeriodicalId, out var decodedPeriodicalId)
+                ? decodedPeriodicalId
+                : (int?)null;
+
             var editRequest = new BookEditRequest(
                 request.Title.Trim(),
                 request.Authors,
@@ -351,7 +407,11 @@ public static class BookEndpoints
                 request.SeriesName,
                 request.SeriesIndex,
                 request.Tags,
-                collectionIds);
+                collectionIds,
+                periodicalId,
+                request.IssueNumber,
+                request.VolumeNumber,
+                request.IssueDate);
 
             var book = await editService.UpdateAsync(bookId, editRequest, ct);
             return book is null ? Results.NotFound() : Results.NoContent();
