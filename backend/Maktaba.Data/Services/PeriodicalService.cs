@@ -8,20 +8,27 @@ namespace Maktaba.Data.Services;
 
 public class PeriodicalService(MaktabaDbContext db, ILibraryPathProvider libraryPath) : IPeriodicalService
 {
-    public async Task<Periodical> CreateAsync(
-        string name, PeriodicalFrequency frequency, string? description, string? language, CancellationToken ct = default)
+    public async Task<Periodical> CreateAsync(PeriodicalEditRequest request, CancellationToken ct = default)
     {
         var libraryRoot = libraryPath.LibraryRootPath!;
-        var trimmed = name.Trim();
+        var trimmed = request.Name.Trim();
 
         var periodical = new Periodical
         {
             Name = trimmed,
             SortName = TitleSorting.ComputeSortTitle(trimmed),
-            Frequency = frequency,
-            Description = description,
-            Language = language,
+            Frequency = request.Frequency,
+            Description = request.Description,
+            Language = request.Language,
+            Publisher = request.Publisher,
+            Editor = request.Editor,
         };
+
+        var tags = await EntityResolvers.ResolveTagsAsync(db, request.Tags, ct);
+        foreach (var tag in tags)
+        {
+            periodical.PeriodicalTags.Add(new PeriodicalTag { Periodical = periodical, Tag = tag });
+        }
 
         // Same two-step pattern as ImportService.ImportFileAsync - the on-disk folder embeds the
         // DB-assigned id, so the row has to be inserted first to get it.
@@ -51,19 +58,18 @@ public class PeriodicalService(MaktabaDbContext db, ILibraryPathProvider library
         }
     }
 
-    public async Task<Periodical?> UpdateAsync(
-        int periodicalId, string name, PeriodicalFrequency frequency, string? description, string? language,
-        CancellationToken ct = default)
+    public async Task<Periodical?> UpdateAsync(int periodicalId, PeriodicalEditRequest request, CancellationToken ct = default)
     {
         var periodical = await db.Periodicals
             .Include(p => p.Issues).ThenInclude(b => b.Files)
+            .Include(p => p.PeriodicalTags).ThenInclude(pt => pt.Tag)
             .FirstOrDefaultAsync(p => p.Id == periodicalId, ct);
         if (periodical is null)
         {
             return null;
         }
 
-        var trimmed = name.Trim();
+        var trimmed = request.Name.Trim();
         var oldFolderRelative = periodical.FolderPath;
         var newFolderRelative = Path.Combine(
             "Periodicals", FileNaming.SanitizePathSegment($"{trimmed} ({IdCodec.Encode(periodical.Id)})"));
@@ -96,9 +102,19 @@ public class PeriodicalService(MaktabaDbContext db, ILibraryPathProvider library
 
         periodical.Name = trimmed;
         periodical.SortName = TitleSorting.ComputeSortTitle(trimmed);
-        periodical.Frequency = frequency;
-        periodical.Description = description;
-        periodical.Language = language;
+        periodical.Frequency = request.Frequency;
+        periodical.Description = request.Description;
+        periodical.Language = request.Language;
+        periodical.Publisher = request.Publisher;
+        periodical.Editor = request.Editor;
+
+        db.PeriodicalTags.RemoveRange(periodical.PeriodicalTags);
+        periodical.PeriodicalTags.Clear();
+        var tags = await EntityResolvers.ResolveTagsAsync(db, request.Tags, ct);
+        foreach (var tag in tags)
+        {
+            periodical.PeriodicalTags.Add(new PeriodicalTag { PeriodicalId = periodical.Id, Tag = tag });
+        }
 
         try
         {
@@ -116,38 +132,35 @@ public class PeriodicalService(MaktabaDbContext db, ILibraryPathProvider library
         return periodical;
     }
 
-    public async Task<PeriodicalDeleteOutcome> DeleteAsync(int periodicalId, CancellationToken ct = default)
+    public async Task<PeriodicalDeleteResult> DeleteAsync(int periodicalId, bool deleteIssues, CancellationToken ct = default)
     {
         var periodical = await db.Periodicals
-            .Select(p => new { p.Id, p.FolderPath, IssueCount = p.Issues.Count })
+            .Include(p => p.Issues)
             .FirstOrDefaultAsync(p => p.Id == periodicalId, ct);
         if (periodical is null)
         {
-            return PeriodicalDeleteOutcome.NotFound;
+            return new PeriodicalDeleteResult(PeriodicalDeleteOutcome.NotFound);
         }
 
-        if (periodical.IssueCount > 0)
+        if (periodical.Issues.Count > 0 && !deleteIssues)
         {
-            return PeriodicalDeleteOutcome.HasIssues;
+            return new PeriodicalDeleteResult(PeriodicalDeleteOutcome.HasIssues);
         }
 
-        await db.Periodicals.Where(p => p.Id == periodicalId).ExecuteDeleteAsync(ct);
+        var absoluteFolder = Path.Combine(libraryPath.LibraryRootPath!, periodical.FolderPath);
 
-        // Unlike a book's folder (routed through the OS trash by the frontend - see BookRemovalService),
-        // an issue-less periodical's folder holds at most a cover image, so a direct best-effort
-        // delete is fine here rather than adding a second trash round-trip for something this low-value.
-        try
-        {
-            var absoluteFolder = Path.Combine(libraryPath.LibraryRootPath!, periodical.FolderPath);
-            if (Directory.Exists(absoluteFolder))
-            {
-                Directory.Delete(absoluteFolder, recursive: true);
-            }
-        }
-        catch (IOException) { }
-        catch (UnauthorizedAccessException) { }
+        // Removing each issue Book row cascades to its BookAuthors/BookSeries/BookTags/BookFiles/
+        // Identifiers/Bookmarks/Notes/ReadingProgress via their required FK to Book, same as a
+        // single book's own delete endpoint (see BookRemovalService) - and PeriodicalTags cascades
+        // off the Periodical row the same way. Only the DB rows are removed here; every issue
+        // physically lives nested inside the periodical's own folder, so the caller trashes that
+        // one path afterward to remove all of it (cover + every issue) in one reversible OS-trash
+        // move, rather than this doing a direct/permanent filesystem delete itself.
+        db.Books.RemoveRange(periodical.Issues);
+        db.Periodicals.Remove(periodical);
+        await db.SaveChangesAsync(ct);
 
-        return PeriodicalDeleteOutcome.Deleted;
+        return new PeriodicalDeleteResult(PeriodicalDeleteOutcome.Deleted, absoluteFolder);
     }
 
     public async Task<Periodical?> SaveCoverAsync(
