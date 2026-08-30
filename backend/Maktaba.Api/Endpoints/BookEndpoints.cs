@@ -9,6 +9,16 @@ namespace Maktaba.Api.Endpoints;
 
 public static class BookEndpoints
 {
+    // Shared by every endpoint below that builds a BookSummaryDto/ContinueReadingBookDto -
+    // AuthorRefDto is the same "name + id + photo presence" shape BookDetailDto already uses for
+    // BookDetailPanel's pills, so the Home view/grid rows can reuse it for avatars too.
+    private static AuthorRefDto[] BuildAuthorRefs(IEnumerable<BookAuthor> bookAuthors, string root) =>
+        bookAuthors
+            .OrderBy(ba => ba.Order)
+            .Select(ba => new AuthorRefDto(
+                IdCodec.Encode(ba.AuthorId), ba.Author.Name, AuthorImageLocator.Find(root, ba.AuthorId) is not null))
+            .ToArray();
+
     public static void MapBookEndpoints(this WebApplication app)
     {
         var group = app.MapGroup("/api/books");
@@ -139,6 +149,7 @@ public static class BookEndpoints
                     b.Title,
                     b.SortTitle,
                     b.BookAuthors.OrderBy(ba => ba.Order).Select(ba => ba.Author.Name).ToArray(),
+                    BuildAuthorRefs(b.BookAuthors, root),
                     b.Rating,
                     b.DateAdded,
                     CoverLocator.Find(root, b.FolderPath) is not null,
@@ -192,6 +203,7 @@ public static class BookEndpoints
                     IdCodec.Encode(book.Id),
                     book.Title,
                     book.BookAuthors.OrderBy(ba => ba.Order).Select(ba => ba.Author.Name).ToArray(),
+                    BuildAuthorRefs(book.BookAuthors, root),
                     CoverLocator.Find(root, book.FolderPath) is not null,
                     book.ReadingStatus.ToString(),
                     (file?.Format ?? BookFormat.Epub).ToString(),
@@ -235,6 +247,7 @@ public static class BookEndpoints
                     b.Title,
                     b.SortTitle,
                     b.BookAuthors.OrderBy(ba => ba.Order).Select(ba => ba.Author.Name).ToArray(),
+                    BuildAuthorRefs(b.BookAuthors, root),
                     b.Rating,
                     b.DateAdded,
                     CoverLocator.Find(root, b.FolderPath) is not null,
@@ -294,6 +307,10 @@ public static class BookEndpoints
                 book.Rating,
                 book.DateAdded,
                 book.BookAuthors.OrderBy(ba => ba.Order).Select(ba => ba.Author.Name).ToArray(),
+                book.BookAuthors.OrderBy(ba => ba.Order).Select(ba =>
+                    new AuthorRefDto(
+                        IdCodec.Encode(ba.AuthorId), ba.Author.Name, AuthorImageLocator.Find(root, ba.AuthorId) is not null))
+                    .ToArray(),
                 series?.Series.Name,
                 series?.SeriesIndex,
                 book.BookTags.Select(bt => bt.Tag.Name).ToArray(),

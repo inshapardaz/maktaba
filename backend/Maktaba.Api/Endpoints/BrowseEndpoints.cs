@@ -1,6 +1,7 @@
 using Maktaba.Api.Dtos;
 using Maktaba.Core.Entities;
 using Maktaba.Core.Ids;
+using Maktaba.Core.Services;
 using Maktaba.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -12,7 +13,7 @@ public static class BrowseEndpoints
 {
     public static void MapBrowseEndpoints(this WebApplication app)
     {
-        app.MapGet("/api/authors", async (MaktabaDbContext db) =>
+        app.MapGet("/api/authors", async (MaktabaDbContext db, ILibraryPathProvider libraryPath) =>
         {
             // IdCodec.Encode can't be translated to SQL, so the raw int id is projected first and
             // encoded afterwards, in memory.
@@ -21,7 +22,10 @@ public static class BrowseEndpoints
                 .OrderBy(a => a.Name)
                 .Select(a => new { a.Id, a.Name, Count = a.BookAuthors.Count })
                 .ToListAsync();
-            return Results.Ok(authors.Select(a => new BrowseGroupDto(IdCodec.Encode(a.Id), a.Name, a.Count)));
+
+            var root = libraryPath.LibraryRootPath!;
+            return Results.Ok(authors.Select(a => new BrowseGroupDto(
+                IdCodec.Encode(a.Id), a.Name, a.Count, AuthorImageLocator.Find(root, a.Id) is not null)));
         });
 
         app.MapGet("/api/series", async (MaktabaDbContext db) =>

@@ -1,12 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import {
   ActionIcon,
+  Avatar,
   Badge,
   Box,
   Group,
+  HoverCard,
   NavLink,
   Popover,
   ScrollArea,
+  Stack,
   Text,
   TextInput,
   Tooltip,
@@ -34,6 +37,7 @@ import {
 } from "@tabler/icons-react";
 import type { Icon } from "@tabler/icons-react";
 import {
+  authorImageUrl,
   createCollection,
   createPeriodical,
   getCurrentLibrary,
@@ -178,6 +182,8 @@ function GroupSection({
   title,
   kind,
   icon: RowIcon,
+  renderIcon,
+  renderHoverCard,
   activeFilter,
   onSelect,
   groups,
@@ -187,6 +193,12 @@ function GroupSection({
   title: string;
   kind: GroupFilterKind;
   icon: Icon;
+  // Authors override the plain RowIcon with their own avatar (falling back to RowIcon when they
+  // don't have one) - every other section just uses RowIcon for every row.
+  renderIcon?: (group: BrowseGroup) => React.ReactNode;
+  // Authors only: a long-hover popup with a bigger photo/name/book-count - every other section
+  // leaves this unset and rows just get the plain NavLink.
+  renderHoverCard?: (group: BrowseGroup) => React.ReactNode;
   activeFilter: GroupFilter | null;
   onSelect: (filter: GroupFilter | null) => void;
   groups: BrowseGroup[] | undefined;
@@ -203,11 +215,11 @@ function GroupSection({
       <SectionTitle action={action}>{title}</SectionTitle>
       {groups?.map((group) => {
         const isActive = activeFilter?.kind === kind && activeFilter.id === group.id;
-        return (
+        const navLink = (
           <NavLink
-            key={group.id}
+            key={renderHoverCard ? undefined : group.id}
             label={group.name}
-            leftSection={<RowIcon size={16} stroke={1.5} />}
+            leftSection={renderIcon ? renderIcon(group) : <RowIcon size={16} stroke={1.5} />}
             active={isActive}
             onClick={() => onSelect(isActive ? null : { kind, id: group.id, name: group.name })}
             onDragOver={
@@ -240,6 +252,17 @@ function GroupSection({
             py={5}
             styles={sectionRowStyles(isActive, dragOverId === group.id)}
           />
+        );
+
+        if (!renderHoverCard) {
+          return navLink;
+        }
+
+        return (
+          <HoverCard key={group.id} openDelay={700} closeDelay={100} position="right" withArrow shadow="md">
+            <HoverCard.Target>{navLink}</HoverCard.Target>
+            <HoverCard.Dropdown>{renderHoverCard(group)}</HoverCard.Dropdown>
+          </HoverCard>
         );
       })}
     </Box>
@@ -559,6 +582,31 @@ export function Sidebar({
               title={t("sidebar.authors")}
               kind="authorId"
               icon={IconUser}
+              renderIcon={(group) =>
+                group.hasImage ? (
+                  <Avatar src={authorImageUrl(group.id)} size={16} radius="xl" />
+                ) : (
+                  <IconUser size={16} stroke={1.5} />
+                )
+              }
+              renderHoverCard={(group) => (
+                <Group gap="sm" wrap="nowrap" p={4}>
+                  <Avatar src={group.hasImage ? authorImageUrl(group.id) : null} size={56} radius="xl">
+                    <IconUser size={28} />
+                  </Avatar>
+                  <Stack gap={2}>
+                    <Text fw={600} size="sm">
+                      {group.name}
+                    </Text>
+                    <Text size="xs" c="dimmed">
+                      {t(
+                        group.bookCount === 1 ? "authorsView.bookCount_one" : "authorsView.bookCount_other",
+                        { count: group.bookCount },
+                      )}
+                    </Text>
+                  </Stack>
+                </Group>
+              )}
               activeFilter={activeFilter}
               onSelect={onSelect}
               groups={byBookCount(authorsQuery.data)}

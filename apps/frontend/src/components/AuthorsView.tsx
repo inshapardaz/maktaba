@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ActionIcon, Badge, Box, Group, NavLink, Stack, Text, TextInput, Tooltip } from "@mantine/core";
-import { IconCheck, IconPencil, IconSearch, IconX } from "@tabler/icons-react";
-import { listAuthors, renameAuthor } from "../api";
+import { ActionIcon, Avatar, Badge, Box, FileButton, Group, NavLink, Stack, Text, TextInput, Tooltip } from "@mantine/core";
+import { IconCheck, IconPencil, IconSearch, IconTrash, IconUser, IconX } from "@tabler/icons-react";
+import { authorImageUrl, deleteAuthorImage, listAuthors, renameAuthor, uploadAuthorImage, type BrowseGroup } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
 import { BrowseViewHeader } from "./BrowseViewHeader";
 import type { GroupFilter } from "./Sidebar";
@@ -10,6 +10,38 @@ import type { GroupFilter } from "./Sidebar";
 interface AuthorsViewProps {
   onSelect: (filter: GroupFilter) => void;
   onBack: () => void;
+}
+
+interface AuthorAvatarProps {
+  author: BrowseGroup;
+  onUpload: (file: File) => void;
+  onDelete: () => void;
+  uploading: boolean;
+}
+
+function AuthorAvatar({ author, onUpload, onDelete, uploading }: AuthorAvatarProps) {
+  const { t } = useLanguage();
+
+  return (
+    <Group gap={2} wrap="nowrap">
+      <FileButton onChange={(file) => file && onUpload(file)} accept="image/jpeg,image/png">
+        {(props) => (
+          <Tooltip label={t("authorsView.uploadImage")}>
+            <Avatar {...props} src={author.hasImage ? authorImageUrl(author.id) : null} radius="xl" style={{ cursor: "pointer" }}>
+              <IconUser size={16} />
+            </Avatar>
+          </Tooltip>
+        )}
+      </FileButton>
+      {author.hasImage && (
+        <Tooltip label={t("authorsView.removeImage")}>
+          <ActionIcon variant="subtle" color="red" size="sm" loading={uploading} onClick={onDelete} aria-label={t("authorsView.removeImage")}>
+            <IconTrash size={12} />
+          </ActionIcon>
+        </Tooltip>
+      )}
+    </Group>
+  );
 }
 
 export function AuthorsView({ onSelect, onBack }: AuthorsViewProps) {
@@ -32,6 +64,19 @@ export function AuthorsView({ onSelect, onBack }: AuthorsViewProps) {
       void queryClient.invalidateQueries({ queryKey: ["book"] });
     },
     onError: (err) => setRenameError(err instanceof Error ? err.message : String(err)),
+  });
+
+  // Issue #28: an uploadable author photo, shown as an avatar next to each row - a bump on
+  // hasImage's cache-busting param isn't needed since the id-keyed URL only ever changes what
+  // file it resolves to server-side, and the query invalidation below refetches the row anyway.
+  const imageMutation = useMutation({
+    mutationFn: ({ id, file }: { id: string; file: File }) => uploadAuthorImage(id, file),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["authors"] }),
+  });
+
+  const deleteImageMutation = useMutation({
+    mutationFn: (id: string) => deleteAuthorImage(id),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["authors"] }),
   });
 
   const startEditing = (id: string, currentName: string) => {
@@ -88,6 +133,12 @@ export function AuthorsView({ onSelect, onBack }: AuthorsViewProps) {
           {filtered.map((author) =>
             editingId === author.id ? (
               <Group key={author.id} gap={4} wrap="nowrap" px="sm" py={4}>
+                <AuthorAvatar
+                  author={author}
+                  onUpload={(file) => imageMutation.mutate({ id: author.id, file })}
+                  onDelete={() => deleteImageMutation.mutate(author.id)}
+                  uploading={imageMutation.isPending || deleteImageMutation.isPending}
+                />
                 <TextInput
                   size="xs"
                   style={{ flex: 1 }}
@@ -115,6 +166,12 @@ export function AuthorsView({ onSelect, onBack }: AuthorsViewProps) {
               </Group>
             ) : (
               <Group key={author.id} gap={4} wrap="nowrap" style={{ flexShrink: 0 }}>
+                <AuthorAvatar
+                  author={author}
+                  onUpload={(file) => imageMutation.mutate({ id: author.id, file })}
+                  onDelete={() => deleteImageMutation.mutate(author.id)}
+                  uploading={imageMutation.isPending || deleteImageMutation.isPending}
+                />
                 <NavLink
                   label={author.name}
                   onClick={() => {

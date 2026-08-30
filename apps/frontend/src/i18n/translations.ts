@@ -88,6 +88,10 @@ const en = {
   "authorsView.searchPlaceholder": "Search authors…",
   "authorsView.empty": "No authors found.",
   "authorsView.rename": "Rename author",
+  "authorsView.uploadImage": "Upload author photo",
+  "authorsView.removeImage": "Remove photo",
+  "authorsView.bookCount_one": "{count} book",
+  "authorsView.bookCount_other": "{count} books",
 
   "publishersView.title": "Publishers",
   "publishersView.searchPlaceholder": "Search publishers…",
@@ -492,6 +496,10 @@ const ur: TranslationDict = {
   "authorsView.searchPlaceholder": "مصنفین تلاش کریں…",
   "authorsView.empty": "کوئی مصنف نہیں ملا۔",
   "authorsView.rename": "مصنف کا نام تبدیل کریں",
+  "authorsView.uploadImage": "مصنف کی تصویر اپ لوڈ کریں",
+  "authorsView.removeImage": "تصویر ہٹائیں",
+  "authorsView.bookCount_one": "{count} کتاب",
+  "authorsView.bookCount_other": "{count} کتابیں",
 
   "publishersView.title": "ناشرین",
   "publishersView.searchPlaceholder": "ناشرین تلاش کریں…",

@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Alert,
   Autocomplete,
+  Avatar,
   Button,
   Center,
   Fieldset,
@@ -11,14 +12,16 @@ import {
   Modal,
   MultiSelect,
   NumberInput,
+  Pill,
   Select,
   Stack,
   Text,
   Textarea,
   TextInput,
 } from "@mantine/core";
-import { IconAlertCircle } from "@tabler/icons-react";
+import { IconAlertCircle, IconCheck, IconUser } from "@tabler/icons-react";
 import {
+  authorImageUrl,
   createCollection,
   getBook,
   getCurrentLibrary,
@@ -281,6 +284,9 @@ export function BookEditForm({ bookId, onClose, onSaved }: BookEditFormProps) {
     authorSearch,
     t,
   );
+  // Case-insensitive: authors are matched/created case-insensitively server-side (EntityResolvers),
+  // so a name typed with different casing than the stored author should still resolve to their avatar.
+  const authorsByName = new Map((authorsQuery.data ?? []).map((a) => [a.name.toLowerCase(), a]));
   const tagOptions = buildCreatableData((tagsQuery.data ?? []).map((tag) => tag.name), form.tags, tagSearch, t);
 
   // Creates the collection immediately (not deferred to Save) since BookEditRequest.collectionIds
@@ -392,6 +398,31 @@ export function BookEditForm({ bookId, onClose, onSaved }: BookEditFormProps) {
                 label={t("bookEdit.authors")}
                 data={authorOptions}
                 value={form.authors}
+                renderOption={({ option, checked }) => {
+                  const author = authorsByName.get(String(option.value).toLowerCase());
+                  return (
+                    <Group gap="xs" wrap="nowrap">
+                      <Avatar src={author?.hasImage ? authorImageUrl(author.id) : null} size={20} radius="xl">
+                        <IconUser size={12} />
+                      </Avatar>
+                      <span>{option.label}</span>
+                      {checked && <IconCheck size={14} style={{ marginInlineStart: "auto" }} />}
+                    </Group>
+                  );
+                }}
+                renderPill={({ option, onRemove }) => {
+                  const author = authorsByName.get(String(option.value).toLowerCase());
+                  return (
+                    <Pill withRemoveButton onRemove={onRemove}>
+                      <Group gap={4} wrap="nowrap">
+                        <Avatar src={author?.hasImage ? authorImageUrl(author.id) : null} size={14} radius="xl">
+                          <IconUser size={9} />
+                        </Avatar>
+                        <span>{option.label}</span>
+                      </Group>
+                    </Pill>
+                  );
+                }}
                 onChange={(values) => {
                   setForm({ ...form, authors: values });
                   setAuthorSearch("");

@@ -9,6 +9,9 @@ public record BookSummaryDto(
     string Title,
     string SortTitle,
     string[] Authors,
+    // Same author names as Authors, but with id + photo presence (issue #28) - lets the Home view's
+    // recently-added shelf/grid rows show an author avatar without a separate request per book.
+    AuthorRefDto[] AuthorRefs,
     int Rating,
     DateTime DateAdded,
     bool HasCover,
@@ -39,6 +42,9 @@ public record ContinueReadingBookDto(
     string Id,
     string Title,
     string[] Authors,
+    // Same rationale as BookSummaryDto.AuthorRefs - lets the Home view's continue-reading hero and
+    // currently-reading rows show an author avatar without a separate request per book.
+    AuthorRefDto[] AuthorRefs,
     bool HasCover,
     string ReadingStatus,
     string Format,
@@ -50,6 +56,12 @@ public record ContinueReadingBookDto(
 );
 
 public record IdentifierDto(string Scheme, string Value);
+
+// Same author names as BookDetailDto.Authors, but with id + photo presence too (issue #28) - lets
+// BookDetailPanel render each author as a pill with their photo, without a separate request per
+// author. Kept as a second field (AuthorRefs) rather than changing Authors' shape, so
+// BookSummaryDto/every list view that only needs plain names is untouched.
+public record AuthorRefDto(string Id, string Name, bool HasImage);
 
 public record BookFileDto(string Id, string Format, long FileSizeBytes, string AbsolutePath);
 
@@ -68,6 +80,7 @@ public record BookDetailDto(
     int Rating,
     DateTime DateAdded,
     string[] Authors,
+    AuthorRefDto[] AuthorRefs,
     string? SeriesName,
     double? SeriesIndex,
     string[] Tags,
@@ -135,7 +148,7 @@ public record SetPeriodicalsEnabledRequestDto(bool Enabled);
 
 public record RescanProgressDto(bool IsRunning, int Processed, int Total, string? CurrentBook);
 
-public record BrowseGroupDto(string Id, string Name, int BookCount);
+public record BrowseGroupDto(string Id, string Name, int BookCount, bool HasImage = false);
 
 public record CreateCollectionRequestDto(string Name);
 
