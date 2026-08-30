@@ -97,7 +97,7 @@ public class MaktabaDbContext(DbContextOptions<MaktabaDbContext> options) : DbCo
         modelBuilder.Entity<ReadingActivity>(e =>
         {
             e.HasOne(ra => ra.Book).WithMany().HasForeignKey(ra => ra.BookId);
-            e.HasIndex(ra => new { ra.BookId, ra.Date }).IsUnique();
+            e.HasIndex(ra => new { ra.BookId, ra.Date, ra.Hour }).IsUnique();
         });
 
         modelBuilder.Entity<Author>().HasIndex(a => a.Name);

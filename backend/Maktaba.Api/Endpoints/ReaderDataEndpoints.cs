@@ -208,11 +208,14 @@ public static class ReaderDataEndpoints
                 return Results.NotFound();
             }
 
-            var today = DateOnly.FromDateTime(DateTime.UtcNow);
-            var activity = await db.ReadingActivities.FirstOrDefaultAsync(ra => ra.BookId == bookId && ra.Date == today, ct);
+            var now = DateTime.Now;
+            var today = DateOnly.FromDateTime(now);
+            var hour = now.Hour;
+            var activity = await db.ReadingActivities
+                .FirstOrDefaultAsync(ra => ra.BookId == bookId && ra.Date == today && ra.Hour == hour, ct);
             if (activity is null)
             {
-                activity = new ReadingActivity { BookId = bookId, Date = today };
+                activity = new ReadingActivity { BookId = bookId, Date = today, Hour = hour };
                 db.ReadingActivities.Add(activity);
             }
 

@@ -583,6 +583,45 @@ export function getAnalyticsSummary(): Promise<AnalyticsSummary> {
   return request<AnalyticsSummary>("/api/analytics/summary");
 }
 
+export interface ReadingTimePoint {
+  date: string;
+  seconds: number;
+}
+
+export interface ReadingTimeWeek {
+  weekStart: string;
+  seconds: number;
+}
+
+export interface ReadingTimeMonth {
+  month: string;
+  seconds: number;
+}
+
+export interface ReadingTimeDayOfWeek {
+  dayOfWeek: number;
+  seconds: number;
+}
+
+export interface ReadingTimeHour {
+  hour: number;
+  seconds: number;
+}
+
+export interface ReadingTimeReport {
+  daily: ReadingTimePoint[];
+  weekly: ReadingTimeWeek[];
+  monthly: ReadingTimeMonth[];
+  byDayOfWeek: ReadingTimeDayOfWeek[];
+  byHour: ReadingTimeHour[];
+  mostActiveDayOfWeek: number | null;
+  mostActiveHour: number | null;
+}
+
+export function getReadingTimeReport(): Promise<ReadingTimeReport> {
+  return request<ReadingTimeReport>("/api/analytics/reading-time");
+}
+
 export function coverUrl(id: string): string {
   const { apiBaseUrl, token } = window.maktaba;
   return `${apiBaseUrl}/api/books/${id}/cover?access_token=${encodeURIComponent(token)}`;

@@ -200,3 +200,28 @@ public record AnalyticsSummaryDto(
     int FinishedCount,
     AnalyticsBookDto[] Books
 );
+
+// Issue #23 follow-up: "how much did I read, and when" - Daily/Weekly/Monthly are zero-filled,
+// most-recent-last time series (Date/WeekStart are "yyyy-MM-dd", Month is "yyyy-MM"); ByDayOfWeek
+// and ByHour are always all 7 / all 24 buckets in DayOfWeek(0=Sunday)/hour-of-day order regardless
+// of which days/hours actually have data, so the frontend never has to fill gaps itself.
+public record ReadingTimePointDto(string Date, int Seconds);
+
+public record ReadingTimeWeekDto(string WeekStart, int Seconds);
+
+public record ReadingTimeMonthDto(string Month, int Seconds);
+
+public record ReadingTimeDayOfWeekDto(int DayOfWeek, int Seconds);
+
+public record ReadingTimeHourDto(int Hour, int Seconds);
+
+public record ReadingTimeReportDto(
+    ReadingTimePointDto[] Daily,
+    ReadingTimeWeekDto[] Weekly,
+    ReadingTimeMonthDto[] Monthly,
+    ReadingTimeDayOfWeekDto[] ByDayOfWeek,
+    ReadingTimeHourDto[] ByHour,
+    // Null only when there's no reading activity tracked at all yet.
+    int? MostActiveDayOfWeek,
+    int? MostActiveHour
+);

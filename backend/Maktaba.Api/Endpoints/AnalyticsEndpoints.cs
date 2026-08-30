@@ -60,9 +60,74 @@ public static class AnalyticsEndpoints
                 ReadingSecondsSpent: reading.Sum(b => b.SecondsRead),
                 ReadingSecondsRemaining: reading.Sum(b => b.RemainingSeconds ?? 0),
                 FinishedCount: finishedCount,
-                Books: [.. bookDtos.OrderByDescending(b => b.SecondsRead)]);
+                Books: [.. bookDtos.Where(b => b.ReadingStatus != "Unread").OrderByDescending(b => b.SecondsRead)]);
 
             return Results.Ok(summary);
         });
+
+        app.MapGet("/api/analytics/reading-time", async (MaktabaDbContext db, CancellationToken ct) =>
+        {
+            var activities = await db.ReadingActivities
+                .Select(ra => new { ra.Date, ra.Hour, ra.DurationSeconds })
+                .ToListAsync(ct);
+
+            var today = DateOnly.FromDateTime(DateTime.Now);
+
+            var dailyTotals = activities.GroupBy(a => a.Date).ToDictionary(g => g.Key, g => g.Sum(a => a.DurationSeconds));
+            var daily = Enumerable.Range(0, 30)
+                .Select(i => today.AddDays(-29 + i))
+                .Select(d => new ReadingTimePointDto(d.ToString("yyyy-MM-dd"), dailyTotals.GetValueOrDefault(d, 0)))
+                .ToArray();
+
+            var currentWeekStart = today.AddDays(-DayOffsetFromMonday(today.DayOfWeek));
+            var weekly = Enumerable.Range(0, 12)
+                .Select(i => currentWeekStart.AddDays(-7 * (11 - i)))
+                .Select(weekStart =>
+                {
+                    var seconds = Enumerable.Range(0, 7)
+                        .Select(d => dailyTotals.GetValueOrDefault(weekStart.AddDays(d), 0))
+                        .Sum();
+                    return new ReadingTimeWeekDto(weekStart.ToString("yyyy-MM-dd"), seconds);
+                })
+                .ToArray();
+
+            var currentMonthStart = new DateOnly(today.Year, today.Month, 1);
+            var monthly = Enumerable.Range(0, 12)
+                .Select(i => currentMonthStart.AddMonths(-11 + i))
+                .Select(monthStart =>
+                {
+                    var seconds = dailyTotals
+                        .Where(kv => kv.Key.Year == monthStart.Year && kv.Key.Month == monthStart.Month)
+                        .Sum(kv => kv.Value);
+                    return new ReadingTimeMonthDto(monthStart.ToString("yyyy-MM"), seconds);
+                })
+                .ToArray();
+
+            var dayOfWeekTotals = activities
+                .GroupBy(a => (int)a.Date.DayOfWeek)
+                .ToDictionary(g => g.Key, g => g.Sum(a => a.DurationSeconds));
+            var byDayOfWeek = Enumerable.Range(0, 7)
+                .Select(d => new ReadingTimeDayOfWeekDto(d, dayOfWeekTotals.GetValueOrDefault(d, 0)))
+                .ToArray();
+
+            var hourTotals = activities.GroupBy(a => a.Hour).ToDictionary(g => g.Key, g => g.Sum(a => a.DurationSeconds));
+            var byHour = Enumerable.Range(0, 24)
+                .Select(h => new ReadingTimeHourDto(h, hourTotals.GetValueOrDefault(h, 0)))
+                .ToArray();
+
+            var hasActivity = activities.Count > 0;
+            var report = new ReadingTimeReportDto(
+                Daily: daily,
+                Weekly: weekly,
+                Monthly: monthly,
+                ByDayOfWeek: byDayOfWeek,
+                ByHour: byHour,
+                MostActiveDayOfWeek: hasActivity ? byDayOfWeek.MaxBy(d => d.Seconds)!.DayOfWeek : null,
+                MostActiveHour: hasActivity ? byHour.MaxBy(h => h.Seconds)!.Hour : null);
+
+            return Results.Ok(report);
+        });
     }
+
+    private static int DayOffsetFromMonday(DayOfWeek dayOfWeek) => ((int)dayOfWeek + 6) % 7;
 }
