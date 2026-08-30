@@ -37,7 +37,15 @@ public partial class LibraryRescanService(
     private sealed record ReadingActivityInfo(DateOnly Date, int DurationSeconds);
 
     private sealed record PreviousPeriodicalState(
-        string Name, string SortName, string? Description, PeriodicalFrequency Frequency, DateTime DateAdded);
+        string Name,
+        string SortName,
+        string? Description,
+        PeriodicalFrequency Frequency,
+        string? Language,
+        string? Publisher,
+        string? Editor,
+        List<string> TagNames,
+        DateTime DateAdded);
 
     // Captured per book id before the wipe below, and reapplied to the rebuilt row for any book
     // whose folder (and therefore id) still exists, rather than silently resetting it on every
@@ -143,16 +151,19 @@ public partial class LibraryRescanService(
             await db.ReadingProgress.ExecuteDeleteAsync(ct);
             await db.ReadingActivities.ExecuteDeleteAsync(ct);
             await db.Books.ExecuteDeleteAsync(ct);
+            await db.PeriodicalTags.ExecuteDeleteAsync(ct);
             await db.Periodicals.ExecuteDeleteAsync(ct);
             await db.Authors.ExecuteDeleteAsync(ct);
             await db.Series.ExecuteDeleteAsync(ct);
             await db.Tags.ExecuteDeleteAsync(ct);
 
             // Periodicals are recovered the same way books are (issue id embedded in the folder
-            // name), and flushed immediately so the book loop below can create issues referencing
-            // them via a real FK. A periodical folder with no issue subfolders left is still kept -
-            // an empty periodical (just created, or every issue since moved out) is legitimate state,
-            // not something a rescan should silently delete.
+            // name). A periodical folder with no issue subfolders left is still kept - an empty
+            // periodical (just created, or every issue since moved out) is legitimate state, not
+            // something a rescan should silently delete. Flushed per periodical (not once after the
+            // loop) for the same reason the book loop below flushes per book: ResolveTagsAsync's
+            // existing-tag lookup is a plain query, blind to another unflushed periodical's
+            // just-created Tag rows earlier in this same loop - see the book loop's own comment.
             foreach (var entry in periodicalFolderEntries)
             {
                 var periodicalId = entry.Id!.Value;
@@ -165,6 +176,9 @@ public partial class LibraryRescanService(
                         SortName = previousPeriodical.SortName,
                         Description = previousPeriodical.Description,
                         Frequency = previousPeriodical.Frequency,
+                        Language = previousPeriodical.Language,
+                        Publisher = previousPeriodical.Publisher,
+                        Editor = previousPeriodical.Editor,
                         DateAdded = previousPeriodical.DateAdded,
                         FolderPath = relativeFolder,
                     }
@@ -177,10 +191,18 @@ public partial class LibraryRescanService(
                         FolderPath = relativeFolder,
                     };
 
-                db.Periodicals.Add(periodical);
-            }
+                if (previousPeriodical is not null)
+                {
+                    var tags = await EntityResolvers.ResolveTagsAsync(db, previousPeriodical.TagNames, ct);
+                    foreach (var tag in tags)
+                    {
+                        periodical.PeriodicalTags.Add(new PeriodicalTag { PeriodicalId = periodicalId, Tag = tag });
+                    }
+                }
 
-            await db.SaveChangesAsync(ct);
+                db.Periodicals.Add(periodical);
+                await db.SaveChangesAsync(ct);
+            }
 
             var importedCount = 0;
 
@@ -327,12 +349,21 @@ public partial class LibraryRescanService(
     private async Task<Dictionary<int, PreviousPeriodicalState>> LoadPreviousPeriodicalStatesAsync(CancellationToken ct)
     {
         var periodicals = await db.Periodicals
-            .Select(p => new { p.Id, p.Name, p.SortName, p.Description, p.Frequency, p.DateAdded })
+            .Select(p => new
+            {
+                p.Id, p.Name, p.SortName, p.Description, p.Frequency, p.Language, p.Publisher, p.Editor, p.DateAdded,
+            })
+            .ToListAsync(ct);
+
+        var tags = await db.PeriodicalTags
+            .Select(pt => new { pt.PeriodicalId, TagName = pt.Tag.Name })
             .ToListAsync(ct);
 
         return periodicals.ToDictionary(
             p => p.Id,
-            p => new PreviousPeriodicalState(p.Name, p.SortName, p.Description, p.Frequency, p.DateAdded));
+            p => new PreviousPeriodicalState(
+                p.Name, p.SortName, p.Description, p.Frequency, p.Language, p.Publisher, p.Editor,
+                tags.Where(t => t.PeriodicalId == p.Id).Select(t => t.TagName).ToList(), p.DateAdded));
     }
 
     private async Task<bool> TryIndexBookFolderAsync(

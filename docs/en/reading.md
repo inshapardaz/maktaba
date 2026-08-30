@@ -20,6 +20,12 @@ From a book's details, you can mark it as **Unread**, **Reading**, or **Finished
 you keep track of what you're partway through and filter your library to just what you're
 currently reading.
 
+## Looking up word meanings
+
+If you've set up an offline dictionary for a book's language (see
+[Settings & Preferences](./settings)), select any word in the reader and right-click it (or
+long-press on touch screens) to see its definition.
+
 ## Supported formats
 
 Maktaba can open **EPUB** and **PDF** books directly — no extra software needed.

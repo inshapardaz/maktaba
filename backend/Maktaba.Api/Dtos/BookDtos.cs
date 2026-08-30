@@ -121,13 +121,15 @@ public record SystemCapabilitiesDto(bool CalibreAvailable);
 
 public record OpenLibraryRequest(string Path);
 
-public record LibraryDto(string Path);
+public record LibraryDto(string Path, string Id, string Name, bool PeriodicalsEnabled);
 
-public record LibraryEntryDto(string Id, string Name, string Path, bool IsActive);
+public record LibraryEntryDto(string Id, string Name, string Path, bool IsActive, bool PeriodicalsEnabled);
 
 public record RenameLibraryRequestDto(string Name);
 
 public record RelocateLibraryRequestDto(string Path);
+
+public record SetPeriodicalsEnabledRequestDto(bool Enabled);
 
 public record RescanProgressDto(bool IsRunning, int Processed, int Total, string? CurrentBook);
 
@@ -144,11 +146,37 @@ public record RenameTagRequestDto(string Name);
 public record RenameSeriesRequestDto(string Name);
 
 public record PeriodicalDto(
-    string Id, string Name, string? Description, string Frequency, int IssueCount, bool HasCover);
+    string Id,
+    string Name,
+    string? Description,
+    string Frequency,
+    string? Language,
+    string? Publisher,
+    string? Editor,
+    string[] Tags,
+    int IssueCount,
+    bool HasCover
+);
 
-public record CreatePeriodicalRequestDto(string Name, string Frequency, string? Description);
+public record CreatePeriodicalRequestDto(
+    string Name,
+    string Frequency,
+    string? Description,
+    string? Language = null,
+    string? Publisher = null,
+    string? Editor = null,
+    string[]? Tags = null
+);
 
-public record UpdatePeriodicalRequestDto(string Name, string Frequency, string? Description);
+public record UpdatePeriodicalRequestDto(
+    string Name,
+    string Frequency,
+    string? Description,
+    string? Language,
+    string? Publisher,
+    string? Editor,
+    string[] Tags
+);
 
 public record RecordReadingActivityRequestDto(int Seconds);
 

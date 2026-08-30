@@ -140,10 +140,15 @@ function App() {
   // (library/authors/collections/...) or changing the active group filter shows a different set
   // of books entirely, so a selection carried over from before would silently apply drag/drop or
   // other multi-select actions to books the user can no longer even see.
+  //
+  // selectedPeriodicalId is deliberately NOT reset here (unlike before) - selecting a periodical
+  // from the sidebar sets mainView to "periodicals" and selectedPeriodicalId in the same handler
+  // (see handleSelectFilter's periodicalId branch below), and since both changes are batched into
+  // one render, this effect would otherwise fire right after and immediately null the id back out.
+  // It's reset explicitly instead, at every point that should land on the plain periodicals list.
   useEffect(() => {
     setSelectedBookIds(new Set());
     setLastClickedIndex(null);
-    setSelectedPeriodicalId(null);
   }, [mainView, groupFilter]);
 
   const filters: BookFilters = {
@@ -165,6 +170,16 @@ function App() {
     queryKey: ["library"],
     queryFn: getCurrentLibrary,
   });
+
+  // Falls back off the Periodicals view if this library's setting (Settings -> Libraries) gets
+  // toggled off while it's the one currently showing, or a different library (with the feature
+  // off) is switched to while it was showing - stale local UI state, not persisted.
+  useEffect(() => {
+    if (libraryQuery.data && !libraryQuery.data.periodicalsEnabled && mainView === "periodicals") {
+      setMainView("library");
+      setSelectedPeriodicalId(null);
+    }
+  }, [libraryQuery.data, mainView]);
 
   const booksQuery = useQuery({
     queryKey: ["books", filters],
@@ -201,15 +216,28 @@ function App() {
   // back on the library grid/list — without this, picking a filter while Settings/Authors/
   // Collections was open would silently update groupFilter behind whatever view was showing,
   // with no way back to the library short of changing libraries.
+  //
+  // Periodicals are the one exception: picking one from the sidebar should open the same
+  // cover/description/year-nav detail view as PeriodicalsView's "see all" screen, not just filter
+  // the plain library grid down to that periodical's issues - so this routes to mainView
+  // "periodicals" instead, still keeping groupFilter in sync purely so the sidebar row highlights
+  // as active while its detail view is showing.
   const handleSelectFilter = (filter: GroupFilter | null) => {
     setGroupFilter(filter);
+    if (filter?.kind === "periodicalId") {
+      setMainView("periodicals");
+      setSelectedPeriodicalId(filter.id);
+      return;
+    }
     setMainView("library");
+    setSelectedPeriodicalId(null);
     applyDefaultSort(filter);
   };
 
   const handleShowAllBooks = () => {
     setGroupFilter(null);
     setMainView("library");
+    setSelectedPeriodicalId(null);
     applyDefaultSort(null);
   };
 
@@ -494,7 +522,11 @@ function App() {
                 onOpenCollections={() => setMainView("collections")}
                 onOpenTags={() => setMainView("tags")}
                 onOpenSeries={() => setMainView("series")}
-                onOpenPeriodicals={() => setMainView("periodicals")}
+                onOpenPeriodicals={() => {
+                  setMainView("periodicals");
+                  setSelectedPeriodicalId(null);
+                  setGroupFilter(null);
+                }}
                 onOpenPublishers={() => setMainView("publishers")}
                 onOpenLanguages={() => setMainView("languages")}
                 onOpenSettings={(tab) => {

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActionIcon,
   Badge,
@@ -36,6 +36,7 @@ import type { Icon } from "@tabler/icons-react";
 import {
   createCollection,
   createPeriodical,
+  getCurrentLibrary,
   listAuthors,
   listCollections,
   listLanguageGroups,
@@ -275,7 +276,11 @@ export function Sidebar({
   const seriesQuery = useQuery({ queryKey: ["series"], queryFn: listSeries });
   const tagsQuery = useQuery({ queryKey: ["tags"], queryFn: listTags });
   const collectionsQuery = useQuery({ queryKey: ["collections"], queryFn: listCollections });
-  const periodicalsQuery = useQuery({ queryKey: ["periodicals"], queryFn: listPeriodicals });
+  // Per-library preference (Settings -> Libraries) - shares the ["library"] query App.tsx already
+  // keeps warm, so this is a cache read, not an extra request.
+  const libraryQuery = useQuery({ queryKey: ["library"], queryFn: getCurrentLibrary });
+  const periodicalsEnabled = libraryQuery.data?.periodicalsEnabled ?? true;
+  const periodicalsQuery = useQuery({ queryKey: ["periodicals"], queryFn: listPeriodicals, enabled: periodicalsEnabled });
 
   // Drag-to-resize: pointer capture on the handle itself means move/up keep firing on it even
   // once the cursor leaves its thin hit area mid-drag, so a fast drag can't "escape" the handle
@@ -442,6 +447,14 @@ export function Sidebar({
 
   const [browseSection, setBrowseSection] = useState<BrowseSection>("authors");
 
+  // Falls back off the Periodicals section if this library's setting (Settings -> Libraries) gets
+  // toggled off while it's the one currently showing - stale local UI state, not persisted.
+  useEffect(() => {
+    if (!periodicalsEnabled && browseSection === "periodicals") {
+      setBrowseSection("authors");
+    }
+  }, [periodicalsEnabled, browseSection]);
+
   // "Active" here means "this is the filter currently applied to the book list" - matched against
   // activeFilter.kind, not the locally-browsed section - so this view bar and the title bar's
   // filter row (All books/Unread/Reading/Finished - see TitleBar.tsx) stay mutually exclusive:
@@ -463,7 +476,11 @@ export function Sidebar({
     { key: "collections", icon: IconFolder, label: t("sidebar.collections"), active: activeFilter?.kind === sectionFilterKind.collections },
     { key: "series", icon: IconStack2, label: t("sidebar.series"), active: activeFilter?.kind === sectionFilterKind.series },
     { key: "tags", icon: IconTag, label: t("sidebar.tags"), active: activeFilter?.kind === sectionFilterKind.tags },
-    { key: "periodicals", icon: IconNews, label: t("sidebar.periodicals"), active: activeFilter?.kind === sectionFilterKind.periodicals },
+    // Omitted entirely (not just visually disabled) when this library has the feature turned off
+    // (Settings -> Libraries) - see periodicalsEnabled above.
+    ...(periodicalsEnabled
+      ? [{ key: "periodicals" as const, icon: IconNews, label: t("sidebar.periodicals"), active: activeFilter?.kind === sectionFilterKind.periodicals }]
+      : []),
     { key: "publishers", icon: IconBuildingStore, label: t("sidebar.publishers"), active: activeFilter?.kind === sectionFilterKind.publishers },
     { key: "languages", icon: IconLanguage, label: t("sidebar.languages"), active: activeFilter?.kind === sectionFilterKind.languages },
   ];

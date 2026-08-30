@@ -8,6 +8,7 @@ import {
   Group,
   Progress,
   Stack,
+  Switch,
   Text,
   TextInput,
   Tooltip,
@@ -32,6 +33,7 @@ import {
   removeLibrary,
   renameLibrary,
   resyncLibrary,
+  setLibraryPeriodicalsEnabled,
   type LibraryEntry,
   type RescanProgress,
 } from "../api";
@@ -115,6 +117,19 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
       invalidateLibraries();
       if (librariesQuery.data?.find((l) => l.id === id)?.isActive) {
         refreshActiveLibrary();
+      }
+    },
+    onError: (err) => setActionError(err instanceof Error ? err.message : String(err)),
+  });
+
+  const periodicalsToggleMutation = useMutation({
+    mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) => setLibraryPeriodicalsEnabled(id, enabled),
+    onSuccess: (_result, { id }) => {
+      invalidateLibraries();
+      // Sidebar/BookEditForm read this off the ["library"] query (the active library only) - only
+      // worth refreshing when the toggled row actually is the active one.
+      if (librariesQuery.data?.find((l) => l.id === id)?.isActive) {
+        void queryClient.invalidateQueries({ queryKey: ["library"] });
       }
     },
     onError: (err) => setActionError(err instanceof Error ? err.message : String(err)),
@@ -327,6 +342,18 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
             <Text size="xs" c="dimmed" ff="var(--mantine-font-family-monospace)" truncate="end">
               {entry.path}
             </Text>
+
+            <Group justify="space-between">
+              <Text size="xs" c="dimmed">
+                {t("librariesSettings.periodicals")}
+              </Text>
+              <Switch
+                size="xs"
+                checked={entry.periodicalsEnabled}
+                disabled={periodicalsToggleMutation.isPending && periodicalsToggleMutation.variables?.id === entry.id}
+                onChange={(e) => periodicalsToggleMutation.mutate({ id: entry.id, enabled: e.currentTarget.checked })}
+              />
+            </Group>
 
             {resyncingId === entry.id && (
               <Stack gap={2}>

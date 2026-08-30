@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ActionIcon, Badge, Box, Button, Group, NavLink, Select, Stack, Text, TextInput, Tooltip } from "@mantine/core";
-import { IconSearch, IconTrash } from "@tabler/icons-react";
-import { createPeriodical, deletePeriodical, listPeriodicals, type PeriodicalFrequency } from "../api";
+import { ActionIcon, Alert, Badge, Box, Button, Group, Modal, NavLink, Select, Stack, Text, TextInput, Tooltip } from "@mantine/core";
+import { IconAlertCircle, IconSearch, IconTrash } from "@tabler/icons-react";
+import { createPeriodical, deletePeriodical, listPeriodicals, type Periodical, type PeriodicalFrequency } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
 import type { TranslationKey } from "../i18n/translations";
 import { BrowseViewHeader } from "./BrowseViewHeader";
@@ -20,7 +20,9 @@ export function PeriodicalsView({ onOpen, onBack }: PeriodicalsViewProps) {
   const [search, setSearch] = useState("");
   const [name, setName] = useState("");
   const [frequency, setFrequency] = useState<PeriodicalFrequency>("Occasional");
-  const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
+  // Holds the periodical a delete is pending confirmation for (not just its id) so the modal can
+  // show its name/issue count without a second lookup.
+  const [confirmingDelete, setConfirmingDelete] = useState<Periodical | null>(null);
 
   const periodicalsQuery = useQuery({ queryKey: ["periodicals"], queryFn: listPeriodicals });
 
@@ -35,9 +37,12 @@ export function PeriodicalsView({ onOpen, onBack }: PeriodicalsViewProps) {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => deletePeriodical(id),
+    mutationFn: async (periodical: Periodical) => {
+      const { folderPath } = await deletePeriodical(periodical.id, periodical.issueCount > 0);
+      await window.maktaba.trashPath(folderPath);
+    },
     onSuccess: () => {
-      setConfirmingDeleteId(null);
+      setConfirmingDelete(null);
       invalidate();
     },
   });
@@ -124,32 +129,60 @@ export function PeriodicalsView({ onOpen, onBack }: PeriodicalsViewProps) {
                   </Badge>
                 }
               />
-              {confirmingDeleteId === periodical.id ? (
-                <Group gap={4} wrap="nowrap">
-                  <Button size="xs" color="red" loading={deleteMutation.isPending} onClick={() => deleteMutation.mutate(periodical.id)}>
-                    {t("common.confirm")}
-                  </Button>
-                  <Button size="xs" variant="subtle" onClick={() => setConfirmingDeleteId(null)}>
-                    {t("common.cancel")}
-                  </Button>
-                </Group>
-              ) : (
-                <Tooltip label={periodical.issueCount > 0 ? t("periodicalsView.cannotDelete") : t("periodicalsView.confirmDelete")}>
-                  <ActionIcon
-                    variant="subtle"
-                    color="red"
-                    disabled={periodical.issueCount > 0}
-                    onClick={() => setConfirmingDeleteId(periodical.id)}
-                    aria-label={t("periodicalsView.confirmDelete")}
-                  >
-                    <IconTrash size={15} />
-                  </ActionIcon>
-                </Tooltip>
-              )}
+              <Tooltip label={t("periodicalsView.confirmDelete")}>
+                <ActionIcon
+                  variant="subtle"
+                  color="red"
+                  onClick={() => setConfirmingDelete(periodical)}
+                  aria-label={t("periodicalsView.confirmDelete")}
+                >
+                  <IconTrash size={15} />
+                </ActionIcon>
+              </Tooltip>
             </Group>
           ))}
         </Stack>
       </Box>
+
+      <Modal
+        opened={confirmingDelete !== null}
+        onClose={() => setConfirmingDelete(null)}
+        title={t("periodicalsView.deleteConfirmTitle")}
+        centered
+      >
+        {confirmingDelete && (
+          <Stack gap="md">
+            <Text size="sm">
+              {confirmingDelete.issueCount > 0
+                ? t("periodicalsView.deleteWarning", {
+                    name: confirmingDelete.name,
+                    issues: t(
+                      confirmingDelete.issueCount === 1 ? "periodicalsView.issueCount_one" : "periodicalsView.issueCount_other",
+                      { count: confirmingDelete.issueCount },
+                    ),
+                  })
+                : t("periodicalsView.confirmDelete")}
+            </Text>
+            {deleteMutation.isError && (
+              <Alert color="red" icon={<IconAlertCircle size={16} />}>
+                {deleteMutation.error instanceof Error ? deleteMutation.error.message : String(deleteMutation.error)}
+              </Alert>
+            )}
+            <Group justify="flex-end">
+              <Button variant="default" onClick={() => setConfirmingDelete(null)}>
+                {t("common.cancel")}
+              </Button>
+              <Button
+                color="red"
+                loading={deleteMutation.isPending}
+                onClick={() => deleteMutation.mutate(confirmingDelete)}
+              >
+                {t("common.confirm")}
+              </Button>
+            </Group>
+          </Stack>
+        )}
+      </Modal>
     </Box>
   );
 }
