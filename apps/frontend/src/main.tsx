@@ -14,6 +14,7 @@ import { ReaderOverlay } from "./components/ReaderOverlay";
 import { BackendGate } from "./components/BackendGate";
 import { HelpWindow } from "./components/HelpWindow";
 import { ImportProvider } from "./ImportContext";
+import { RescanProvider } from "./RescanContext";
 import App from "./App.tsx";
 
 const queryClient = new QueryClient();
@@ -75,7 +76,9 @@ createRoot(document.getElementById("root")!).render(
                   <HelpWindow />
                 ) : (
                   <ImportProvider>
-                    <App />
+                    <RescanProvider>
+                      <App />
+                    </RescanProvider>
                   </ImportProvider>
                 )}
               </BackendGate>

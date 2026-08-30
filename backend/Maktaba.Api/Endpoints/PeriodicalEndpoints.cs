@@ -19,7 +19,19 @@ public static class PeriodicalEndpoints
 
             var periodicals = await db.Periodicals
                 .OrderBy(p => p.SortName)
-                .Select(p => new { p.Id, p.Name, p.Description, p.Frequency, p.FolderPath, IssueCount = p.Issues.Count })
+                .Select(p => new
+                {
+                    p.Id,
+                    p.Name,
+                    p.Description,
+                    p.Frequency,
+                    p.Language,
+                    p.Publisher,
+                    p.Editor,
+                    p.FolderPath,
+                    IssueCount = p.Issues.Count,
+                    Tags = p.PeriodicalTags.Select(pt => pt.Tag.Name).ToList(),
+                })
                 .ToListAsync();
 
             return Results.Ok(periodicals.Select(p => new PeriodicalDto(
@@ -27,6 +39,10 @@ public static class PeriodicalEndpoints
                 p.Name,
                 p.Description,
                 p.Frequency.ToString(),
+                p.Language,
+                p.Publisher,
+                p.Editor,
+                [.. p.Tags],
                 p.IssueCount,
                 CoverLocator.Find(root, p.FolderPath) is not null)));
         });
@@ -52,18 +68,37 @@ public static class PeriodicalEndpoints
             var root = libraryPath.LibraryRootPath!;
             var existing = await db.Periodicals
                 .Where(p => p.Name.ToLower() == name.ToLower())
-                .Select(p => new { p.Id, p.Name, p.Description, p.Frequency, p.FolderPath, IssueCount = p.Issues.Count })
+                .Select(p => new
+                {
+                    p.Id,
+                    p.Name,
+                    p.Description,
+                    p.Frequency,
+                    p.Language,
+                    p.Publisher,
+                    p.Editor,
+                    p.FolderPath,
+                    IssueCount = p.Issues.Count,
+                    Tags = p.PeriodicalTags.Select(pt => pt.Tag.Name).ToList(),
+                })
                 .FirstOrDefaultAsync(ct);
 
             if (existing is not null)
             {
                 return Results.Ok(new PeriodicalDto(
                     IdCodec.Encode(existing.Id), existing.Name, existing.Description, existing.Frequency.ToString(),
+                    existing.Language, existing.Publisher, existing.Editor, [.. existing.Tags],
                     existing.IssueCount, CoverLocator.Find(root, existing.FolderPath) is not null));
             }
 
-            var periodical = await periodicalService.CreateAsync(name, frequency, request.Description?.Trim(), ct);
-            var dto = new PeriodicalDto(IdCodec.Encode(periodical.Id), periodical.Name, periodical.Description, periodical.Frequency.ToString(), 0, false);
+            var editRequest = new PeriodicalEditRequest(
+                name, frequency, request.Description?.Trim(), request.Language?.Trim(), request.Publisher?.Trim(),
+                request.Editor?.Trim(), request.Tags ?? []);
+            var periodical = await periodicalService.CreateAsync(editRequest, ct);
+            var dto = new PeriodicalDto(
+                IdCodec.Encode(periodical.Id), periodical.Name, periodical.Description, periodical.Frequency.ToString(),
+                periodical.Language, periodical.Publisher, periodical.Editor,
+                [.. periodical.PeriodicalTags.Select(pt => pt.Tag.Name)], 0, false);
             return Results.Created($"/api/periodicals/{dto.Id}", dto);
         });
 
@@ -78,7 +113,19 @@ public static class PeriodicalEndpoints
 
             var periodical = await db.Periodicals
                 .Where(p => p.Id == periodicalId)
-                .Select(p => new { p.Id, p.Name, p.Description, p.Frequency, p.FolderPath, IssueCount = p.Issues.Count })
+                .Select(p => new
+                {
+                    p.Id,
+                    p.Name,
+                    p.Description,
+                    p.Frequency,
+                    p.Language,
+                    p.Publisher,
+                    p.Editor,
+                    p.FolderPath,
+                    IssueCount = p.Issues.Count,
+                    Tags = p.PeriodicalTags.Select(pt => pt.Tag.Name).ToList(),
+                })
                 .FirstOrDefaultAsync();
 
             if (periodical is null)
@@ -88,6 +135,7 @@ public static class PeriodicalEndpoints
 
             return Results.Ok(new PeriodicalDto(
                 IdCodec.Encode(periodical.Id), periodical.Name, periodical.Description, periodical.Frequency.ToString(),
+                periodical.Language, periodical.Publisher, periodical.Editor, [.. periodical.Tags],
                 periodical.IssueCount, CoverLocator.Find(root, periodical.FolderPath) is not null));
         });
 
@@ -111,7 +159,10 @@ public static class PeriodicalEndpoints
                 return Results.BadRequest(new { error = "Invalid frequency." });
             }
 
-            var periodical = await periodicalService.UpdateAsync(periodicalId, name, frequency, request.Description?.Trim(), ct);
+            var editRequest = new PeriodicalEditRequest(
+                name, frequency, request.Description?.Trim(), request.Language?.Trim(), request.Publisher?.Trim(),
+                request.Editor?.Trim(), request.Tags);
+            var periodical = await periodicalService.UpdateAsync(periodicalId, editRequest, ct);
             if (periodical is null)
             {
                 return Results.NotFound();
@@ -120,20 +171,25 @@ public static class PeriodicalEndpoints
             var root = libraryPath.LibraryRootPath!;
             return Results.Ok(new PeriodicalDto(
                 IdCodec.Encode(periodical.Id), periodical.Name, periodical.Description, periodical.Frequency.ToString(),
+                periodical.Language, periodical.Publisher, periodical.Editor,
+                [.. periodical.PeriodicalTags.Select(pt => pt.Tag.Name)],
                 periodical.Issues.Count, CoverLocator.Find(root, periodical.FolderPath) is not null));
         });
 
-        group.MapDelete("/{id}", async (string id, IPeriodicalService periodicalService, CancellationToken ct) =>
+        // deleteIssues=true opts into cascading the delete onto every issue - see
+        // PeriodicalService.DeleteAsync. Without it, a periodical that still has issues comes back
+        // as a 409 instead, so the frontend can show a confirmation (with the issue count) first.
+        group.MapDelete("/{id}", async (string id, bool? deleteIssues, IPeriodicalService periodicalService, CancellationToken ct) =>
         {
             if (!IdCodec.TryDecode(id, out var periodicalId))
             {
                 return Results.NotFound();
             }
 
-            var outcome = await periodicalService.DeleteAsync(periodicalId, ct);
-            return outcome switch
+            var result = await periodicalService.DeleteAsync(periodicalId, deleteIssues == true, ct);
+            return result.Outcome switch
             {
-                PeriodicalDeleteOutcome.Deleted => Results.NoContent(),
+                PeriodicalDeleteOutcome.Deleted => Results.Ok(new { folderPath = result.AbsoluteFolderPath }),
                 PeriodicalDeleteOutcome.NotFound => Results.NotFound(),
                 PeriodicalDeleteOutcome.HasIssues => Results.Conflict(
                     new { error = "This periodical still has issues. Move or remove them first." }),

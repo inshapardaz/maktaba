@@ -57,6 +57,11 @@ export interface BookDetail extends BookSummary {
 
 export interface LibraryInfo {
   path: string;
+  id: string;
+  name: string;
+  // Per-library preference (Settings -> Libraries) - hides the Periodicals sidebar section and the
+  // book-edit form's Periodical fieldset when off, without touching this library's own data.
+  periodicalsEnabled: boolean;
 }
 
 export interface BrowseGroup {
@@ -187,6 +192,7 @@ export interface LibraryEntry {
   name: string;
   path: string;
   isActive: boolean;
+  periodicalsEnabled: boolean;
 }
 
 // Every library the user has ever opened - only one (isActive) is the one every other request
@@ -210,6 +216,13 @@ export function relocateLibrary(id: string, path: string): Promise<LibraryEntry>
   return request<LibraryEntry>(`/api/libraries/${id}/path`, {
     method: "PUT",
     body: JSON.stringify({ path }),
+  });
+}
+
+export function setLibraryPeriodicalsEnabled(id: string, enabled: boolean): Promise<LibraryEntry> {
+  return request<LibraryEntry>(`/api/libraries/${id}/periodicals-enabled`, {
+    method: "PUT",
+    body: JSON.stringify({ enabled }),
   });
 }
 
@@ -574,8 +587,26 @@ export interface Periodical {
   name: string;
   description: string | null;
   frequency: PeriodicalFrequency;
+  // Metadata that lives at the periodical level rather than per-issue - see BookEditForm.tsx,
+  // which hides its own language/publisher/tags fields once a book is an issue in favor of these.
+  // Issue #30: an issue has no language of its own - the reader falls back to its periodical's
+  // language, then to English, to pick a word-lookup dictionary (see ReaderOverlay.tsx).
+  language: string | null;
+  publisher: string | null;
+  editor: string | null;
+  tags: string[];
   issueCount: number;
   hasCover: boolean;
+}
+
+export interface PeriodicalEditFields {
+  name: string;
+  frequency: PeriodicalFrequency;
+  description: string | null;
+  language: string | null;
+  publisher: string | null;
+  editor: string | null;
+  tags: string[];
 }
 
 export function listPeriodicals(): Promise<Periodical[]> {
@@ -587,7 +618,9 @@ export function getPeriodical(id: string): Promise<Periodical> {
 }
 
 // Upserts by name (same semantics as createCollection) - a repeated quick-add of the same
-// periodical name resolves to the one existing row instead of creating a duplicate.
+// periodical name resolves to the one existing row instead of creating a duplicate. Kept as this
+// minimal name+frequency signature since it's only ever called from Sidebar's quick-add popover -
+// the full field set is edited afterward via updatePeriodical, from PeriodicalDetailView.
 export function createPeriodical(name: string, frequency: PeriodicalFrequency, description?: string | null): Promise<Periodical> {
   return request<Periodical>("/api/periodicals", {
     method: "POST",
@@ -595,19 +628,22 @@ export function createPeriodical(name: string, frequency: PeriodicalFrequency, d
   });
 }
 
-export function updatePeriodical(
-  id: string, name: string, frequency: PeriodicalFrequency, description: string | null,
-): Promise<Periodical> {
+export function updatePeriodical(id: string, fields: PeriodicalEditFields): Promise<Periodical> {
   return request<Periodical>(`/api/periodicals/${id}`, {
     method: "PUT",
-    body: JSON.stringify({ name, frequency, description }),
+    body: JSON.stringify(fields),
   });
 }
 
-// Rejects with a 409 (surfaced as a thrown ApiError) if the periodical still has issues - no
-// cascade delete, matching the deliberately-cautious style of collection/book removal.
-export function deletePeriodical(id: string): Promise<void> {
-  return request<void>(`/api/periodicals/${id}`, { method: "DELETE" });
+// Rejects with a 409 (surfaced as a thrown ApiError) if the periodical still has issues and
+// deleteIssues isn't passed - the caller is expected to confirm with the user first (showing the
+// issue count) and retry with deleteIssues: true, same "confirm, then cascade" shape as the
+// dedicated confirmation UI in PeriodicalsView.tsx/PeriodicalDetailView.tsx. On success, returns
+// the periodical's absolute folder path (which already contains every issue's own subfolder) for
+// the caller to move to the OS trash via window.maktaba.trashPath - mirrors deleteBook's contract.
+export function deletePeriodical(id: string, deleteIssues?: boolean): Promise<{ folderPath: string }> {
+  const query = deleteIssues ? "?deleteIssues=true" : "";
+  return request<{ folderPath: string }>(`/api/periodicals/${id}${query}`, { method: "DELETE" });
 }
 
 export function periodicalCoverUrl(id: string): string {

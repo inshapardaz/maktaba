@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, Menu } from "electron";
 import * as path from "node:path";
 import * as fs from "node:fs";
 import { startSidecar, stopSidecar, waitForHealth, SidecarHandle, SidecarStatus } from "./sidecar";
-import { registerNativeHandlers } from "./native";
+import { registerNativeHandlers, registerStarDictProtocol } from "./native";
 import { registerHelpHandlers } from "./help";
 import { buildAppMenu } from "./menu";
 import { checkForUpdates, initUpdater } from "./updater";
@@ -360,6 +360,7 @@ ipcMain.handle("maktaba:replay-onboarding-tour", () => {
 });
 
 app.whenReady().then(async () => {
+  registerStarDictProtocol();
   createSplashWindow();
   await createWindow();
 });

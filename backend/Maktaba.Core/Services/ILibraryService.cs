@@ -4,7 +4,7 @@ public record LibraryInfo(string Path);
 
 /// <summary>A library the user has opened at least once, kept in the app-wide registry (see
 /// LibraryService) regardless of whether it's the one currently active.</summary>
-public record LibraryRegistryEntry(string Id, string Name, string Path);
+public record LibraryRegistryEntry(string Id, string Name, string Path, bool PeriodicalsEnabled = true);
 
 public interface ILibraryService
 {
@@ -34,6 +34,11 @@ public interface ILibraryService
     /// <summary>Re-points a registered library at a different folder (e.g. after it was moved on disk),
     /// re-activating it in place if it's the currently open one. Returns null if not found.</summary>
     Task<LibraryRegistryEntry?> RelocateAsync(string id, string newPath, CancellationToken ct = default);
+
+    /// <summary>Toggles the Periodicals feature's visibility for one registered library - a pure UI
+    /// preference stored alongside the registry entry, not something that touches that library's own
+    /// metadata.db. Returns null if not found.</summary>
+    Task<LibraryRegistryEntry?> SetPeriodicalsEnabledAsync(string id, bool enabled, CancellationToken ct = default);
 
     /// <summary>Un-registers a library (its files on disk are left untouched). If it was the active
     /// library, switches to another registered one if any remain, otherwise leaves none open.
