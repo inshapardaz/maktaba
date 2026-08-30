@@ -229,6 +229,7 @@ const en = {
   "analytics.byTimeOfDay": "By time of day",
   "analytics.mostActiveDay": "Most active day",
   "analytics.mostActiveTime": "Most active time",
+  "bookDetail.renameFile": "Rename file",
 
   "bookEdit.title": "Edit book",
   "bookEdit.titleField": "Title",
@@ -630,6 +631,7 @@ const ur: TranslationDict = {
   "analytics.byTimeOfDay": "بلحاظ وقت",
   "analytics.mostActiveDay": "سب سے زیادہ فعال دن",
   "analytics.mostActiveTime": "سب سے زیادہ فعال وقت",
+  "bookDetail.renameFile": "فائل کا نام تبدیل کریں",
 
   "bookEdit.title": "کتاب میں ترمیم کریں",
   "bookEdit.titleField": "عنوان",

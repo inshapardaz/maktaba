@@ -271,6 +271,8 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
     // column, issue #23's ReadingActivities table (plus its later Hour column, for the
     // day-of-week/time-of-day reading report), issue #30's Periodical.Language column, and
     // Periodical's Publisher/Editor columns + PeriodicalTags table) - a cheap, representative
+    // column, issue #27's BookFile.IsCustomNamed column, issue #30's Periodical.Language column,
+    // and Periodical's Publisher/Editor columns + PeriodicalTags table) - a cheap, representative
     // stand-in for "is this database current" without needing full EF Core migrations, which this
     // project deliberately doesn't use. Every future schema-breaking change needs its own probe
     // added here, or an upgrading user's existing metadata.db won't be recognized as stale and
@@ -285,6 +287,7 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
             await db.Periodicals.Select(p => p.Id).Take(1).ToListAsync(ct);
             await db.Books.Select(b => b.PeriodicalId).Take(1).ToListAsync(ct);
             await db.ReadingActivities.Select(ra => ra.Hour).Take(1).ToListAsync(ct);
+            await db.BookFiles.Select(f => f.IsCustomNamed).Take(1).ToListAsync(ct);
             await db.Periodicals.Select(p => new { p.Language, p.Publisher, p.Editor }).Take(1).ToListAsync(ct);
             await db.PeriodicalTags.Select(pt => pt.PeriodicalId).Take(1).ToListAsync(ct);
             return true;

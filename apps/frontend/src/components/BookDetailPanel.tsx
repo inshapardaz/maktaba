@@ -17,23 +17,28 @@ import {
   SegmentedControl,
   Stack,
   Text,
+  TextInput,
   Title,
   Tooltip,
 } from "@mantine/core";
 import {
   IconAlertCircle,
   IconBook2,
+  IconCheck,
   IconChevronDown,
   IconFolder,
   IconExternalLink,
+  IconPencil,
   IconPlus,
   IconTrash,
+  IconX,
 } from "@tabler/icons-react";
 import {
   getBook,
   addBookFile,
   deleteBook,
   coverUrl,
+  renameBookFile,
   updateBookStatus,
   getReadingProgress,
   pickPreferredReadFile,
@@ -106,6 +111,34 @@ export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelP
       void queryClient.invalidateQueries({ queryKey: ["books"] });
     },
   });
+
+  // Issue #27: rename an attached file's on-disk name so it's identifiable.
+  const [renamingFileId, setRenamingFileId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+
+  const renameFileMutation = useMutation({
+    mutationFn: ({ fileId, fileName }: { fileId: string; fileName: string }) => renameBookFile(bookId, fileId, fileName),
+    onSuccess: () => {
+      setRenamingFileId(null);
+      void queryClient.invalidateQueries({ queryKey: ["book", bookId] });
+    },
+  });
+
+  const fileName = (absolutePath: string) => absolutePath.split(/[/\\]/).pop() ?? "";
+
+  const fileBaseName = (absolutePath: string) => fileName(absolutePath).replace(/\.[^.]+$/, "");
+
+  const startRenamingFile = (file: BookFileInfo) => {
+    setRenamingFileId(file.id);
+    setRenameValue(fileBaseName(file.absolutePath));
+  };
+
+  const commitRenamingFile = () => {
+    const trimmed = renameValue.trim();
+    if (renamingFileId && trimmed.length > 0) {
+      renameFileMutation.mutate({ fileId: renamingFileId, fileName: trimmed });
+    }
+  };
 
   // Sequential (not Promise.all) so one file's failure doesn't abort files already queued behind
   // it, matching ImportDialog.tsx's own queue-processing behavior for its own multi-file picker.
@@ -245,7 +278,7 @@ export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelP
                   <Menu.Dropdown>
                     {readableFiles.map((f) => (
                       <Menu.Item key={f.absolutePath} onClick={() => openReader(f.format, f.absolutePath)}>
-                        {f.format}
+                        {f.format} — {fileName(f.absolutePath)}
                       </Menu.Item>
                     ))}
                   </Menu.Dropdown>
@@ -346,39 +379,87 @@ export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelP
           <Divider label={t("bookDetail.files")} labelPosition="left" />
 
           <List spacing="xs" listStyleType="none">
-            {book.files.map((f) => (
-              <List.Item key={f.absolutePath}>
-                <Group justify="space-between">
-                  <Text size="sm">
-                    {f.format} — {(f.fileSizeBytes / 1024).toFixed(0)} KB
-                  </Text>
-                  <Group gap={4}>
-                    <Tooltip label={t("bookDetail.open")}>
-                      <ActionIcon
-                        size="sm"
-                        variant="subtle"
-                        color="gray"
-                        aria-label={t("bookDetail.open")}
-                        onClick={() => window.maktaba.openPath(f.absolutePath)}
-                      >
-                        <IconExternalLink size={14} />
-                      </ActionIcon>
-                    </Tooltip>
-                    <Tooltip label={t("bookDetail.showInFolder")}>
-                      <ActionIcon
-                        size="sm"
-                        variant="subtle"
-                        color="gray"
-                        aria-label={t("bookDetail.showInFolder")}
-                        onClick={() => window.maktaba.revealInFolder(f.absolutePath)}
-                      >
-                        <IconFolder size={14} />
-                      </ActionIcon>
-                    </Tooltip>
+            {book.files.map((f) =>
+              renamingFileId === f.id ? (
+                <List.Item key={f.id}>
+                  <Group gap={4} wrap="nowrap">
+                    <TextInput
+                      size="xs"
+                      style={{ flex: 1 }}
+                      value={renameValue}
+                      autoFocus
+                      onChange={(e) => setRenameValue(e.currentTarget.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") commitRenamingFile();
+                        if (e.key === "Escape") setRenamingFileId(null);
+                      }}
+                    />
+                    <ActionIcon
+                      size="sm"
+                      variant="subtle"
+                      color="green"
+                      loading={renameFileMutation.isPending}
+                      disabled={renameValue.trim().length === 0}
+                      onClick={commitRenamingFile}
+                      aria-label={t("common.save")}
+                    >
+                      <IconCheck size={14} />
+                    </ActionIcon>
+                    <ActionIcon size="sm" variant="subtle" color="gray" onClick={() => setRenamingFileId(null)} aria-label={t("common.cancel")}>
+                      <IconX size={14} />
+                    </ActionIcon>
                   </Group>
-                </Group>
-              </List.Item>
-            ))}
+                </List.Item>
+              ) : (
+                <List.Item key={f.id}>
+                  <Group justify="space-between" wrap="nowrap">
+                    <Stack gap={0} style={{ minWidth: 0, flex: 1 }}>
+                      <Text size="sm" truncate="end">
+                        {fileName(f.absolutePath)}
+                      </Text>
+                      <Text size="xs" c="dimmed">
+                        {f.format} — {(f.fileSizeBytes / 1024).toFixed(0)} KB
+                      </Text>
+                    </Stack>
+                    <Group gap={4}>
+                      <Tooltip label={t("bookDetail.renameFile")}>
+                        <ActionIcon
+                          size="sm"
+                          variant="subtle"
+                          color="gray"
+                          aria-label={t("bookDetail.renameFile")}
+                          onClick={() => startRenamingFile(f)}
+                        >
+                          <IconPencil size={14} />
+                        </ActionIcon>
+                      </Tooltip>
+                      <Tooltip label={t("bookDetail.open")}>
+                        <ActionIcon
+                          size="sm"
+                          variant="subtle"
+                          color="gray"
+                          aria-label={t("bookDetail.open")}
+                          onClick={() => window.maktaba.openPath(f.absolutePath)}
+                        >
+                          <IconExternalLink size={14} />
+                        </ActionIcon>
+                      </Tooltip>
+                      <Tooltip label={t("bookDetail.showInFolder")}>
+                        <ActionIcon
+                          size="sm"
+                          variant="subtle"
+                          color="gray"
+                          aria-label={t("bookDetail.showInFolder")}
+                          onClick={() => window.maktaba.revealInFolder(f.absolutePath)}
+                        >
+                          <IconFolder size={14} />
+                        </ActionIcon>
+                      </Tooltip>
+                    </Group>
+                  </Group>
+                </List.Item>
+              ),
+            )}
           </List>
 
           <Anchor
