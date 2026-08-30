@@ -51,7 +51,9 @@ public record ContinueReadingBookDto(
 
 public record IdentifierDto(string Scheme, string Value);
 
-public record BookFileDto(string Format, long FileSizeBytes, string AbsolutePath);
+public record BookFileDto(string Id, string Format, long FileSizeBytes, string AbsolutePath);
+
+public record RenameBookFileRequestDto(string FileName);
 
 public record BookCollectionDto(string Id, string Name);
 
