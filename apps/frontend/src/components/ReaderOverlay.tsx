@@ -15,6 +15,7 @@ import type { CustomStoreAdapter, CustomNoteStoreAdapter, CustomProgressStoreAda
 import {
   getBook,
   getBookFile,
+  getPeriodical,
   listBookmarks,
   saveBookmark,
   deleteBookmark,
@@ -22,6 +23,7 @@ import {
   saveNote,
   deleteNote,
   getReadingProgress,
+  recordReadingActivity,
   saveReadingProgress,
   updateBookStatus,
   type ReadingStatus,
@@ -103,11 +105,47 @@ function useDebouncedSave<T>(save: (value: T) => void, delayMs: number): (value:
   );
 }
 
+// Issue #23: accumulates whole seconds while this window is open and the document is visible (so
+// a backgrounded/minimized reader doesn't inflate "time read"), flushed as a heartbeat every 20s
+// and once more on unmount so the last partial interval isn't lost - same "flush on unmount"
+// principle as useDebouncedSave above, just accumulating instead of debouncing.
+const HEARTBEAT_INTERVAL_MS = 20_000;
+
+function useReadingTimeTracking(bookId: string): void {
+  useEffect(() => {
+    const pendingSeconds = { current: 0 };
+
+    const tick = setInterval(() => {
+      if (!document.hidden) {
+        pendingSeconds.current += 1;
+      }
+    }, 1000);
+
+    const flush = () => {
+      if (pendingSeconds.current > 0) {
+        const seconds = pendingSeconds.current;
+        pendingSeconds.current = 0;
+        void recordReadingActivity(bookId, seconds);
+      }
+    };
+
+    const heartbeat = setInterval(flush, HEARTBEAT_INTERVAL_MS);
+
+    return () => {
+      clearInterval(tick);
+      clearInterval(heartbeat);
+      flush();
+    };
+  }, [bookId]);
+}
+
 export function ReaderOverlay({ bookId, format, onClose, embedded }: ReaderOverlayProps) {
   const { t, language } = useLanguage();
   const queryClient = useQueryClient();
   const colorScheme = useComputedColorScheme("light");
   const [readerError, setReaderError] = useState<ReaderError | null>(null);
+
+  useReadingTimeTracking(bookId);
 
   // theme/scroll/columns/etc are fully controlled props on <Reader> - it has no internal fallback
   // state, so its own in-reader theme/layout buttons only take effect if we feed their
@@ -153,6 +191,53 @@ export function ReaderOverlay({ bookId, format, onClose, embedded }: ReaderOverl
     queryFn: () => getBook(bookId),
     staleTime: Infinity,
   });
+
+  // Issue #30: an issue has no language of its own (see BookEditForm.tsx, which hides that field
+  // once a book is an issue) - its periodical's language stands in for it. Falls back to English
+  // when neither is set, matching ImportService's own "default new books to English" behavior.
+  const periodicalId = bookQuery.data?.periodicalId ?? null;
+  const periodicalQuery = useQuery({
+    queryKey: ["periodical", periodicalId],
+    queryFn: () => getPeriodical(periodicalId!),
+    enabled: !!periodicalId,
+    staleTime: Infinity,
+  });
+  const languageReady = !!bookQuery.data && (!periodicalId || periodicalQuery.isSuccess || periodicalQuery.isError);
+  const effectiveLanguage = bookQuery.data
+    ? periodicalId
+      ? (periodicalQuery.data?.language ?? bookQuery.data.language ?? "en")
+      : (bookQuery.data.language ?? "en")
+    : "en";
+
+  // Offline StarDict/GoldenDict word-lookup dictionary (Settings -> Dictionaries, qari issue #17) -
+  // only loaded once the book's actual language is known (see languageReady above), so this never
+  // briefly fetches the wrong language's dictionary while the book/periodical queries are still in
+  // flight. getStarDictDictionaryUrls itself returns null when nothing's configured for the
+  // language; only these three short URL strings cross IPC (see native.ts's stardict:// protocol
+  // handler) rather than the dictionary's own - potentially tens-of-MB - file contents.
+  const starDictQuery = useQuery({
+    queryKey: ["stardictDictionaryUrls", effectiveLanguage],
+    queryFn: () => window.maktaba.getStarDictDictionaryUrls(effectiveLanguage),
+    enabled: languageReady,
+    staleTime: Infinity,
+  });
+
+  const stardictDictionaries = useMemo(
+    () =>
+      starDictQuery.data
+        ? [{ language: effectiveLanguage, ifoUrl: starDictQuery.data.ifoUrl, idxUrl: starDictQuery.data.idxUrl, dictUrl: starDictQuery.data.dictUrl }]
+        : undefined,
+    [starDictQuery.data, effectiveLanguage],
+  );
+
+  // Word-lookup is an optional, non-blocking feature - a failed fetch here shouldn't interrupt
+  // reading with an Alert the way fileQuery.isError does, but it should still be visible somewhere
+  // rather than silently looking identical to "no dictionary configured for this language".
+  useEffect(() => {
+    if (starDictQuery.isError) {
+      console.error(`Failed to load the StarDict dictionary for "${effectiveLanguage}":`, starDictQuery.error);
+    }
+  }, [starDictQuery.isError, starDictQuery.error, effectiveLanguage]);
 
   // Reader reloads the whole book whenever this object's *reference* changes (its internal
   // load-book effect depends on `source` by identity) - memoized so a settings/progress-driven
@@ -356,6 +441,7 @@ export function ReaderOverlay({ bookId, format, onClose, embedded }: ReaderOverl
           onSettingsChange={handleSettingsChange}
           onProgressChange={scheduleProgressSave}
           onError={(event) => setReaderError(event)}
+          stardictDictionaries={stardictDictionaries}
         />
       )}
     </Box>

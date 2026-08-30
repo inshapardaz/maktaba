@@ -106,4 +106,32 @@ public class BookEditService(MaktabaDbContext db, ILibraryPathProvider libraryPa
 
         return book;
     }
+
+    public async Task<BookFile?> RenameFileAsync(int bookId, int fileId, string newName, CancellationToken ct = default)
+    {
+        var file = await db.BookFiles.FirstOrDefaultAsync(f => f.Id == fileId && f.BookId == bookId, ct);
+        if (file is null)
+        {
+            return null;
+        }
+
+        var root = libraryPath.LibraryRootPath!;
+        var folderRelative = Path.GetDirectoryName(file.FilePath) ?? "";
+        var folderAbsolute = Path.Combine(root, folderRelative);
+        var extension = Path.GetExtension(file.FilePath);
+        var newFileName = FileNaming.SanitizePathSegment(newName) + extension;
+        var oldFileName = Path.GetFileName(file.FilePath);
+
+        if (!string.Equals(newFileName, oldFileName, StringComparison.Ordinal))
+        {
+            var oldAbsolute = Path.Combine(root, file.FilePath);
+            var newAbsolute = EbookFileHelpers.GetUniqueFilePath(folderAbsolute, newFileName);
+            File.Move(oldAbsolute, newAbsolute);
+            file.FilePath = Path.Combine(folderRelative, Path.GetFileName(newAbsolute));
+        }
+
+        file.IsCustomNamed = true;
+        await db.SaveChangesAsync(ct);
+        return file;
+    }
 }

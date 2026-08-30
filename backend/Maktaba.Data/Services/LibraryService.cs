@@ -11,6 +11,7 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
 
     private readonly string _configFilePath;
     private readonly List<LibraryRegistryEntry> _libraries = [];
+    private readonly SemaphoreSlim _schemaCheckLock = new(1, 1);
     private bool _schemaVerified;
 
     public string? LibraryRootPath { get; private set; }
@@ -150,6 +151,20 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
         return updated;
     }
 
+    public Task<LibraryRegistryEntry?> SetPeriodicalsEnabledAsync(string id, bool enabled, CancellationToken ct = default)
+    {
+        var index = _libraries.FindIndex(l => l.Id == id);
+        if (index < 0)
+        {
+            return Task.FromResult<LibraryRegistryEntry?>(null);
+        }
+
+        var updated = _libraries[index] with { PeriodicalsEnabled = enabled };
+        _libraries[index] = updated;
+        SaveConfig();
+        return Task.FromResult<LibraryRegistryEntry?>(updated);
+    }
+
     public async Task<bool> RemoveAsync(string id, CancellationToken ct = default)
     {
         var index = _libraries.FindIndex(l => l.Id == id);
@@ -204,6 +219,15 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
     /// (cached via <c>_schemaVerified</c>) so this doesn't add overhead to every request.
     /// Returns true if the database was rebuilt (empty schema, no rows) and needs a rescan to
     /// repopulate it from the on-disk book folders.
+    ///
+    /// Called from middleware on *every* request (see Program.cs), so right after a schema-breaking
+    /// change ships, several requests can arrive before the first one finishes rebuilding - the
+    /// frontend alone fires off a handful of independent queries in parallel on load. Without
+    /// serializing this, each of those requests would see <c>_schemaVerified</c> still false and race
+    /// to EnsureDeleted/EnsureCreated the same sqlite file concurrently, surfacing as "table already
+    /// exists" (or a locked-file) error, and would each separately trigger a rescan on top of that.
+    /// <c>_schemaCheckLock</c> plus the double-checked read of <c>_schemaVerified</c> after acquiring
+    /// it makes sure only the first caller actually rebuilds; everyone else waits, then no-ops.
     /// </summary>
     public async Task<bool> EnsureCurrentSchemaAsync(CancellationToken ct = default)
     {
@@ -212,30 +236,47 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
             return false;
         }
 
-        using var db = MaktabaDbContextFactory.Create(this);
-        await db.Database.EnsureCreatedAsync(ct);
-
-        var rebuilt = false;
-        if (!await IsCurrentSchemaAsync(db, ct))
+        await _schemaCheckLock.WaitAsync(ct);
+        try
         {
-            await db.Database.EnsureDeletedAsync(ct);
-            using var recreated = MaktabaDbContextFactory.Create(this);
-            await recreated.Database.EnsureCreatedAsync(ct);
-            rebuilt = true;
-        }
+            if (_schemaVerified || LibraryRootPath is null)
+            {
+                return false;
+            }
 
-        _schemaVerified = true;
-        return rebuilt;
+            using var db = MaktabaDbContextFactory.Create(this);
+            await db.Database.EnsureCreatedAsync(ct);
+
+            var rebuilt = false;
+            if (!await IsCurrentSchemaAsync(db, ct))
+            {
+                await db.Database.EnsureDeletedAsync(ct);
+                using var recreated = MaktabaDbContextFactory.Create(this);
+                await recreated.Database.EnsureCreatedAsync(ct);
+                rebuilt = true;
+            }
+
+            _schemaVerified = true;
+            return rebuilt;
+        }
+        finally
+        {
+            _schemaCheckLock.Release();
+        }
     }
 
     // Probes the newest columns/tables added by a schema-breaking change (currently: M6's
     // ReadingStatus/Collections, the Bookmarks/Notes/ReadingProgress tables, ReadingProgress's
-    // ChapterId/Position resume-anchor columns, and issue #26's Periodicals table/Book.PeriodicalId
-    // column) - a cheap, representative stand-in for "is this database current" without needing
-    // full EF Core migrations, which this project deliberately doesn't use. Every future
-    // schema-breaking change needs its own probe added here, or an upgrading user's existing
-    // metadata.db won't be recognized as stale and requests against the new column/table will
-    // throw instead of transparently rebuilding.
+    // ChapterId/Position resume-anchor columns, issue #26's Periodicals table/Book.PeriodicalId
+    // column, issue #23's ReadingActivities table (plus its later Hour column, for the
+    // day-of-week/time-of-day reading report), issue #30's Periodical.Language column, and
+    // Periodical's Publisher/Editor columns + PeriodicalTags table) - a cheap, representative
+    // column, issue #27's BookFile.IsCustomNamed column, issue #30's Periodical.Language column,
+    // and Periodical's Publisher/Editor columns + PeriodicalTags table) - a cheap, representative
+    // stand-in for "is this database current" without needing full EF Core migrations, which this
+    // project deliberately doesn't use. Every future schema-breaking change needs its own probe
+    // added here, or an upgrading user's existing metadata.db won't be recognized as stale and
+    // requests against the new column/table will throw instead of transparently rebuilding.
     private static async Task<bool> IsCurrentSchemaAsync(MaktabaDbContext db, CancellationToken ct)
     {
         try
@@ -245,6 +286,10 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
             await db.ReadingProgress.Select(rp => new { rp.BookId, rp.ChapterId }).Take(1).ToListAsync(ct);
             await db.Periodicals.Select(p => p.Id).Take(1).ToListAsync(ct);
             await db.Books.Select(b => b.PeriodicalId).Take(1).ToListAsync(ct);
+            await db.ReadingActivities.Select(ra => ra.Hour).Take(1).ToListAsync(ct);
+            await db.BookFiles.Select(f => f.IsCustomNamed).Take(1).ToListAsync(ct);
+            await db.Periodicals.Select(p => new { p.Language, p.Publisher, p.Editor }).Take(1).ToListAsync(ct);
+            await db.PeriodicalTags.Select(pt => pt.PeriodicalId).Take(1).ToListAsync(ct);
             return true;
         }
         catch (SqliteException)

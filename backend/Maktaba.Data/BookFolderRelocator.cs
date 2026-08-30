@@ -77,7 +77,11 @@ internal static class BookFolderRelocator
         foreach (var file in book.Files)
         {
             var oldFileName = Path.GetFileName(file.FilePath);
-            var newFileName = FileNaming.SanitizePathSegment(book.Title) + Path.GetExtension(file.FilePath);
+            // Issue #27: a user-renamed file keeps its chosen name across folder moves instead of
+            // being silently renamed back to the title-derived name on the next title/author edit.
+            var newFileName = file.IsCustomNamed
+                ? oldFileName
+                : FileNaming.SanitizePathSegment(book.Title) + Path.GetExtension(file.FilePath);
 
             if (string.Equals(oldFileName, newFileName, StringComparison.Ordinal))
             {

@@ -14,12 +14,14 @@ public class MaktabaDbContext(DbContextOptions<MaktabaDbContext> options) : DbCo
     public DbSet<BookTag> BookTags => Set<BookTag>();
     public DbSet<Collection> Collections => Set<Collection>();
     public DbSet<Periodical> Periodicals => Set<Periodical>();
+    public DbSet<PeriodicalTag> PeriodicalTags => Set<PeriodicalTag>();
     public DbSet<BookCollection> BookCollections => Set<BookCollection>();
     public DbSet<BookFile> BookFiles => Set<BookFile>();
     public DbSet<Identifier> Identifiers => Set<Identifier>();
     public DbSet<Bookmark> Bookmarks => Set<Bookmark>();
     public DbSet<Note> Notes => Set<Note>();
     public DbSet<ReadingProgress> ReadingProgress => Set<ReadingProgress>();
+    public DbSet<ReadingActivity> ReadingActivities => Set<ReadingActivity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -42,6 +44,13 @@ public class MaktabaDbContext(DbContextOptions<MaktabaDbContext> options) : DbCo
             e.HasKey(bt => new { bt.BookId, bt.TagId });
             e.HasOne(bt => bt.Book).WithMany(b => b.BookTags).HasForeignKey(bt => bt.BookId);
             e.HasOne(bt => bt.Tag).WithMany(t => t.BookTags).HasForeignKey(bt => bt.TagId);
+        });
+
+        modelBuilder.Entity<PeriodicalTag>(e =>
+        {
+            e.HasKey(pt => new { pt.PeriodicalId, pt.TagId });
+            e.HasOne(pt => pt.Periodical).WithMany(p => p.PeriodicalTags).HasForeignKey(pt => pt.PeriodicalId);
+            e.HasOne(pt => pt.Tag).WithMany().HasForeignKey(pt => pt.TagId);
         });
 
         modelBuilder.Entity<BookCollection>(e =>
@@ -83,6 +92,12 @@ public class MaktabaDbContext(DbContextOptions<MaktabaDbContext> options) : DbCo
         {
             e.HasKey(rp => rp.BookId);
             e.HasOne(rp => rp.Book).WithOne().HasForeignKey<ReadingProgress>(rp => rp.BookId);
+        });
+
+        modelBuilder.Entity<ReadingActivity>(e =>
+        {
+            e.HasOne(ra => ra.Book).WithMany().HasForeignKey(ra => ra.BookId);
+            e.HasIndex(ra => new { ra.BookId, ra.Date, ra.Hour }).IsUnique();
         });
 
         modelBuilder.Entity<Author>().HasIndex(a => a.Name);

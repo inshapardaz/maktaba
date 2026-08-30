@@ -108,6 +108,7 @@
     }
   },
   "dependencies": {
-    "electron-updater": "^6.8.9"
+    "electron-updater": "^6.8.9",
+    "jszip": "^3.10.1"
   }
 }

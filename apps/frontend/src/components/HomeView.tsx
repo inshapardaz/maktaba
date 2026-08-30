@@ -1,13 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Badge, Box, Button, Center, Group, Image, Progress, Stack, Text, UnstyledButton } from "@mantine/core";
-import { IconCircleCheck, IconPlayerPlay } from "@tabler/icons-react";
+import { Avatar, Badge, Box, Button, Center, Group, Image, Progress, Stack, Text, UnstyledButton } from "@mantine/core";
+import { IconCircleCheck, IconPlayerPlay, IconUser } from "@tabler/icons-react";
 import {
+  authorImageUrl,
   coverUrl,
   listContinueReading,
   listRecentlyAdded,
   updateBookStatus,
+  type AuthorRef,
   type ContinueReadingBook,
 } from "../api";
+import { setBookDragData } from "../bookDrag";
 import { useLanguage } from "../i18n/LanguageContext";
 import { getStoredShowIssuesInGrid } from "../periodicalSettings";
 import { useReaderLauncher } from "../ReaderLauncherContext";
@@ -19,6 +22,17 @@ function SectionLabel({ children }: { children: string }) {
     <Text fz={10.5} fw={600} c="dimmed" tt="uppercase" mb="sm" style={{ letterSpacing: "0.1em" }}>
       {children}
     </Text>
+  );
+}
+
+// Just the first author's photo (most books have one anyway) alongside the full joined name text -
+// avoids a cramped row of overlapping avatars when a book has several authors.
+function AuthorAvatar({ authorRefs, size }: { authorRefs: AuthorRef[]; size: number }) {
+  const first = authorRefs[0];
+  return (
+    <Avatar src={first?.hasImage ? authorImageUrl(first.id) : null} size={size} radius="xl" style={{ flexShrink: 0 }}>
+      <IconUser size={Math.round(size * 0.55)} />
+    </Avatar>
   );
 }
 
@@ -109,7 +123,12 @@ export function HomeView({ onSelectBook }: HomeViewProps) {
                   "linear-gradient(135deg, var(--mantine-primary-color-light) 0%, var(--mantine-color-body) 55%)",
               }}
             >
-              <UnstyledButton onClick={() => onSelectBook(lastRead.id)} style={{ flexShrink: 0 }}>
+              <UnstyledButton
+                draggable
+                onDragStart={(event) => setBookDragData(event, [lastRead.id])}
+                onClick={() => onSelectBook(lastRead.id)}
+                style={{ flexShrink: 0 }}
+              >
                 {lastRead.hasCover ? (
                   <Image
                     src={coverUrl(lastRead.id)}
@@ -135,9 +154,12 @@ export function HomeView({ onSelectBook }: HomeViewProps) {
                 <Text fw={700} fz={22} lineClamp={2}>
                   {lastRead.title}
                 </Text>
-                <Text c="dimmed" size="sm" truncate="end">
-                  {lastRead.authors.join(", ") || t("common.unknownAuthor")}
-                </Text>
+                <Group gap={6} wrap="nowrap">
+                  {lastRead.authorRefs.length > 0 && <AuthorAvatar authorRefs={lastRead.authorRefs} size={24} />}
+                  <Text c="dimmed" size="sm" truncate="end">
+                    {lastRead.authors.join(", ") || t("common.unknownAuthor")}
+                  </Text>
+                </Group>
                 <Group gap="xs" align="center" mt={8}>
                   <Progress value={lastRead.percentage} size="md" radius="xl" style={{ flex: 1 }} />
                   <Badge size="md" variant="light">
@@ -179,7 +201,12 @@ export function HomeView({ onSelectBook }: HomeViewProps) {
                     borderRadius: "var(--mantine-radius-sm)",
                   }}
                 >
-                  <UnstyledButton onClick={() => onSelectBook(book.id)} style={{ flex: 1, minWidth: 0 }}>
+                  <UnstyledButton
+                    draggable
+                    onDragStart={(event) => setBookDragData(event, [book.id])}
+                    onClick={() => onSelectBook(book.id)}
+                    style={{ flex: 1, minWidth: 0 }}
+                  >
                     <Group gap="sm" wrap="nowrap">
                       {book.hasCover ? (
                         <Image
@@ -198,9 +225,12 @@ export function HomeView({ onSelectBook }: HomeViewProps) {
                         <Text fw={600} size="sm" truncate="end">
                           {book.title}
                         </Text>
-                        <Text size="xs" c="dimmed" truncate="end">
-                          {book.authors.join(", ") || t("common.unknownAuthor")}
-                        </Text>
+                        <Group gap={4} wrap="nowrap">
+                          {book.authorRefs.length > 0 && <AuthorAvatar authorRefs={book.authorRefs} size={16} />}
+                          <Text size="xs" c="dimmed" truncate="end">
+                            {book.authors.join(", ") || t("common.unknownAuthor")}
+                          </Text>
+                        </Group>
                       </Stack>
                     </Group>
                   </UnstyledButton>
@@ -232,7 +262,13 @@ export function HomeView({ onSelectBook }: HomeViewProps) {
             <SectionLabel>{t("home.recentlyAdded")}</SectionLabel>
             <Group gap="md" wrap="nowrap" style={{ overflowX: "auto", paddingBottom: 4 }}>
               {recentBooks.map((book) => (
-                <UnstyledButton key={book.id} onClick={() => onSelectBook(book.id)} style={{ flexShrink: 0, width: 110 }}>
+                <UnstyledButton
+                  key={book.id}
+                  draggable
+                  onDragStart={(event) => setBookDragData(event, [book.id])}
+                  onClick={() => onSelectBook(book.id)}
+                  style={{ flexShrink: 0, width: 110 }}
+                >
                   {book.hasCover ? (
                     <Image
                       src={coverUrl(book.id)}
@@ -255,9 +291,12 @@ export function HomeView({ onSelectBook }: HomeViewProps) {
                   <Text size="xs" fw={600} mt={6} lineClamp={1}>
                     {book.title}
                   </Text>
-                  <Text size="xs" c="dimmed" lineClamp={1}>
-                    {book.authors.join(", ") || t("common.unknownAuthor")}
-                  </Text>
+                  <Group gap={4} wrap="nowrap" mt={2}>
+                    {book.authorRefs.length > 0 && <AuthorAvatar authorRefs={book.authorRefs} size={14} />}
+                    <Text size="xs" c="dimmed" lineClamp={1} style={{ minWidth: 0 }}>
+                      {book.authors.join(", ") || t("common.unknownAuthor")}
+                    </Text>
+                  </Group>
                 </UnstyledButton>
               ))}
             </Group>

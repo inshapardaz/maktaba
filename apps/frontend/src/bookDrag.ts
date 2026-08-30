@@ -1,10 +1,11 @@
 import type { DragEvent } from "react";
 
-// Shared between the drag sources (BookGrid/BookList's cards/rows) and the drop targets
+// Shared between the drag sources (BookGrid/BookList's cards/rows, and HomeView's continue-reading
+// hero/currently-reading rows/recently-added shelf cards - issue #31) and the drop targets
 // (Sidebar's Authors/Series/Tags/Collections rows) for issue #10's "drag a book onto a sidebar
 // group to edit it" feature - a custom MIME type carrying a JSON array of book ids, so a drag
-// originating from Maktaba's own book grid/list is distinguishable from an OS file drag (which
-// App.tsx's own onDrop already handles as an import, via "Files").
+// originating from Maktaba's own book grid/list/home view is distinguishable from an OS file drag
+// (which App.tsx's own onDrop already handles as an import, via "Files").
 export const BOOK_DRAG_MIME = "application/x-maktaba-book-ids";
 
 export function setBookDragData(event: DragEvent, bookIds: string[]): void {

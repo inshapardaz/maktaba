@@ -5,6 +5,9 @@ export interface BookSummary {
   title: string;
   sortTitle: string;
   authors: string[];
+  // Same names as authors, but with id + photo presence (issue #28) - lets HomeView's shelves show
+  // an author avatar without a separate request per book.
+  authorRefs: AuthorRef[];
   rating: number;
   dateAdded: string;
   hasCover: boolean;
@@ -27,6 +30,7 @@ export interface BookSummary {
 }
 
 export interface BookFileInfo {
+  id: string;
   format: string;
   fileSizeBytes: number;
   absolutePath: string;
@@ -42,27 +46,49 @@ export interface BookCollectionRef {
   name: string;
 }
 
+export interface AuthorRef {
+  id: string;
+  name: string;
+  hasImage: boolean;
+}
+
 export interface BookDetail extends BookSummary {
   description: string | null;
   language: string | null;
   publisher: string | null;
   datePublished: string | null;
+  // Same names as BookSummary.authors, but with id + photo presence (issue #28) for
+  // BookDetailPanel's pills.
+  authorRefs: AuthorRef[];
   seriesName: string | null;
   seriesIndex: number | null;
   tags: string[];
   identifiers: Identifier[];
   files: BookFileInfo[];
   collections: BookCollectionRef[];
+  // Issue #23: actual time spent reading, plus a self-calibrated total/remaining estimate (null
+  // until enough progress exists to extrapolate from - see backend ReadingTimeEstimator).
+  secondsRead: number;
+  expectedTotalSeconds: number | null;
+  remainingSeconds: number | null;
 }
 
 export interface LibraryInfo {
   path: string;
+  id: string;
+  name: string;
+  // Per-library preference (Settings -> Libraries) - hides the Periodicals sidebar section and the
+  // book-edit form's Periodical fieldset when off, without touching this library's own data.
+  periodicalsEnabled: boolean;
 }
 
 export interface BrowseGroup {
   id: string;
   name: string;
   bookCount: number;
+  // Only ever populated for listAuthors() (issue #28's author photo) - other browse groups
+  // (Series/Tags/Collections/...) always get false/undefined here.
+  hasImage?: boolean;
 }
 
 export interface BookEditRequest {
@@ -184,6 +210,7 @@ export interface LibraryEntry {
   name: string;
   path: string;
   isActive: boolean;
+  periodicalsEnabled: boolean;
 }
 
 // Every library the user has ever opened - only one (isActive) is the one every other request
@@ -207,6 +234,13 @@ export function relocateLibrary(id: string, path: string): Promise<LibraryEntry>
   return request<LibraryEntry>(`/api/libraries/${id}/path`, {
     method: "PUT",
     body: JSON.stringify({ path }),
+  });
+}
+
+export function setLibraryPeriodicalsEnabled(id: string, enabled: boolean): Promise<LibraryEntry> {
+  return request<LibraryEntry>(`/api/libraries/${id}/periodicals-enabled`, {
+    method: "PUT",
+    body: JSON.stringify({ enabled }),
   });
 }
 
@@ -277,6 +311,9 @@ export interface ContinueReadingBook {
   id: string;
   title: string;
   authors: string[];
+  // Same names as authors, but with id + photo presence (issue #28) - lets HomeView's continue-
+  // reading hero/currently-reading rows show an author avatar without a separate request per book.
+  authorRefs: AuthorRef[];
   hasCover: boolean;
   readingStatus: ReadingStatus;
   format: "Epub" | "Pdf";
@@ -324,6 +361,15 @@ export function deleteBook(id: string): Promise<{ folderPath: string }> {
   return request<{ folderPath: string }>(`/api/books/${id}`, { method: "DELETE" });
 }
 
+// Issue #27: renames the actual on-disk file (not just a display label) so it's identifiable when
+// browsing the folder or via "Show in folder" - see backend BookFolderRelocator's IsCustomNamed.
+export function renameBookFile(bookId: string, fileId: string, fileName: string): Promise<BookFileInfo> {
+  return request<BookFileInfo>(`/api/books/${bookId}/files/${fileId}/name`, {
+    method: "PATCH",
+    body: JSON.stringify({ fileName }),
+  });
+}
+
 export interface RescanProgress {
   isRunning: boolean;
   processed: number;
@@ -349,6 +395,34 @@ export function renameAuthor(id: string, name: string): Promise<BrowseGroup> {
     method: "PUT",
     body: JSON.stringify({ name }),
   });
+}
+
+export function authorImageUrl(id: string): string {
+  const { apiBaseUrl, token } = window.maktaba;
+  return `${apiBaseUrl}/api/authors/${id}/image?access_token=${encodeURIComponent(token)}`;
+}
+
+// Bypasses request() - same reasoning as uploadPeriodicalCover: needs a browser-generated
+// multipart boundary, not the JSON Content-Type request() always forces onto a body.
+export async function uploadAuthorImage(id: string, file: File): Promise<void> {
+  const { apiBaseUrl, token } = window.maktaba;
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const res = await fetch(`${apiBaseUrl}/api/authors/${id}/image`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { error?: string } | null;
+    throw new ApiError(body?.error ?? `Request failed: ${res.status}`, res.status);
+  }
+}
+
+export function deleteAuthorImage(id: string): Promise<void> {
+  return request<void>(`/api/authors/${id}/image`, { method: "DELETE" });
 }
 
 export function listSeries(): Promise<BrowseGroup[]> {
@@ -561,6 +635,79 @@ export function getMetadataDetails(key: string, isbn: string | null): Promise<Me
   return request<MetadataDetails>(`/api/metadata/details?${params.toString()}`);
 }
 
+// Issue #23: a heartbeat the reader sends every ~20s while its window is open and visible, with
+// however many seconds elapsed since the last heartbeat - see ReaderOverlay.tsx's useReadingTimeTracking.
+export function recordReadingActivity(bookId: string, seconds: number): Promise<void> {
+  return request<void>(`/api/books/${bookId}/reading-activity`, {
+    method: "POST",
+    body: JSON.stringify({ seconds }),
+  });
+}
+
+export interface AnalyticsBook {
+  id: string;
+  title: string;
+  readingStatus: ReadingStatus;
+  secondsRead: number;
+  percentage: number;
+  expectedTotalSeconds: number | null;
+  remainingSeconds: number | null;
+}
+
+export interface AnalyticsSummary {
+  totalSecondsRead: number;
+  unreadCount: number;
+  unreadExpectedSecondsTotal: number;
+  readingCount: number;
+  readingSecondsSpent: number;
+  readingSecondsRemaining: number;
+  finishedCount: number;
+  books: AnalyticsBook[];
+}
+
+export function getAnalyticsSummary(): Promise<AnalyticsSummary> {
+  return request<AnalyticsSummary>("/api/analytics/summary");
+}
+
+export interface ReadingTimePoint {
+  date: string;
+  seconds: number;
+}
+
+export interface ReadingTimeWeek {
+  weekStart: string;
+  seconds: number;
+}
+
+export interface ReadingTimeMonth {
+  month: string;
+  seconds: number;
+}
+
+export interface ReadingTimeDayOfWeek {
+  dayOfWeek: number;
+  seconds: number;
+}
+
+export interface ReadingTimeHour {
+  hour: number;
+  seconds: number;
+}
+
+export interface ReadingTimeReport {
+  daily: ReadingTimePoint[];
+  weekly: ReadingTimeWeek[];
+  monthly: ReadingTimeMonth[];
+  byDayOfWeek: ReadingTimeDayOfWeek[];
+  byHour: ReadingTimeHour[];
+  mostActiveDayOfWeek: number | null;
+  mostActiveHour: number | null;
+}
+
+export function getReadingTimeReport(): Promise<ReadingTimeReport> {
+  return request<ReadingTimeReport>("/api/analytics/reading-time");
+}
+
 export function coverUrl(id: string): string {
   const { apiBaseUrl, token } = window.maktaba;
   return `${apiBaseUrl}/api/books/${id}/cover?access_token=${encodeURIComponent(token)}`;
@@ -573,8 +720,26 @@ export interface Periodical {
   name: string;
   description: string | null;
   frequency: PeriodicalFrequency;
+  // Metadata that lives at the periodical level rather than per-issue - see BookEditForm.tsx,
+  // which hides its own language/publisher/tags fields once a book is an issue in favor of these.
+  // Issue #30: an issue has no language of its own - the reader falls back to its periodical's
+  // language, then to English, to pick a word-lookup dictionary (see ReaderOverlay.tsx).
+  language: string | null;
+  publisher: string | null;
+  editor: string | null;
+  tags: string[];
   issueCount: number;
   hasCover: boolean;
+}
+
+export interface PeriodicalEditFields {
+  name: string;
+  frequency: PeriodicalFrequency;
+  description: string | null;
+  language: string | null;
+  publisher: string | null;
+  editor: string | null;
+  tags: string[];
 }
 
 export function listPeriodicals(): Promise<Periodical[]> {
@@ -586,7 +751,9 @@ export function getPeriodical(id: string): Promise<Periodical> {
 }
 
 // Upserts by name (same semantics as createCollection) - a repeated quick-add of the same
-// periodical name resolves to the one existing row instead of creating a duplicate.
+// periodical name resolves to the one existing row instead of creating a duplicate. Kept as this
+// minimal name+frequency signature since it's only ever called from Sidebar's quick-add popover -
+// the full field set is edited afterward via updatePeriodical, from PeriodicalDetailView.
 export function createPeriodical(name: string, frequency: PeriodicalFrequency, description?: string | null): Promise<Periodical> {
   return request<Periodical>("/api/periodicals", {
     method: "POST",
@@ -594,19 +761,22 @@ export function createPeriodical(name: string, frequency: PeriodicalFrequency, d
   });
 }
 
-export function updatePeriodical(
-  id: string, name: string, frequency: PeriodicalFrequency, description: string | null,
-): Promise<Periodical> {
+export function updatePeriodical(id: string, fields: PeriodicalEditFields): Promise<Periodical> {
   return request<Periodical>(`/api/periodicals/${id}`, {
     method: "PUT",
-    body: JSON.stringify({ name, frequency, description }),
+    body: JSON.stringify(fields),
   });
 }
 
-// Rejects with a 409 (surfaced as a thrown ApiError) if the periodical still has issues - no
-// cascade delete, matching the deliberately-cautious style of collection/book removal.
-export function deletePeriodical(id: string): Promise<void> {
-  return request<void>(`/api/periodicals/${id}`, { method: "DELETE" });
+// Rejects with a 409 (surfaced as a thrown ApiError) if the periodical still has issues and
+// deleteIssues isn't passed - the caller is expected to confirm with the user first (showing the
+// issue count) and retry with deleteIssues: true, same "confirm, then cascade" shape as the
+// dedicated confirmation UI in PeriodicalsView.tsx/PeriodicalDetailView.tsx. On success, returns
+// the periodical's absolute folder path (which already contains every issue's own subfolder) for
+// the caller to move to the OS trash via window.maktaba.trashPath - mirrors deleteBook's contract.
+export function deletePeriodical(id: string, deleteIssues?: boolean): Promise<{ folderPath: string }> {
+  const query = deleteIssues ? "?deleteIssues=true" : "";
+  return request<{ folderPath: string }>(`/api/periodicals/${id}${query}`, { method: "DELETE" });
 }
 
 export function periodicalCoverUrl(id: string): string {

@@ -16,6 +16,7 @@ const helpTopics = [
   { slug: "importing", title: { en: "Importing Books", ur: "کتابیں درآمد کرنا" } },
   { slug: "organizing", title: { en: "Organizing Your Library", ur: "لائبریری کو ترتیب دینا" } },
   { slug: "reading", title: { en: "Reading Books", ur: "کتابیں پڑھنا" } },
+  { slug: "analytics", title: { en: "Reading Analytics", ur: "مطالعاتی تجزیات" } },
   { slug: "settings", title: { en: "Settings & Preferences", ur: "ترتیبات" } },
   { slug: "troubleshooting", title: { en: "Troubleshooting & FAQ", ur: "مسائل کا حل اور سوالات" } },
 ];

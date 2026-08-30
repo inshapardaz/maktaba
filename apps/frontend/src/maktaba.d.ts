@@ -54,6 +54,11 @@ declare global {
       openHelpWindow: () => Promise<void>;
       replayOnboardingTour: () => Promise<void>;
       onReplayOnboardingTour: (callback: () => void) => () => void;
+      pickStarDictZipFile: () => Promise<string | null>;
+      listStarDictDictionaries: () => Promise<string[]>;
+      saveStarDictDictionary: (language: string, zipSourcePath: string) => Promise<void>;
+      removeStarDictDictionary: (language: string) => Promise<void>;
+      getStarDictDictionaryUrls: (language: string) => Promise<{ ifoUrl: string; idxUrl: string; dictUrl: string } | null>;
     };
   }
 }

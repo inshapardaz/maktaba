@@ -154,4 +154,25 @@ contextBridge.exposeInMainWorld("maktaba", {
     ipcRenderer.on("maktaba:replay-onboarding-tour", listener);
     return () => ipcRenderer.removeListener("maktaba:replay-onboarding-tour", listener);
   },
+
+  // qari issue #17: offline StarDict/GoldenDict word-lookup dictionaries (.ifo/.idx/.dict[.dz]) -
+  // stored app-wide in Electron's userData folder (see native.ts's starDictDictionariesDir), not
+  // library data, so this never goes through the Maktaba.Api sidecar. The user picks a single zip
+  // containing the dictionary's three files (see ReaderOverlay.tsx's stardictDictionaries prop for
+  // how the reader consumes the result).
+  pickStarDictZipFile: (): Promise<string | null> => ipcRenderer.invoke("maktaba:pick-stardict-zip"),
+
+  listStarDictDictionaries: (): Promise<string[]> => ipcRenderer.invoke("maktaba:list-stardict-dictionaries"),
+
+  saveStarDictDictionary: (language: string, zipSourcePath: string): Promise<void> =>
+    ipcRenderer.invoke("maktaba:save-stardict-dictionary", language, zipSourcePath),
+
+  removeStarDictDictionary: (language: string): Promise<void> =>
+    ipcRenderer.invoke("maktaba:remove-stardict-dictionary", language),
+
+  // Returns stardict:// URLs rather than file contents - the dictionary's own bytes (its .dict file
+  // especially can be tens of MB) are fetched by the reader directly via net.fetch's stardict://
+  // handler (see native.ts's registerStarDictProtocol) rather than crossing the IPC boundary.
+  getStarDictDictionaryUrls: (language: string): Promise<{ ifoUrl: string; idxUrl: string; dictUrl: string } | null> =>
+    ipcRenderer.invoke("maktaba:get-stardict-dictionary-urls", language),
 });

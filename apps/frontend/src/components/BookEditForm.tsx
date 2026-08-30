@@ -3,23 +3,28 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Alert,
   Autocomplete,
+  Avatar,
   Button,
   Center,
+  Fieldset,
   Group,
   Loader,
   Modal,
   MultiSelect,
   NumberInput,
+  Pill,
   Select,
   Stack,
   Text,
   Textarea,
   TextInput,
 } from "@mantine/core";
-import { IconAlertCircle, IconWorldSearch } from "@tabler/icons-react";
+import { IconAlertCircle, IconCheck, IconUser, IconWorldSearch } from "@tabler/icons-react";
 import {
+  authorImageUrl,
   createCollection,
   getBook,
+  getCurrentLibrary,
   listAuthors,
   listCollections,
   listPeriodicals,
@@ -29,9 +34,12 @@ import {
   updateBook,
   type BookEditRequest,
   type MetadataDetails,
+  type PeriodicalFrequency,
 } from "../api";
+import { buildCreatableData } from "../creatableSelect";
 import { useLanguage } from "../i18n/LanguageContext";
 import type { TranslationKey } from "../i18n/translations";
+import { getLanguageOptions, withCurrentLanguage } from "../languageOptions";
 import { MetadataSearchDialog } from "./MetadataSearchDialog";
 import { invalidateLibraryQueries } from "../queries";
 
@@ -56,7 +64,6 @@ interface FormState {
   periodicalId: string;
   issueNumber: string;
   volumeNumber: string;
-  issueDate: string;
 }
 
 const EMPTY_FORM: FormState = {
@@ -74,7 +81,6 @@ const EMPTY_FORM: FormState = {
   periodicalId: "",
   issueNumber: "",
   volumeNumber: "",
-  issueDate: "",
 };
 
 const STAR_RATING_OPTIONS = [
@@ -85,69 +91,7 @@ const STAR_RATING_OPTIONS = [
   { value: "5", label: "★★★★★" },
 ];
 
-// Common library languages - stored as ISO 639-1 codes (matches what's typically already in EPUB/
-// PDF metadata's dc:language, so an edit made here round-trips with a rescan instead of drifting
-// into a different format). Not exhaustive - withCurrentLanguage below makes sure a book already
-// tagged with a code outside this list still shows correctly instead of silently going blank.
-const LANGUAGE_CODES = ["en", "ur", "ar", "fa", "hi", "bn", "fr", "es", "de", "it", "pt", "nl", "ru", "tr", "pl", "zh", "ja", "ko"] as const;
-
-// Labels follow the current UI language (translations.ts's "language.<code>" keys) rather than
-// always English, so this needs to be computed with `t` at render time instead of a module-level
-// constant.
-function getLanguageOptions(t: (key: TranslationKey) => string): { value: string; label: string }[] {
-  return LANGUAGE_CODES.map((code) => ({ value: code, label: t(`language.${code}` as TranslationKey) }));
-}
-
-// Keeps a Select's current value visible/selected even when it falls outside the curated
-// getLanguageOptions() list (e.g. a regional code like "en-US", or something extraction found that
-// isn't in the list at all) - appended as a plain extra option (label = the raw code itself, since
-// there's no display name to look up) rather than dropped, so editing an already-set field doesn't
-// silently blank it out.
-function withCurrentLanguage(
-  options: { value: string; label: string }[],
-  current: string,
-): { value: string; label: string }[] {
-  const trimmed = current.trim();
-  if (trimmed.length > 0 && !options.some((o) => o.value.toLowerCase() === trimmed.toLowerCase())) {
-    return [...options, { value: trimmed, label: trimmed }];
-  }
-  return options;
-}
-
-// Mantine's Select/MultiSelect have no built-in "create a new option" support (removed after v6) -
-// this is the standard replacement: the dropdown's own `data` always includes every existing name
-// plus whatever's currently selected (so already-chosen custom values keep resolving to a label
-// even once they scroll out of the current search text), and a synthetic "+ Create "X"" entry is
-// appended only while the typed search doesn't already match something. Selecting that entry just
-// selects its `value`, which is the typed text itself - no separate "was this newly created" case
-// to handle on save, since find-or-create happens server-side (EntityResolvers) exactly as it
-// already does for the free-text fields this replaces.
-//
-// Note this still requires an explicit selection (click, or Enter on the highlighted option) to
-// commit typed text - fine for Authors/Tags where existing-option selection is the common case, but
-// for a field like Series (usually a brand new value per book) that gap is a real trap: type a name
-// and click straight to Save without selecting from the dropdown, and the text is silently
-// discarded. MultiSelect's own onBlur handler below is a safety net for exactly that; Series itself
-// was switched to a plain Autocomplete instead (see below), which has no such gap at all - its
-// value is the live text, always, with no separate "search vs. selected" state to fall out of sync.
-function buildCreatableData(
-  existing: string[],
-  selected: string[],
-  search: string,
-  t: (key: TranslationKey, vars?: Record<string, string | number>) => string,
-): { value: string; label: string }[] {
-  const names = [...new Set([...existing, ...selected])].sort((a, b) => a.localeCompare(b));
-  const options = names.map((name) => ({ value: name, label: name }));
-
-  const trimmed = search.trim();
-  if (trimmed.length > 0 && !names.some((name) => name.toLowerCase() === trimmed.toLowerCase())) {
-    options.push({ value: trimmed, label: t("bookEdit.createOption", { name: trimmed }) });
-  }
-
-  return options;
-}
-
-// Collections need a different shape from buildCreatableData above: unlike Authors/Series/Tags,
+// Collections need a different shape from buildCreatableData (see ../creatableSelect.ts): unlike Authors/Series/Tags,
 // find-or-create-by-name isn't something the book-save endpoint does server-side (BookEditRequest's
 // collectionIds must already be real ids - see CLAUDE.md: "Collections are user-authored... never
 // auto-derived from free text"). So the synthetic "create" entry's value is a sentinel
@@ -174,6 +118,142 @@ function buildCollectionOptions(
   return options;
 }
 
+// The book's single "date" field (form.publishedDate, an ISO "YYYY-MM-DD" string) doubles as the
+// issue date once a periodical is selected - see IssueDateField below. These converters translate
+// between that one stored ISO date and whichever granularity-specific control the periodical's
+// frequency calls for, so switching frequencies never needs a second piece of state to stay in sync.
+function yearFromDate(date: string): string {
+  return date ? date.slice(0, 4) : "";
+}
+
+function dateFromYear(year: string): string {
+  return year ? `${year}-01-01` : "";
+}
+
+function quarterFromDate(date: string): { year: string; quarter: string } {
+  if (!date) return { year: "", quarter: "" };
+  const month = Number(date.slice(5, 7));
+  return { year: date.slice(0, 4), quarter: String(Math.floor((month - 1) / 3) + 1) };
+}
+
+function dateFromQuarter(year: string, quarter: string): string {
+  if (!year || !quarter) return "";
+  const month = (Number(quarter) - 1) * 3 + 1;
+  return `${year}-${String(month).padStart(2, "0")}-01`;
+}
+
+function monthFromDate(date: string): string {
+  return date ? date.slice(0, 7) : "";
+}
+
+function dateFromMonth(month: string): string {
+  return month ? `${month}-01` : "";
+}
+
+// ISO 8601 week: week 1 is the week containing the year's first Thursday: converted via UTC dates
+// throughout so a local timezone offset can never shift the computed day/week by one.
+function isoWeekFromDate(date: string): string {
+  if (!date) return "";
+  const d = new Date(`${date}T00:00:00Z`);
+  const day = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const week = Math.ceil(((d.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7);
+  return `${d.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
+}
+
+function dateFromIsoWeek(isoWeek: string): string {
+  const match = /^(\d{4})-W(\d{2})$/.exec(isoWeek);
+  if (!match) return "";
+  const year = Number(match[1]);
+  const week = Number(match[2]);
+  const jan4 = new Date(Date.UTC(year, 0, 4));
+  const jan4Day = jan4.getUTCDay() || 7;
+  const week1Monday = new Date(jan4);
+  week1Monday.setUTCDate(jan4.getUTCDate() - jan4Day + 1);
+  const target = new Date(week1Monday);
+  target.setUTCDate(week1Monday.getUTCDate() + (week - 1) * 7);
+  return target.toISOString().slice(0, 10);
+}
+
+// Swaps in a granularity-matched control for the periodical's frequency (a year picker for a
+// Yearly periodical, year+quarter for Quarterly, native month/week pickers for Monthly/Weekly),
+// falling back to a plain date picker for Daily/BiWeekly/Occasional where no coarser grouping
+// makes sense. Always reads from and writes back to the same ISO date string.
+function IssueDateField({
+  frequency,
+  value,
+  onChange,
+  t,
+}: {
+  frequency: PeriodicalFrequency;
+  value: string;
+  onChange: (value: string) => void;
+  t: (key: TranslationKey, vars?: Record<string, string | number>) => string;
+}) {
+  if (frequency === "Yearly") {
+    const year = yearFromDate(value);
+    return (
+      <NumberInput
+        label={t("bookEdit.issueDate")}
+        placeholder={t("bookEdit.year")}
+        allowDecimal={false}
+        hideControls
+        value={year === "" ? "" : Number(year)}
+        onChange={(v) => onChange(dateFromYear(v === "" ? "" : String(v)))}
+      />
+    );
+  }
+
+  if (frequency === "Quarterly") {
+    const { year, quarter } = quarterFromDate(value);
+    return (
+      <Group grow align="flex-end" gap="xs" wrap="nowrap">
+        <NumberInput
+          label={t("bookEdit.issueDate")}
+          placeholder={t("bookEdit.year")}
+          allowDecimal={false}
+          hideControls
+          value={year === "" ? "" : Number(year)}
+          onChange={(v) => onChange(dateFromQuarter(v === "" ? "" : String(v), quarter || "1"))}
+        />
+        <Select
+          data={["1", "2", "3", "4"].map((q) => ({ value: q, label: `Q${q}` }))}
+          value={quarter || null}
+          onChange={(v) => onChange(dateFromQuarter(year || String(new Date().getFullYear()), v ?? "1"))}
+          allowDeselect={false}
+        />
+      </Group>
+    );
+  }
+
+  if (frequency === "Monthly") {
+    return (
+      <TextInput
+        type="month"
+        label={t("bookEdit.issueDate")}
+        value={monthFromDate(value)}
+        onChange={(e) => onChange(dateFromMonth(e.currentTarget.value))}
+      />
+    );
+  }
+
+  if (frequency === "Weekly") {
+    return (
+      <TextInput
+        type="week"
+        label={t("bookEdit.issueDate")}
+        value={isoWeekFromDate(value)}
+        onChange={(e) => onChange(dateFromIsoWeek(e.currentTarget.value))}
+      />
+    );
+  }
+
+  return (
+    <TextInput type="date" label={t("bookEdit.issueDate")} value={value} onChange={(e) => onChange(e.currentTarget.value)} />
+  );
+}
+
 export function BookEditForm({ bookId, onClose, onSaved }: BookEditFormProps) {
   const { t } = useLanguage();
   const queryClient = useQueryClient();
@@ -194,7 +274,11 @@ export function BookEditForm({ bookId, onClose, onSaved }: BookEditFormProps) {
   const tagsQuery = useQuery({ queryKey: ["tags"], queryFn: listTags });
   const publishersQuery = useQuery({ queryKey: ["publishers"], queryFn: listPublishers });
   const collectionsQuery = useQuery({ queryKey: ["collections"], queryFn: listCollections });
-  const periodicalsQuery = useQuery({ queryKey: ["periodicals"], queryFn: listPeriodicals });
+  // Per-library preference (Settings -> Libraries) - shares the ["library"] query App.tsx already
+  // keeps warm, so this is a cache read, not an extra request.
+  const libraryQuery = useQuery({ queryKey: ["library"], queryFn: getCurrentLibrary });
+  const periodicalsEnabled = libraryQuery.data?.periodicalsEnabled ?? true;
+  const periodicalsQuery = useQuery({ queryKey: ["periodicals"], queryFn: listPeriodicals, enabled: periodicalsEnabled });
   const collectionOptions = buildCollectionOptions(collectionsQuery.data ?? [], collectionSearch, t);
 
   const authorOptions = buildCreatableData(
@@ -203,6 +287,9 @@ export function BookEditForm({ bookId, onClose, onSaved }: BookEditFormProps) {
     authorSearch,
     t,
   );
+  // Case-insensitive: authors are matched/created case-insensitively server-side (EntityResolvers),
+  // so a name typed with different casing than the stored author should still resolve to their avatar.
+  const authorsByName = new Map((authorsQuery.data ?? []).map((a) => [a.name.toLowerCase(), a]));
   const tagOptions = buildCreatableData((tagsQuery.data ?? []).map((tag) => tag.name), form.tags, tagSearch, t);
 
   // Creates the collection immediately (not deferred to Save) since BookEditRequest.collectionIds
@@ -227,7 +314,10 @@ export function BookEditForm({ bookId, onClose, onSaved }: BookEditFormProps) {
       authors: book.authors,
       language: book.language ?? "",
       publisher: book.publisher ?? "",
-      publishedDate: book.datePublished ?? "",
+      // One date field does double duty - the issue date for a periodical issue, the published
+      // date otherwise (see IssueDateField) - so it's sourced from whichever one the book actually
+      // has when it's an issue, falling back to publishedDate if issueDate was never set.
+      publishedDate: (book.periodicalId ? book.issueDate ?? book.datePublished : book.datePublished) ?? "",
       description: book.description ?? "",
       rating: book.rating,
       seriesName: book.seriesName ?? "",
@@ -237,7 +327,6 @@ export function BookEditForm({ bookId, onClose, onSaved }: BookEditFormProps) {
       periodicalId: book.periodicalId ?? "",
       issueNumber: book.issueNumber != null ? String(book.issueNumber) : "",
       volumeNumber: book.volumeNumber != null ? String(book.volumeNumber) : "",
-      issueDate: book.issueDate ?? "",
     });
   }, [book]);
 
@@ -267,7 +356,9 @@ export function BookEditForm({ bookId, onClose, onSaved }: BookEditFormProps) {
       periodicalId: form.periodicalId || null,
       issueNumber: form.periodicalId && form.issueNumber ? Number(form.issueNumber) : null,
       volumeNumber: form.periodicalId && form.volumeNumber ? Number(form.volumeNumber) : null,
-      issueDate: form.periodicalId && form.issueDate ? form.issueDate : null,
+      // Same single date field as publishedDate above - it *is* the issue date once a periodical
+      // is selected (see IssueDateField), not a second independent value to track.
+      issueDate: form.periodicalId && form.publishedDate ? form.publishedDate : null,
     });
   };
 
@@ -286,6 +377,8 @@ export function BookEditForm({ bookId, onClose, onSaved }: BookEditFormProps) {
     setMetadataSearchOpen(false);
   };
 
+  const selectedPeriodical = periodicalsQuery.data?.find((p) => p.id === form.periodicalId);
+
   return (
     <Modal opened onClose={onClose} title={t("bookEdit.title")} size="lg">
       {isLoading && (
@@ -297,150 +390,214 @@ export function BookEditForm({ bookId, onClose, onSaved }: BookEditFormProps) {
       {!isLoading && (
         <form onSubmit={handleSubmit}>
           <Stack gap="sm">
-            <Group align="flex-end" gap="xs" wrap="nowrap">
-              <TextInput
-                style={{ flex: 1 }}
-                label={t("bookEdit.titleField")}
-                required
-                value={form.title}
-                onChange={(e) => setForm({ ...form, title: e.currentTarget.value })}
-              />
-              <Button
-                variant="default"
-                size="sm"
-                leftSection={<IconWorldSearch size={15} />}
-                onClick={() => setMetadataSearchOpen(true)}
-              >
-                {t("metadataSearch.button")}
-              </Button>
-            </Group>
-
-            <MultiSelect
-              label={t("bookEdit.authors")}
-              data={authorOptions}
-              value={form.authors}
-              onChange={(values) => {
-                setForm({ ...form, authors: values });
-                setAuthorSearch("");
-              }}
-              searchable
-              searchValue={authorSearch}
-              onSearchChange={setAuthorSearch}
-              onBlur={() => {
-                // Safety net for "typed a brand new author but never explicitly clicked/selected
-                // the create option before moving on" - see buildCreatableData's comment. A no-op
-                // in the normal case, since onChange above already clears authorSearch on selection.
-                const trimmed = authorSearch.trim();
-                if (trimmed.length > 0 && !form.authors.some((a) => a.toLowerCase() === trimmed.toLowerCase())) {
-                  setForm((prev) => ({ ...prev, authors: [...prev.authors, trimmed] }));
-                }
-                setAuthorSearch("");
-              }}
-            />
-
-            <Group grow align="flex-start">
-              <Autocomplete
-                label={t("bookEdit.publisher")}
-                data={publishersQuery.data ?? []}
-                value={form.publisher}
-                onChange={(value) => setForm({ ...form, publisher: value })}
-              />
-              <Select
-                label={t("bookEdit.language")}
-                data={withCurrentLanguage(getLanguageOptions(t), form.language)}
-                value={form.language || null}
-                onChange={(value) => setForm({ ...form, language: value ?? "" })}
-                searchable
-                clearable
-              />
-            </Group>
-
-            <Group grow align="flex-start">
-              <TextInput
-                type="date"
-                label={t("bookEdit.publishedDate")}
-                value={form.publishedDate}
-                onChange={(e) => setForm({ ...form, publishedDate: e.currentTarget.value })}
-              />
-              <Select
-                label={t("bookEdit.rating")}
-                data={ratingOptions}
-                value={String(form.rating)}
-                onChange={(value) => setForm({ ...form, rating: Number(value ?? 0) })}
-                allowDeselect={false}
-              />
-            </Group>
-
-            <Group grow align="flex-start">
-              {/* Plain Autocomplete, not the creatable-Select pattern used for Authors/Tags above -
-                  a series name is almost always brand new per book, so a control that requires an
-                  explicit dropdown selection to commit typed text (and silently discards it
-                  otherwise) is exactly the wrong shape here. Autocomplete's value is the live text
-                  itself, with existing series just offered as suggestions - nothing to select. */}
-              <Autocomplete
-                label={t("bookEdit.series")}
-                data={(seriesQuery.data ?? []).map((s) => s.name)}
-                value={form.seriesName}
-                onChange={(value) => setForm({ ...form, seriesName: value })}
-              />
-              <NumberInput
-                label={t("bookEdit.seriesIndex")}
-                step={0.1}
-                value={form.seriesIndex}
-                onChange={(value) => setForm({ ...form, seriesIndex: value === "" ? "" : String(value) })}
-              />
-            </Group>
-
-            <Select
-              label={t("bookEdit.periodical")}
-              data={(periodicalsQuery.data ?? []).map((p) => ({ value: p.id, label: p.name }))}
-              value={form.periodicalId || null}
-              onChange={(value) => setForm({ ...form, periodicalId: value ?? "" })}
-              searchable
-              clearable
-            />
-
-            {form.periodicalId && (
-              <Group grow align="flex-start">
-                <NumberInput
-                  label={t("bookEdit.volumeNumber")}
-                  value={form.volumeNumber}
-                  onChange={(value) => setForm({ ...form, volumeNumber: value === "" ? "" : String(value) })}
-                />
-                <NumberInput
-                  label={t("bookEdit.issueNumber")}
-                  step={0.1}
-                  value={form.issueNumber}
-                  onChange={(value) => setForm({ ...form, issueNumber: value === "" ? "" : String(value) })}
-                />
+            {/* An issue has no user-editable title (see displayTitle in issueDisplay.ts - the
+                periodical it belongs to identifies it everywhere instead), so the field is
+                replaced with a plain note of which periodical this is, rather than left editable
+                for a value nothing else displays. */}
+            {form.periodicalId ? (
+              <Text size="sm" c="dimmed">
+                {t("bookEdit.issueOf", { periodical: selectedPeriodical?.name ?? "" })}
+              </Text>
+            ) : (
+              <Group align="flex-end" gap="xs" wrap="nowrap">
                 <TextInput
-                  type="date"
-                  label={t("bookEdit.issueDate")}
-                  value={form.issueDate}
-                  onChange={(e) => setForm({ ...form, issueDate: e.currentTarget.value })}
+                  style={{ flex: 1 }}
+                  label={t("bookEdit.titleField")}
+                  required
+                  value={form.title}
+                  onChange={(e) => setForm({ ...form, title: e.currentTarget.value })}
+                />
+                <Button
+                  variant="default"
+                  size="sm"
+                  leftSection={<IconWorldSearch size={15} />}
+                  onClick={() => setMetadataSearchOpen(true)}
+                >
+                  {t("metadataSearch.button")}
+                </Button>
+              </Group>
+            )}
+
+            {/* Author/publisher/language/series/rating/tags/description are all hidden once the
+                book is an issue of a periodical - those attributes live on the periodical instead
+                (see PeriodicalDetailView.tsx's own language/publisher/editor/tags fields), not
+                per-issue. Collections stay editable either way. */}
+            {!form.periodicalId && (
+              <MultiSelect
+                label={t("bookEdit.authors")}
+                data={authorOptions}
+                value={form.authors}
+                renderOption={({ option, checked }) => {
+                  const author = authorsByName.get(String(option.value).toLowerCase());
+                  return (
+                    <Group gap="xs" wrap="nowrap">
+                      <Avatar src={author?.hasImage ? authorImageUrl(author.id) : null} size={20} radius="xl">
+                        <IconUser size={12} />
+                      </Avatar>
+                      <span>{option.label}</span>
+                      {checked && <IconCheck size={14} style={{ marginInlineStart: "auto" }} />}
+                    </Group>
+                  );
+                }}
+                renderPill={({ option, onRemove }) => {
+                  const author = authorsByName.get(String(option.value).toLowerCase());
+                  return (
+                    <Pill withRemoveButton onRemove={onRemove}>
+                      <Group gap={4} wrap="nowrap">
+                        <Avatar src={author?.hasImage ? authorImageUrl(author.id) : null} size={14} radius="xl">
+                          <IconUser size={9} />
+                        </Avatar>
+                        <span>{option.label}</span>
+                      </Group>
+                    </Pill>
+                  );
+                }}
+                onChange={(values) => {
+                  setForm({ ...form, authors: values });
+                  setAuthorSearch("");
+                }}
+                searchable
+                searchValue={authorSearch}
+                onSearchChange={setAuthorSearch}
+                onBlur={() => {
+                  // Safety net for "typed a brand new author but never explicitly clicked/selected
+                  // the create option before moving on" - see buildCreatableData's comment. A no-op
+                  // in the normal case, since onChange above already clears authorSearch on selection.
+                  const trimmed = authorSearch.trim();
+                  if (trimmed.length > 0 && !form.authors.some((a) => a.toLowerCase() === trimmed.toLowerCase())) {
+                    setForm((prev) => ({ ...prev, authors: [...prev.authors, trimmed] }));
+                  }
+                  setAuthorSearch("");
+                }}
+              />
+            )}
+
+            {!form.periodicalId && (
+              <Group grow align="flex-start">
+                <Autocomplete
+                  label={t("bookEdit.publisher")}
+                  data={publishersQuery.data ?? []}
+                  value={form.publisher}
+                  onChange={(value) => setForm({ ...form, publisher: value })}
+                />
+                <Select
+                  label={t("bookEdit.language")}
+                  data={withCurrentLanguage(getLanguageOptions(t), form.language)}
+                  value={form.language || null}
+                  onChange={(value) => setForm({ ...form, language: value ?? "" })}
+                  searchable
+                  clearable
                 />
               </Group>
             )}
 
-            <MultiSelect
-              label={t("bookEdit.tags")}
-              data={tagOptions}
-              value={form.tags}
-              onChange={(values) => {
-                setForm({ ...form, tags: values });
-                setTagSearch("");
-              }}
-              searchable
-              searchValue={tagSearch}
-              onSearchChange={setTagSearch}
-              onBlur={() => {
-                const trimmed = tagSearch.trim();
-                if (trimmed.length > 0 && !form.tags.some((tag) => tag.toLowerCase() === trimmed.toLowerCase())) {
-                  setForm((prev) => ({ ...prev, tags: [...prev.tags, trimmed] }));
-                }
-                setTagSearch("");
-              }}
-            />
+            {!form.periodicalId && (
+              // The date field itself moves into the Periodical fieldset (as the issue date) once
+              // a periodical is selected - see IssueDateField - so this whole row, published date
+              // and rating together, only makes sense for a standalone book.
+              <Group grow align="flex-start">
+                <TextInput
+                  type="date"
+                  label={t("bookEdit.publishedDate")}
+                  value={form.publishedDate}
+                  onChange={(e) => setForm({ ...form, publishedDate: e.currentTarget.value })}
+                />
+                <Select
+                  label={t("bookEdit.rating")}
+                  data={ratingOptions}
+                  value={String(form.rating)}
+                  onChange={(value) => setForm({ ...form, rating: Number(value ?? 0) })}
+                  allowDeselect={false}
+                />
+              </Group>
+            )}
+
+            {!form.periodicalId && (
+              <Group grow align="flex-start">
+                {/* Plain Autocomplete, not the creatable-Select pattern used for Authors/Tags above -
+                    a series name is almost always brand new per book, so a control that requires an
+                    explicit dropdown selection to commit typed text (and silently discards it
+                    otherwise) is exactly the wrong shape here. Autocomplete's value is the live text
+                    itself, with existing series just offered as suggestions - nothing to select. */}
+                <Autocomplete
+                  label={t("bookEdit.series")}
+                  data={(seriesQuery.data ?? []).map((s) => s.name)}
+                  value={form.seriesName}
+                  onChange={(value) => setForm({ ...form, seriesName: value })}
+                />
+                <NumberInput
+                  label={t("bookEdit.seriesIndex")}
+                  step={0.1}
+                  value={form.seriesIndex}
+                  onChange={(value) => setForm({ ...form, seriesIndex: value === "" ? "" : String(value) })}
+                />
+              </Group>
+            )}
+
+            {/* Hidden entirely (not just visually disabled) when this library has the feature
+                turned off (Settings -> Libraries) - see periodicalsEnabled above. An already-issue
+                book stays exactly as it is on disk/DB; there's just no way to change that
+                assignment (or the fields hidden above) from this form while it's off. */}
+            {periodicalsEnabled && (
+              <Fieldset legend={t("bookEdit.periodicalFieldset")}>
+                <Stack gap="sm">
+                  <Select
+                    label={t("bookEdit.periodical")}
+                    data={(periodicalsQuery.data ?? []).map((p) => ({ value: p.id, label: p.name }))}
+                    value={form.periodicalId || null}
+                    onChange={(value) => setForm({ ...form, periodicalId: value ?? "" })}
+                    searchable
+                    clearable
+                  />
+
+                  {form.periodicalId && (
+                    <>
+                      <Group grow align="flex-start">
+                        <NumberInput
+                          label={t("bookEdit.volumeNumber")}
+                          value={form.volumeNumber}
+                          onChange={(value) => setForm({ ...form, volumeNumber: value === "" ? "" : String(value) })}
+                        />
+                        <NumberInput
+                          label={t("bookEdit.issueNumber")}
+                          step={0.1}
+                          value={form.issueNumber}
+                          onChange={(value) => setForm({ ...form, issueNumber: value === "" ? "" : String(value) })}
+                        />
+                      </Group>
+                      <IssueDateField
+                        frequency={selectedPeriodical?.frequency ?? "Occasional"}
+                        value={form.publishedDate}
+                        onChange={(value) => setForm({ ...form, publishedDate: value })}
+                        t={t}
+                      />
+                    </>
+                  )}
+                </Stack>
+              </Fieldset>
+            )}
+
+            {!form.periodicalId && (
+              <MultiSelect
+                label={t("bookEdit.tags")}
+                data={tagOptions}
+                value={form.tags}
+                onChange={(values) => {
+                  setForm({ ...form, tags: values });
+                  setTagSearch("");
+                }}
+                searchable
+                searchValue={tagSearch}
+                onSearchChange={setTagSearch}
+                onBlur={() => {
+                  const trimmed = tagSearch.trim();
+                  if (trimmed.length > 0 && !form.tags.some((tag) => tag.toLowerCase() === trimmed.toLowerCase())) {
+                    setForm((prev) => ({ ...prev, tags: [...prev.tags, trimmed] }));
+                  }
+                  setTagSearch("");
+                }}
+              />
+            )}
 
             <MultiSelect
               label={t("bookEdit.collections")}
@@ -494,12 +651,14 @@ export function BookEditForm({ bookId, onClose, onSaved }: BookEditFormProps) {
               </Text>
             )}
 
-            <Textarea
-              label={t("bookEdit.description")}
-              rows={4}
-              value={form.description}
-              onChange={(e) => setForm({ ...form, description: e.currentTarget.value })}
-            />
+            {!form.periodicalId && (
+              <Textarea
+                label={t("bookEdit.description")}
+                rows={4}
+                value={form.description}
+                onChange={(e) => setForm({ ...form, description: e.currentTarget.value })}
+              />
+            )}
 
             {saveMutation.isError && (
               <Alert color="red" icon={<IconAlertCircle size={18} />}>

@@ -1,12 +1,15 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActionIcon,
+  Avatar,
   Badge,
   Box,
   Group,
+  HoverCard,
   NavLink,
   Popover,
   ScrollArea,
+  Stack,
   Text,
   TextInput,
   Tooltip,
@@ -18,6 +21,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   IconBuildingStore,
+  IconChartBar,
   IconCheck,
   IconFolder,
   IconFolderOpen,
@@ -33,8 +37,10 @@ import {
 } from "@tabler/icons-react";
 import type { Icon } from "@tabler/icons-react";
 import {
+  authorImageUrl,
   createCollection,
   createPeriodical,
+  getCurrentLibrary,
   listAuthors,
   listCollections,
   listLanguageGroups,
@@ -75,7 +81,8 @@ export type MainView =
   | "series"
   | "periodicals"
   | "publishers"
-  | "languages";
+  | "languages"
+  | "analytics";
 
 type BrowseSection = "collections" | "authors" | "series" | "tags" | "periodicals" | "publishers" | "languages";
 
@@ -128,6 +135,7 @@ interface SidebarProps {
   // footer gear button opens on whatever the default is, while "Manage Libraries" below jumps
   // straight to "libraries" (issue #15).
   onOpenSettings: (tab?: SettingsTab) => void;
+  onOpenAnalytics: () => void;
   onLibraryChanged: () => void;
   // Issue #10: dragging a book (or the active multi-selection) from the grid/list onto an
   // Author/Series/Tag/Collection/Publisher/Language row here applies that edit - see App.tsx's
@@ -174,6 +182,8 @@ function GroupSection({
   title,
   kind,
   icon: RowIcon,
+  renderIcon,
+  renderHoverCard,
   activeFilter,
   onSelect,
   groups,
@@ -183,6 +193,12 @@ function GroupSection({
   title: string;
   kind: GroupFilterKind;
   icon: Icon;
+  // Authors override the plain RowIcon with their own avatar (falling back to RowIcon when they
+  // don't have one) - every other section just uses RowIcon for every row.
+  renderIcon?: (group: BrowseGroup) => React.ReactNode;
+  // Authors only: a long-hover popup with a bigger photo/name/book-count - every other section
+  // leaves this unset and rows just get the plain NavLink.
+  renderHoverCard?: (group: BrowseGroup) => React.ReactNode;
   activeFilter: GroupFilter | null;
   onSelect: (filter: GroupFilter | null) => void;
   groups: BrowseGroup[] | undefined;
@@ -199,11 +215,11 @@ function GroupSection({
       <SectionTitle action={action}>{title}</SectionTitle>
       {groups?.map((group) => {
         const isActive = activeFilter?.kind === kind && activeFilter.id === group.id;
-        return (
+        const navLink = (
           <NavLink
-            key={group.id}
+            key={renderHoverCard ? undefined : group.id}
             label={group.name}
-            leftSection={<RowIcon size={16} stroke={1.5} />}
+            leftSection={renderIcon ? renderIcon(group) : <RowIcon size={16} stroke={1.5} />}
             active={isActive}
             onClick={() => onSelect(isActive ? null : { kind, id: group.id, name: group.name })}
             onDragOver={
@@ -237,6 +253,17 @@ function GroupSection({
             styles={sectionRowStyles(isActive, dragOverId === group.id)}
           />
         );
+
+        if (!renderHoverCard) {
+          return navLink;
+        }
+
+        return (
+          <HoverCard key={group.id} openDelay={700} closeDelay={100} position="right" withArrow shadow="md">
+            <HoverCard.Target>{navLink}</HoverCard.Target>
+            <HoverCard.Dropdown>{renderHoverCard(group)}</HoverCard.Dropdown>
+          </HoverCard>
+        );
       })}
     </Box>
   );
@@ -257,6 +284,7 @@ export function Sidebar({
   onOpenPublishers,
   onOpenLanguages,
   onOpenSettings,
+  onOpenAnalytics,
   onLibraryChanged,
   onDropBooks,
 }: SidebarProps) {
@@ -271,7 +299,11 @@ export function Sidebar({
   const seriesQuery = useQuery({ queryKey: ["series"], queryFn: listSeries });
   const tagsQuery = useQuery({ queryKey: ["tags"], queryFn: listTags });
   const collectionsQuery = useQuery({ queryKey: ["collections"], queryFn: listCollections });
-  const periodicalsQuery = useQuery({ queryKey: ["periodicals"], queryFn: listPeriodicals });
+  // Per-library preference (Settings -> Libraries) - shares the ["library"] query App.tsx already
+  // keeps warm, so this is a cache read, not an extra request.
+  const libraryQuery = useQuery({ queryKey: ["library"], queryFn: getCurrentLibrary });
+  const periodicalsEnabled = libraryQuery.data?.periodicalsEnabled ?? true;
+  const periodicalsQuery = useQuery({ queryKey: ["periodicals"], queryFn: listPeriodicals, enabled: periodicalsEnabled });
 
   // Drag-to-resize: pointer capture on the handle itself means move/up keep firing on it even
   // once the cursor leaves its thin hit area mid-drag, so a fast drag can't "escape" the handle
@@ -438,6 +470,14 @@ export function Sidebar({
 
   const [browseSection, setBrowseSection] = useState<BrowseSection>("authors");
 
+  // Falls back off the Periodicals section if this library's setting (Settings -> Libraries) gets
+  // toggled off while it's the one currently showing - stale local UI state, not persisted.
+  useEffect(() => {
+    if (!periodicalsEnabled && browseSection === "periodicals") {
+      setBrowseSection("authors");
+    }
+  }, [periodicalsEnabled, browseSection]);
+
   // "Active" here means "this is the filter currently applied to the book list" - matched against
   // activeFilter.kind, not the locally-browsed section - so this view bar and the title bar's
   // filter row (All books/Unread/Reading/Finished - see TitleBar.tsx) stay mutually exclusive:
@@ -459,7 +499,11 @@ export function Sidebar({
     { key: "collections", icon: IconFolder, label: t("sidebar.collections"), active: activeFilter?.kind === sectionFilterKind.collections },
     { key: "series", icon: IconStack2, label: t("sidebar.series"), active: activeFilter?.kind === sectionFilterKind.series },
     { key: "tags", icon: IconTag, label: t("sidebar.tags"), active: activeFilter?.kind === sectionFilterKind.tags },
-    { key: "periodicals", icon: IconNews, label: t("sidebar.periodicals"), active: activeFilter?.kind === sectionFilterKind.periodicals },
+    // Omitted entirely (not just visually disabled) when this library has the feature turned off
+    // (Settings -> Libraries) - see periodicalsEnabled above.
+    ...(periodicalsEnabled
+      ? [{ key: "periodicals" as const, icon: IconNews, label: t("sidebar.periodicals"), active: activeFilter?.kind === sectionFilterKind.periodicals }]
+      : []),
     { key: "publishers", icon: IconBuildingStore, label: t("sidebar.publishers"), active: activeFilter?.kind === sectionFilterKind.publishers },
     { key: "languages", icon: IconLanguage, label: t("sidebar.languages"), active: activeFilter?.kind === sectionFilterKind.languages },
   ];
@@ -538,6 +582,31 @@ export function Sidebar({
               title={t("sidebar.authors")}
               kind="authorId"
               icon={IconUser}
+              renderIcon={(group) =>
+                group.hasImage ? (
+                  <Avatar src={authorImageUrl(group.id)} size={16} radius="xl" />
+                ) : (
+                  <IconUser size={16} stroke={1.5} />
+                )
+              }
+              renderHoverCard={(group) => (
+                <Group gap="sm" wrap="nowrap" p={4}>
+                  <Avatar src={group.hasImage ? authorImageUrl(group.id) : null} size={56} radius="xl">
+                    <IconUser size={28} />
+                  </Avatar>
+                  <Stack gap={2}>
+                    <Text fw={600} size="sm">
+                      {group.name}
+                    </Text>
+                    <Text size="xs" c="dimmed">
+                      {t(
+                        group.bookCount === 1 ? "authorsView.bookCount_one" : "authorsView.bookCount_other",
+                        { count: group.bookCount },
+                      )}
+                    </Text>
+                  </Stack>
+                </Group>
+              )}
               activeFilter={activeFilter}
               onSelect={onSelect}
               groups={byBookCount(authorsQuery.data)}
@@ -643,6 +712,11 @@ export function Sidebar({
               <Text size="xs" fw={700}>
                 {currentLanguage.label}
               </Text>
+            </ActionIcon>
+          </Tooltip>
+          <Tooltip label={t("analytics.title")}>
+            <ActionIcon variant="subtle" color="gray" size="lg" onClick={onOpenAnalytics} aria-label={t("analytics.title")}>
+              <IconChartBar size={17} />
             </ActionIcon>
           </Tooltip>
           <Tooltip label={t("settings.title")}>

@@ -61,7 +61,7 @@ public class ImportService(
             Title = title,
             SortTitle = sortTitle,
             Description = metadata.Description,
-            Language = metadata.Language,
+            Language = metadata.Language ?? "en",
             Publisher = metadata.Publisher,
             DatePublished = metadata.PublishedDate,
         };
