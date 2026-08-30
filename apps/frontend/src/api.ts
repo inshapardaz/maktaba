@@ -558,6 +558,8 @@ export interface Periodical {
   frequency: PeriodicalFrequency;
   // Metadata that lives at the periodical level rather than per-issue - see BookEditForm.tsx,
   // which hides its own language/publisher/tags fields once a book is an issue in favor of these.
+  // Issue #30: an issue has no language of its own - the reader falls back to its periodical's
+  // language, then to English, to pick a word-lookup dictionary (see ReaderOverlay.tsx).
   language: string | null;
   publisher: string | null;
   editor: string | null;

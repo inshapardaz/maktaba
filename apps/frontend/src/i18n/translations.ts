@@ -118,6 +118,7 @@ const en = {
   "periodicalsView.title": "Periodicals",
   "periodicalsView.namePlaceholder": "Periodical name",
   "periodicalsView.frequency": "Frequency",
+  "periodicalsView.language": "Language",
   "periodicalsView.add": "Add",
   "periodicalsView.searchPlaceholder": "Search periodicals…",
   "periodicalsView.empty": "No periodicals yet.",
@@ -306,6 +307,16 @@ const en = {
   "settings.autoTagAsk": "Ask me first",
   "settings.autoTagStatusHint": "When you start or finish a book in the reader, update its reading status automatically or show a notification with the option to apply it.",
 
+  "settings.dictionaries": "Dictionaries",
+
+  "starDictSettings.description": "Provide an offline StarDict/GoldenDict dictionary per language for real word definitions in the reader - select a word and right-click it (or long-press on touch) to look it up. Works without an internet connection. GoldenDict-distributed dictionaries ship as a zip containing the .ifo/.idx/.dict (or .dict.dz) file set used by StarDict and GoldenDict - choose that zip file below.",
+  "starDictSettings.empty": "No dictionaries configured yet.",
+  "starDictSettings.add": "Add a dictionary",
+  "starDictSettings.language": "Language",
+  "starDictSettings.chooseZip": "Choose dictionary .zip file…",
+  "starDictSettings.save": "Save",
+  "starDictSettings.remove": "Remove",
+
   "librariesSettings.description": "Only one library is open at a time. Switch, rename, relocate, resync, or remove any of the libraries you've opened before.",
   "librariesSettings.addLibrary": "Add library…",
   "librariesSettings.active": "Active",
@@ -482,6 +493,7 @@ const ur: TranslationDict = {
   "periodicalsView.title": "متواتر اشاعتیں",
   "periodicalsView.namePlaceholder": "اشاعت کا نام",
   "periodicalsView.frequency": "تعدد",
+  "periodicalsView.language": "زبان",
   "periodicalsView.add": "شامل کریں",
   "periodicalsView.searchPlaceholder": "اشاعتیں تلاش کریں…",
   "periodicalsView.empty": "ابھی کوئی اشاعت موجود نہیں۔",
@@ -664,6 +676,16 @@ const ur: TranslationDict = {
   "settings.autoTagAuto": "خودکار طور پر اپ ڈیٹ کریں",
   "settings.autoTagAsk": "پہلے مجھ سے پوچھیں",
   "settings.autoTagStatusHint": "جب آپ ریڈر میں کوئی کتاب پڑھنا شروع یا مکمل کریں تو اس کی مطالعے کی حیثیت خودکار طور پر اپ ڈیٹ کریں یا اسے لاگو کرنے کے اختیار کے ساتھ ایک اطلاع دکھائیں۔",
+
+  "settings.dictionaries": "لغات",
+
+  "starDictSettings.description": "ریڈر میں الفاظ کے حقیقی معانی کے لیے فی زبان آف لائن StarDict/GoldenDict لغت فراہم کریں — کسی لفظ کو منتخب کر کے اس پر دائیں کلک کریں (یا ٹچ پر دیر تک دبائیں) تاکہ اس کا معنی معلوم ہو۔ یہ انٹرنیٹ کنکشن کے بغیر بھی کام کرتی ہے۔ GoldenDict کی تقسیم شدہ لغات ایک زپ فائل کی صورت میں آتی ہیں جس میں .ifo/.idx/.dict (یا .dict.dz) فائلوں کا مجموعہ ہوتا ہے جو StarDict اور GoldenDict استعمال کرتے ہیں — نیچے وہی زپ فائل منتخب کریں۔",
+  "starDictSettings.empty": "ابھی تک کوئی لغت مقرر نہیں کی گئی۔",
+  "starDictSettings.add": "لغت شامل کریں",
+  "starDictSettings.language": "زبان",
+  "starDictSettings.chooseZip": "لغت کی .zip فائل منتخب کریں…",
+  "starDictSettings.save": "محفوظ کریں",
+  "starDictSettings.remove": "ہٹا دیں",
 
   "librariesSettings.description": "ایک وقت میں صرف ایک لائبریری کھلی ہوتی ہے۔ اپنی پہلے کھولی گئی کسی بھی لائبریری کو تبدیل، نام تبدیل، مقام تبدیل، دوبارہ ہم آہنگ یا ہٹائیں۔",
   "librariesSettings.addLibrary": "لائبریری شامل کریں…",

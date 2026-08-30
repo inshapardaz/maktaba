@@ -193,6 +193,43 @@ dir instead: `dotnet build backend/Maktaba.Api/Maktaba.Api.csproj -o <temp-dir>`
 `Maktaba.Api.exe` if it's a lone orphan with no accompanying `electron.exe` processes (a leftover
 from a previous standalone smoke test).
 
+## Word-lookup dictionaries
+
+Settings → Dictionaries lets the user configure an offline StarDict/GoldenDict dictionary per
+language for real word definitions in the reader (qari's `stardictDictionaries` `<Reader>` prop,
+added in `@inshapardaz/qari` 0.2.16 — see that package's `StarDictProvider`). This is an app-wide
+asset like the Hunspell-based spell-check feature it replaced (former issue #30; Hunspell support
+was removed entirely, not kept alongside StarDict), so it lives under
+`{userData}/StarDictDictionaries/{language}/` rather than inside a library folder, and never goes
+through the Maktaba.Api sidecar.
+
+A StarDict dictionary is a same-basename trio of files (`.ifo`/`.idx`/`.dict[.dz]`); rather than
+asking the user to locate three separate files, `native.ts`'s `maktaba:save-stardict-dictionary`
+handler takes a single `.zip` (the form most GoldenDict-distributed dictionaries are shared in),
+unpacks it with `jszip`, and normalizes the result on disk — a gzip-compressed `.idx.gz` is
+decompressed once at save time (qari's `StarDictProvider` only auto-decompresses a gzip `.dict.dz`
+on its own, not `.idx`), while `.dict`/`.dict.dz` is left as-is since the provider handles that one
+itself.
+
+The dictionary's own bytes never cross Electron's IPC boundary — a `.dict` file can be tens of MB
+or more, too large to comfortably pass through `ipcRenderer.invoke`'s structured-clone (this app's
+established convention for anything that size, e.g. book/cover bytes, is to serve it over the local
+HTTP sidecar instead of IPC; this feature has no sidecar involvement at all, so it uses Electron's
+own equivalent instead). `native.ts` registers a privileged `stardict://` custom protocol
+(`registerStarDictProtocol`, called from `main.ts` inside `app.whenReady()`) that serves a
+dictionary's files straight off disk via `net.fetch(pathToFileURL(...))`; the
+`maktaba:get-stardict-dictionary-urls` IPC call only returns three short `stardict://` URL strings,
+and `ReaderOverlay.tsx` feeds those into `stardictDictionaries`' `ifoUrl`/`idxUrl`/`dictUrl` fields,
+letting qari's `StarDictProvider` `fetch()` them itself. No parsing happens on the Maktaba side at
+all, and no dictionary bytes are ever serialized across a process boundary by Maktaba's own code.
+
+The word-lookup interaction itself is qari's own built-in behavior, not something Maktaba wires up:
+select a word in the reader and right-click it (or long-press on touch) to see its definition.
+
+As with the Help & onboarding Urdu content below, the Urdu strings added for this feature
+(`starDictSettings.*` in `translations.ts`, and `docs/ur/settings.md`/`docs/ur/reading.md`) are
+Claude-authored and unreviewed by a native speaker.
+
 ## Desktop packaging
 
 `scripts/publish-backend.mjs` publishes the self-contained backend per RID into
