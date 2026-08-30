@@ -11,6 +11,7 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
 
     private readonly string _configFilePath;
     private readonly List<LibraryRegistryEntry> _libraries = [];
+    private readonly SemaphoreSlim _schemaCheckLock = new(1, 1);
     private bool _schemaVerified;
 
     public string? LibraryRootPath { get; private set; }
@@ -218,6 +219,15 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
     /// (cached via <c>_schemaVerified</c>) so this doesn't add overhead to every request.
     /// Returns true if the database was rebuilt (empty schema, no rows) and needs a rescan to
     /// repopulate it from the on-disk book folders.
+    ///
+    /// Called from middleware on *every* request (see Program.cs), so right after a schema-breaking
+    /// change ships, several requests can arrive before the first one finishes rebuilding - the
+    /// frontend alone fires off a handful of independent queries in parallel on load. Without
+    /// serializing this, each of those requests would see <c>_schemaVerified</c> still false and race
+    /// to EnsureDeleted/EnsureCreated the same sqlite file concurrently, surfacing as "table already
+    /// exists" (or a locked-file) error, and would each separately trigger a rescan on top of that.
+    /// <c>_schemaCheckLock</c> plus the double-checked read of <c>_schemaVerified</c> after acquiring
+    /// it makes sure only the first caller actually rebuilds; everyone else waits, then no-ops.
     /// </summary>
     public async Task<bool> EnsureCurrentSchemaAsync(CancellationToken ct = default)
     {
@@ -226,20 +236,33 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
             return false;
         }
 
-        using var db = MaktabaDbContextFactory.Create(this);
-        await db.Database.EnsureCreatedAsync(ct);
-
-        var rebuilt = false;
-        if (!await IsCurrentSchemaAsync(db, ct))
+        await _schemaCheckLock.WaitAsync(ct);
+        try
         {
-            await db.Database.EnsureDeletedAsync(ct);
-            using var recreated = MaktabaDbContextFactory.Create(this);
-            await recreated.Database.EnsureCreatedAsync(ct);
-            rebuilt = true;
-        }
+            if (_schemaVerified || LibraryRootPath is null)
+            {
+                return false;
+            }
 
-        _schemaVerified = true;
-        return rebuilt;
+            using var db = MaktabaDbContextFactory.Create(this);
+            await db.Database.EnsureCreatedAsync(ct);
+
+            var rebuilt = false;
+            if (!await IsCurrentSchemaAsync(db, ct))
+            {
+                await db.Database.EnsureDeletedAsync(ct);
+                using var recreated = MaktabaDbContextFactory.Create(this);
+                await recreated.Database.EnsureCreatedAsync(ct);
+                rebuilt = true;
+            }
+
+            _schemaVerified = true;
+            return rebuilt;
+        }
+        finally
+        {
+            _schemaCheckLock.Release();
+        }
     }
 
     // Probes the newest columns/tables added by a schema-breaking change (currently: M6's
