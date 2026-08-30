@@ -36,6 +36,7 @@ import { PeriodicalDetailView } from "./components/PeriodicalDetailView";
 import { FilterBar, type SortDirection, type SortKey, type ViewMode } from "./components/FilterBar";
 import { ImportDialog } from "./components/ImportDialog";
 import { ImportStatusBar, IMPORT_STATUS_BAR_HEIGHT } from "./components/ImportStatusBar";
+import { RescanStatusBar, RESCAN_STATUS_BAR_HEIGHT } from "./components/RescanStatusBar";
 import { OnboardingTour } from "./components/OnboardingTour";
 import { SettingsScreen, type SettingsTab } from "./components/SettingsScreen";
 import { UpdateNotifier } from "./components/UpdateNotifier";
@@ -44,6 +45,7 @@ import { useDebounced } from "./useDebounced";
 import { useLanguage } from "./i18n/LanguageContext";
 import { ReaderLauncherProvider, type ReaderRequest } from "./ReaderLauncherContext";
 import { useImportQueue } from "./ImportContext";
+import { useRescan } from "./RescanContext";
 import { getStoredReaderEngine, getStoredReaderOpenMode } from "./readerSettings";
 import { getStoredShowIssuesInGrid } from "./periodicalSettings";
 import { hasCompletedOnboarding } from "./onboarding";
@@ -82,6 +84,7 @@ function App() {
   const { t } = useLanguage();
   const queryClient = useQueryClient();
   const importQueue = useImportQueue();
+  const rescan = useRescan();
 
   // Keeps the OS-level window title (taskbar/Alt-Tab) in sync with the in-app language too -
   // scoped to App.tsx (the main window only) rather than LanguageContext.tsx, since reader windows
@@ -139,10 +142,15 @@ function App() {
   // (library/authors/collections/...) or changing the active group filter shows a different set
   // of books entirely, so a selection carried over from before would silently apply drag/drop or
   // other multi-select actions to books the user can no longer even see.
+  //
+  // selectedPeriodicalId is deliberately NOT reset here (unlike before) - selecting a periodical
+  // from the sidebar sets mainView to "periodicals" and selectedPeriodicalId in the same handler
+  // (see handleSelectFilter's periodicalId branch below), and since both changes are batched into
+  // one render, this effect would otherwise fire right after and immediately null the id back out.
+  // It's reset explicitly instead, at every point that should land on the plain periodicals list.
   useEffect(() => {
     setSelectedBookIds(new Set());
     setLastClickedIndex(null);
-    setSelectedPeriodicalId(null);
   }, [mainView, groupFilter]);
 
   const filters: BookFilters = {
@@ -164,6 +172,16 @@ function App() {
     queryKey: ["library"],
     queryFn: getCurrentLibrary,
   });
+
+  // Falls back off the Periodicals view if this library's setting (Settings -> Libraries) gets
+  // toggled off while it's the one currently showing, or a different library (with the feature
+  // off) is switched to while it was showing - stale local UI state, not persisted.
+  useEffect(() => {
+    if (libraryQuery.data && !libraryQuery.data.periodicalsEnabled && mainView === "periodicals") {
+      setMainView("library");
+      setSelectedPeriodicalId(null);
+    }
+  }, [libraryQuery.data, mainView]);
 
   const booksQuery = useQuery({
     queryKey: ["books", filters],
@@ -200,15 +218,28 @@ function App() {
   // back on the library grid/list — without this, picking a filter while Settings/Authors/
   // Collections was open would silently update groupFilter behind whatever view was showing,
   // with no way back to the library short of changing libraries.
+  //
+  // Periodicals are the one exception: picking one from the sidebar should open the same
+  // cover/description/year-nav detail view as PeriodicalsView's "see all" screen, not just filter
+  // the plain library grid down to that periodical's issues - so this routes to mainView
+  // "periodicals" instead, still keeping groupFilter in sync purely so the sidebar row highlights
+  // as active while its detail view is showing.
   const handleSelectFilter = (filter: GroupFilter | null) => {
     setGroupFilter(filter);
+    if (filter?.kind === "periodicalId") {
+      setMainView("periodicals");
+      setSelectedPeriodicalId(filter.id);
+      return;
+    }
     setMainView("library");
+    setSelectedPeriodicalId(null);
     applyDefaultSort(filter);
   };
 
   const handleShowAllBooks = () => {
     setGroupFilter(null);
     setMainView("library");
+    setSelectedPeriodicalId(null);
     applyDefaultSort(null);
   };
 
@@ -418,6 +449,11 @@ function App() {
   const hasLibrary = !!libraryQuery.data;
   const showImportBar =
     importQueue.isMinimized && (importQueue.isProcessing || importQueue.isResolving || importQueue.summary.conflicted > 0);
+  // Settings shows its own inline resync progress (LibrariesSettings.tsx) while it's open, so this
+  // bar only needs to cover the case that used to have no progress UI at all: the resync keeps
+  // running (via RescanContext) after Settings is closed.
+  const showRescanBar = rescan.isRunning && !settingsOpen;
+  const extraHeaderHeight = (showImportBar ? IMPORT_STATUS_BAR_HEIGHT : 0) + (showRescanBar ? RESCAN_STATUS_BAR_HEIGHT : 0);
 
   return (
     <Box
@@ -460,7 +496,7 @@ function App() {
             sibling element above the AppShell, otherwise the navbar overlaps it instead of
             starting below it. */}
         <AppShell
-          header={{ height: showImportBar ? TITLEBAR_HEIGHT + IMPORT_STATUS_BAR_HEIGHT : TITLEBAR_HEIGHT }}
+          header={{ height: TITLEBAR_HEIGHT + extraHeaderHeight }}
           navbar={hasLibrary ? { width: sidebarCollapsed ? 56 : sidebarWidth, breakpoint: 0 } : undefined}
           padding={0}
         >
@@ -478,6 +514,7 @@ function App() {
               actionsHidden={!!inlineReader}
             />
             {showImportBar && <ImportStatusBar />}
+            {showRescanBar && <RescanStatusBar />}
           </AppShell.Header>
 
           {hasLibrary && (
@@ -493,7 +530,11 @@ function App() {
                 onOpenCollections={() => setMainView("collections")}
                 onOpenTags={() => setMainView("tags")}
                 onOpenSeries={() => setMainView("series")}
-                onOpenPeriodicals={() => setMainView("periodicals")}
+                onOpenPeriodicals={() => {
+                  setMainView("periodicals");
+                  setSelectedPeriodicalId(null);
+                  setGroupFilter(null);
+                }}
                 onOpenPublishers={() => setMainView("publishers")}
                 onOpenLanguages={() => setMainView("languages")}
                 onOpenSettings={(tab) => {

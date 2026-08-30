@@ -8,6 +8,7 @@ import {
   Group,
   Progress,
   Stack,
+  Switch,
   Text,
   TextInput,
   Tooltip,
@@ -24,19 +25,18 @@ import {
   IconX,
 } from "@tabler/icons-react";
 import {
-  getRescanProgress,
   listLibraries,
   openLibrary,
   openLibraryById,
   relocateLibrary,
   removeLibrary,
   renameLibrary,
-  resyncLibrary,
+  setLibraryPeriodicalsEnabled,
   type LibraryEntry,
-  type RescanProgress,
 } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
 import { invalidateLibraryQueries } from "../queries";
+import { useRescan } from "../RescanContext";
 
 interface LibrariesSettingsProps {
   // Called whenever the ACTIVE library's identity or contents actually changed (switched to a
@@ -59,8 +59,7 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
 
   const [confirmingRemoveId, setConfirmingRemoveId] = useState<string | null>(null);
 
-  const [resyncingId, setResyncingId] = useState<string | null>(null);
-  const [resyncProgress, setResyncProgress] = useState<RescanProgress | null>(null);
+  const rescan = useRescan();
 
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -120,6 +119,19 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
     onError: (err) => setActionError(err instanceof Error ? err.message : String(err)),
   });
 
+  const periodicalsToggleMutation = useMutation({
+    mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) => setLibraryPeriodicalsEnabled(id, enabled),
+    onSuccess: (_result, { id }) => {
+      invalidateLibraries();
+      // Sidebar/BookEditForm read this off the ["library"] query (the active library only) - only
+      // worth refreshing when the toggled row actually is the active one.
+      if (librariesQuery.data?.find((l) => l.id === id)?.isActive) {
+        void queryClient.invalidateQueries({ queryKey: ["library"] });
+      }
+    },
+    onError: (err) => setActionError(err instanceof Error ? err.message : String(err)),
+  });
+
   const removeMutation = useMutation({
     mutationFn: (id: string) => removeLibrary(id),
     onSuccess: (_result, id) => {
@@ -141,34 +153,12 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
     relocateMutation.mutate({ id, path: folder });
   };
 
-  const handleResync = async (entry: LibraryEntry) => {
+  const handleResync = (entry: LibraryEntry) => {
     setActionError(null);
-    setResyncingId(entry.id);
-    setResyncProgress(null);
-
-    // Same polling pattern as Maintenance's rescan (see SettingsScreen.tsx) - the resync itself
-    // runs as one long POST, this separate GET polls a small in-memory tracker the backend updates
-    // as it goes, concurrently.
-    const pollId = window.setInterval(() => {
-      void getRescanProgress().then(setResyncProgress, () => {});
-    }, 400);
-
-    try {
-      await resyncLibrary(entry.id);
-      invalidateLibraries();
-      if (entry.isActive) {
-        invalidateLibraryQueries(queryClient);
-      } else {
-        // Resyncing a library that wasn't active switches to it first (see the /resync endpoint).
-        refreshActiveLibrary();
-      }
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : String(err));
-    } finally {
-      window.clearInterval(pollId);
-      setResyncingId(null);
-      setResyncProgress(null);
-    }
+    // Runs via RescanContext (mounted at the app root) rather than local state, so the resync - and
+    // its progress - survives this Settings modal being closed before it finishes; see
+    // RescanContext.tsx and RescanStatusBar.tsx.
+    rescan.start({ id: entry.id, name: entry.name, isActive: entry.isActive }, refreshActiveLibrary);
   };
 
   const startRename = (entry: LibraryEntry) => {
@@ -204,6 +194,12 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
       {actionError && (
         <Alert color="red" icon={<IconAlertCircle size={18} />} onClose={() => setActionError(null)} withCloseButton>
           {actionError}
+        </Alert>
+      )}
+
+      {rescan.error && (
+        <Alert color="red" icon={<IconAlertCircle size={18} />} onClose={rescan.dismissError} withCloseButton>
+          {rescan.error}
         </Alert>
       )}
 
@@ -292,9 +288,9 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
                   <ActionIcon
                     variant="subtle"
                     color="gray"
-                    loading={resyncingId === entry.id}
-                    disabled={resyncingId !== null && resyncingId !== entry.id}
-                    onClick={() => void handleResync(entry)}
+                    loading={rescan.libraryId === entry.id}
+                    disabled={rescan.isRunning && rescan.libraryId !== entry.id}
+                    onClick={() => handleResync(entry)}
                     aria-label={t("librariesSettings.resync")}
                   >
                     <IconRefresh size={14} />
@@ -328,16 +324,28 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
               {entry.path}
             </Text>
 
-            {resyncingId === entry.id && (
+            <Group justify="space-between">
+              <Text size="xs" c="dimmed">
+                {t("librariesSettings.periodicals")}
+              </Text>
+              <Switch
+                size="xs"
+                checked={entry.periodicalsEnabled}
+                disabled={periodicalsToggleMutation.isPending && periodicalsToggleMutation.variables?.id === entry.id}
+                onChange={(e) => periodicalsToggleMutation.mutate({ id: entry.id, enabled: e.currentTarget.checked })}
+              />
+            </Group>
+
+            {rescan.libraryId === entry.id && (
               <Stack gap={2}>
                 <Progress
                   size="xs"
-                  value={resyncProgress && resyncProgress.total > 0 ? (resyncProgress.processed / resyncProgress.total) * 100 : 0}
-                  animated={!resyncProgress?.total}
+                  value={rescan.progress && rescan.progress.total > 0 ? (rescan.progress.processed / rescan.progress.total) * 100 : 0}
+                  animated={!rescan.progress?.total}
                 />
                 <Text size="xs" c="dimmed">
-                  {resyncProgress && resyncProgress.total > 0
-                    ? t("settings.rescanProgress", { processed: resyncProgress.processed, total: resyncProgress.total })
+                  {rescan.progress && rescan.progress.total > 0
+                    ? t("settings.rescanProgress", { processed: rescan.progress.processed, total: rescan.progress.total })
                     : t("settings.rescanStarting")}
                 </Text>
               </Stack>
