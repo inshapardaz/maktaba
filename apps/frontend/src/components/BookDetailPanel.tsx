@@ -123,10 +123,9 @@ export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelP
     },
   });
 
-  const fileBaseName = (absolutePath: string) => {
-    const fileName = absolutePath.split(/[/\\]/).pop() ?? "";
-    return fileName.replace(/\.[^.]+$/, "");
-  };
+  const fileName = (absolutePath: string) => absolutePath.split(/[/\\]/).pop() ?? "";
+
+  const fileBaseName = (absolutePath: string) => fileName(absolutePath).replace(/\.[^.]+$/, "");
 
   const startRenamingFile = (file: BookFileInfo) => {
     setRenamingFileId(file.id);
@@ -278,7 +277,7 @@ export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelP
                   <Menu.Dropdown>
                     {readableFiles.map((f) => (
                       <Menu.Item key={f.absolutePath} onClick={() => openReader(f.format, f.absolutePath)}>
-                        {f.format}
+                        {f.format} — {fileName(f.absolutePath)}
                       </Menu.Item>
                     ))}
                   </Menu.Dropdown>
@@ -402,10 +401,15 @@ export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelP
                 </List.Item>
               ) : (
                 <List.Item key={f.id}>
-                  <Group justify="space-between">
-                    <Text size="sm">
-                      {f.format} — {(f.fileSizeBytes / 1024).toFixed(0)} KB
-                    </Text>
+                  <Group justify="space-between" wrap="nowrap">
+                    <Stack gap={0} style={{ minWidth: 0, flex: 1 }}>
+                      <Text size="sm" truncate="end">
+                        {fileName(f.absolutePath)}
+                      </Text>
+                      <Text size="xs" c="dimmed">
+                        {f.format} — {(f.fileSizeBytes / 1024).toFixed(0)} KB
+                      </Text>
+                    </Stack>
                     <Group gap={4}>
                       <Tooltip label={t("bookDetail.renameFile")}>
                         <ActionIcon
