@@ -5,6 +5,9 @@ export interface BookSummary {
   title: string;
   sortTitle: string;
   authors: string[];
+  // Same names as authors, but with id + photo presence (issue #28) - lets HomeView's shelves show
+  // an author avatar without a separate request per book.
+  authorRefs: AuthorRef[];
   rating: number;
   dateAdded: string;
   hasCover: boolean;
@@ -308,6 +311,9 @@ export interface ContinueReadingBook {
   id: string;
   title: string;
   authors: string[];
+  // Same names as authors, but with id + photo presence (issue #28) - lets HomeView's continue-
+  // reading hero/currently-reading rows show an author avatar without a separate request per book.
+  authorRefs: AuthorRef[];
   hasCover: boolean;
   readingStatus: ReadingStatus;
   format: "Epub" | "Pdf";

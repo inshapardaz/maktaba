@@ -9,6 +9,9 @@ public record BookSummaryDto(
     string Title,
     string SortTitle,
     string[] Authors,
+    // Same author names as Authors, but with id + photo presence (issue #28) - lets the Home view's
+    // recently-added shelf/grid rows show an author avatar without a separate request per book.
+    AuthorRefDto[] AuthorRefs,
     int Rating,
     DateTime DateAdded,
     bool HasCover,
@@ -39,6 +42,9 @@ public record ContinueReadingBookDto(
     string Id,
     string Title,
     string[] Authors,
+    // Same rationale as BookSummaryDto.AuthorRefs - lets the Home view's continue-reading hero and
+    // currently-reading rows show an author avatar without a separate request per book.
+    AuthorRefDto[] AuthorRefs,
     bool HasCover,
     string ReadingStatus,
     string Format,
