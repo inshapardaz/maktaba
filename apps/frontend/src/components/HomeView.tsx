@@ -10,6 +10,7 @@ import {
   type AuthorRef,
   type ContinueReadingBook,
 } from "../api";
+import { setBookDragData } from "../bookDrag";
 import { useLanguage } from "../i18n/LanguageContext";
 import { getStoredShowIssuesInGrid } from "../periodicalSettings";
 import { useReaderLauncher } from "../ReaderLauncherContext";
@@ -122,7 +123,12 @@ export function HomeView({ onSelectBook }: HomeViewProps) {
                   "linear-gradient(135deg, var(--mantine-primary-color-light) 0%, var(--mantine-color-body) 55%)",
               }}
             >
-              <UnstyledButton onClick={() => onSelectBook(lastRead.id)} style={{ flexShrink: 0 }}>
+              <UnstyledButton
+                draggable
+                onDragStart={(event) => setBookDragData(event, [lastRead.id])}
+                onClick={() => onSelectBook(lastRead.id)}
+                style={{ flexShrink: 0 }}
+              >
                 {lastRead.hasCover ? (
                   <Image
                     src={coverUrl(lastRead.id)}
@@ -195,7 +201,12 @@ export function HomeView({ onSelectBook }: HomeViewProps) {
                     borderRadius: "var(--mantine-radius-sm)",
                   }}
                 >
-                  <UnstyledButton onClick={() => onSelectBook(book.id)} style={{ flex: 1, minWidth: 0 }}>
+                  <UnstyledButton
+                    draggable
+                    onDragStart={(event) => setBookDragData(event, [book.id])}
+                    onClick={() => onSelectBook(book.id)}
+                    style={{ flex: 1, minWidth: 0 }}
+                  >
                     <Group gap="sm" wrap="nowrap">
                       {book.hasCover ? (
                         <Image
@@ -251,7 +262,13 @@ export function HomeView({ onSelectBook }: HomeViewProps) {
             <SectionLabel>{t("home.recentlyAdded")}</SectionLabel>
             <Group gap="md" wrap="nowrap" style={{ overflowX: "auto", paddingBottom: 4 }}>
               {recentBooks.map((book) => (
-                <UnstyledButton key={book.id} onClick={() => onSelectBook(book.id)} style={{ flexShrink: 0, width: 110 }}>
+                <UnstyledButton
+                  key={book.id}
+                  draggable
+                  onDragStart={(event) => setBookDragData(event, [book.id])}
+                  onClick={() => onSelectBook(book.id)}
+                  style={{ flexShrink: 0, width: 110 }}
+                >
                   {book.hasCover ? (
                     <Image
                       src={coverUrl(book.id)}
