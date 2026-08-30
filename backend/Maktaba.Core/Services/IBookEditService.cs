@@ -27,4 +27,8 @@ public record BookEditRequest(
 public interface IBookEditService
 {
     Task<Book?> UpdateAsync(int bookId, BookEditRequest request, CancellationToken ct = default);
+
+    /// <summary>Renames a single attached file's on-disk name (issue #27). Returns null if the book
+    /// or file (scoped to that book) doesn't exist.</summary>
+    Task<BookFile?> RenameFileAsync(int bookId, int fileId, string newName, CancellationToken ct = default);
 }

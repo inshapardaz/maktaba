@@ -27,6 +27,7 @@ export interface BookSummary {
 }
 
 export interface BookFileInfo {
+  id: string;
   format: string;
   fileSizeBytes: number;
   absolutePath: string;
@@ -62,6 +63,11 @@ export interface BookDetail extends BookSummary {
   identifiers: Identifier[];
   files: BookFileInfo[];
   collections: BookCollectionRef[];
+  // Issue #23: actual time spent reading, plus a self-calibrated total/remaining estimate (null
+  // until enough progress exists to extrapolate from - see backend ReadingTimeEstimator).
+  secondsRead: number;
+  expectedTotalSeconds: number | null;
+  remainingSeconds: number | null;
 }
 
 export interface LibraryInfo {
@@ -349,6 +355,15 @@ export function deleteBook(id: string): Promise<{ folderPath: string }> {
   return request<{ folderPath: string }>(`/api/books/${id}`, { method: "DELETE" });
 }
 
+// Issue #27: renames the actual on-disk file (not just a display label) so it's identifiable when
+// browsing the folder or via "Show in folder" - see backend BookFolderRelocator's IsCustomNamed.
+export function renameBookFile(bookId: string, fileId: string, fileName: string): Promise<BookFileInfo> {
+  return request<BookFileInfo>(`/api/books/${bookId}/files/${fileId}/name`, {
+    method: "PATCH",
+    body: JSON.stringify({ fileName }),
+  });
+}
+
 export interface RescanProgress {
   isRunning: boolean;
   processed: number;
@@ -582,6 +597,79 @@ export function saveReadingProgress(
     method: "PUT",
     body: JSON.stringify(progress),
   });
+}
+
+// Issue #23: a heartbeat the reader sends every ~20s while its window is open and visible, with
+// however many seconds elapsed since the last heartbeat - see ReaderOverlay.tsx's useReadingTimeTracking.
+export function recordReadingActivity(bookId: string, seconds: number): Promise<void> {
+  return request<void>(`/api/books/${bookId}/reading-activity`, {
+    method: "POST",
+    body: JSON.stringify({ seconds }),
+  });
+}
+
+export interface AnalyticsBook {
+  id: string;
+  title: string;
+  readingStatus: ReadingStatus;
+  secondsRead: number;
+  percentage: number;
+  expectedTotalSeconds: number | null;
+  remainingSeconds: number | null;
+}
+
+export interface AnalyticsSummary {
+  totalSecondsRead: number;
+  unreadCount: number;
+  unreadExpectedSecondsTotal: number;
+  readingCount: number;
+  readingSecondsSpent: number;
+  readingSecondsRemaining: number;
+  finishedCount: number;
+  books: AnalyticsBook[];
+}
+
+export function getAnalyticsSummary(): Promise<AnalyticsSummary> {
+  return request<AnalyticsSummary>("/api/analytics/summary");
+}
+
+export interface ReadingTimePoint {
+  date: string;
+  seconds: number;
+}
+
+export interface ReadingTimeWeek {
+  weekStart: string;
+  seconds: number;
+}
+
+export interface ReadingTimeMonth {
+  month: string;
+  seconds: number;
+}
+
+export interface ReadingTimeDayOfWeek {
+  dayOfWeek: number;
+  seconds: number;
+}
+
+export interface ReadingTimeHour {
+  hour: number;
+  seconds: number;
+}
+
+export interface ReadingTimeReport {
+  daily: ReadingTimePoint[];
+  weekly: ReadingTimeWeek[];
+  monthly: ReadingTimeMonth[];
+  byDayOfWeek: ReadingTimeDayOfWeek[];
+  byHour: ReadingTimeHour[];
+  mostActiveDayOfWeek: number | null;
+  mostActiveHour: number | null;
+}
+
+export function getReadingTimeReport(): Promise<ReadingTimeReport> {
+  return request<ReadingTimeReport>("/api/analytics/reading-time");
 }
 
 export function coverUrl(id: string): string {

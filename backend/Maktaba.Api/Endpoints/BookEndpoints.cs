@@ -279,6 +279,10 @@ public static class BookEndpoints
 
             var series = book.BookSeries.FirstOrDefault();
 
+            var secondsRead = await db.ReadingActivities.Where(ra => ra.BookId == bookId).SumAsync(ra => (int?)ra.DurationSeconds, default) ?? 0;
+            var percentage = await db.ReadingProgress.Where(rp => rp.BookId == bookId).Select(rp => (double?)rp.Percentage).FirstOrDefaultAsync();
+            var expectedTotalSeconds = ReadingTimeEstimator.EstimateTotalSeconds(secondsRead, percentage ?? 0);
+
             var dto = new BookDetailDto(
                 id,
                 book.Title,
@@ -299,7 +303,7 @@ public static class BookEndpoints
                 book.BookTags.Select(bt => bt.Tag.Name).ToArray(),
                 book.Identifiers.Select(i => new IdentifierDto(i.Scheme, i.Value)).ToArray(),
                 book.Files.Select(f => new BookFileDto(
-                    f.Format.ToString(), f.FileSizeBytes, Path.Combine(root, f.FilePath))).ToArray(),
+                    IdCodec.Encode(f.Id), f.Format.ToString(), f.FileSizeBytes, Path.Combine(root, f.FilePath))).ToArray(),
                 CoverLocator.Find(root, book.FolderPath) is not null,
                 book.ReadingStatus.ToString(),
                 book.BookCollections
@@ -309,7 +313,10 @@ public static class BookEndpoints
                 book.Periodical?.Name,
                 book.IssueNumber,
                 book.VolumeNumber,
-                book.IssueDate);
+                book.IssueDate,
+                secondsRead,
+                expectedTotalSeconds,
+                expectedTotalSeconds is { } total ? Math.Max(0, total - secondsRead) : null);
 
             return Results.Ok(dto);
         });
@@ -468,7 +475,7 @@ public static class BookEndpoints
             return result.Outcome switch
             {
                 BookConversionOutcome.Converted => Results.Ok(new BookFileDto(
-                    result.File!.Format.ToString(), result.File.FileSizeBytes, Path.Combine(root, result.File.FilePath))),
+                    IdCodec.Encode(result.File!.Id), result.File.Format.ToString(), result.File.FileSizeBytes, Path.Combine(root, result.File.FilePath))),
                 BookConversionOutcome.BookNotFound => Results.NotFound(),
                 BookConversionOutcome.AlreadyHasFormat => Results.Conflict(
                     new { error = $"This book already has a {targetFormat} file." }),
@@ -518,12 +525,41 @@ public static class BookEndpoints
                 var addedFile = book.Files[^1];
                 var root = libraryPath.LibraryRootPath!;
                 return Results.Ok(new BookFileDto(
-                    addedFile.Format.ToString(), addedFile.FileSizeBytes, Path.Combine(root, addedFile.FilePath)));
+                    IdCodec.Encode(addedFile.Id), addedFile.Format.ToString(), addedFile.FileSizeBytes, Path.Combine(root, addedFile.FilePath)));
             }
             catch (NotSupportedException ex)
             {
                 return Results.BadRequest(new { error = ex.Message });
             }
+        });
+
+        // Issue #27: lets a book's attached file be given an identifiable name (e.g. distinguishing
+        // two files of the same format) - the rename is real, on the actual on-disk file, not just a
+        // display label, so "Show in folder"/"Open" reflect it too. See BookFolderRelocator's
+        // IsCustomNamed check for how this survives a later title/author edit.
+        group.MapPatch("/{id}/files/{fileId}/name", async (
+            string id, string fileId, RenameBookFileRequestDto request, IBookEditService editService,
+            ILibraryPathProvider libraryPath, CancellationToken ct) =>
+        {
+            if (!IdCodec.TryDecode(id, out var bookId) || !IdCodec.TryDecode(fileId, out var bookFileId))
+            {
+                return Results.NotFound();
+            }
+
+            var trimmedName = request.FileName?.Trim();
+            if (string.IsNullOrEmpty(trimmedName))
+            {
+                return Results.BadRequest(new { error = "File name is required." });
+            }
+
+            var file = await editService.RenameFileAsync(bookId, bookFileId, trimmedName, ct);
+            if (file is null)
+            {
+                return Results.NotFound();
+            }
+
+            var root = libraryPath.LibraryRootPath!;
+            return Results.Ok(new BookFileDto(fileId, file.Format.ToString(), file.FileSizeBytes, Path.Combine(root, file.FilePath)));
         });
 
         group.MapPost("/import", async (ImportBookRequest request, IImportService importService, CancellationToken ct) =>

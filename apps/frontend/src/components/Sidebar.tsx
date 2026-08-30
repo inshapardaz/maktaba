@@ -21,6 +21,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   IconBuildingStore,
+  IconChartBar,
   IconCheck,
   IconFolder,
   IconFolderOpen,
@@ -80,7 +81,8 @@ export type MainView =
   | "series"
   | "periodicals"
   | "publishers"
-  | "languages";
+  | "languages"
+  | "analytics";
 
 type BrowseSection = "collections" | "authors" | "series" | "tags" | "periodicals" | "publishers" | "languages";
 
@@ -133,6 +135,7 @@ interface SidebarProps {
   // footer gear button opens on whatever the default is, while "Manage Libraries" below jumps
   // straight to "libraries" (issue #15).
   onOpenSettings: (tab?: SettingsTab) => void;
+  onOpenAnalytics: () => void;
   onLibraryChanged: () => void;
   // Issue #10: dragging a book (or the active multi-selection) from the grid/list onto an
   // Author/Series/Tag/Collection/Publisher/Language row here applies that edit - see App.tsx's
@@ -281,6 +284,7 @@ export function Sidebar({
   onOpenPublishers,
   onOpenLanguages,
   onOpenSettings,
+  onOpenAnalytics,
   onLibraryChanged,
   onDropBooks,
 }: SidebarProps) {
@@ -708,6 +712,11 @@ export function Sidebar({
               <Text size="xs" fw={700}>
                 {currentLanguage.label}
               </Text>
+            </ActionIcon>
+          </Tooltip>
+          <Tooltip label={t("analytics.title")}>
+            <ActionIcon variant="subtle" color="gray" size="lg" onClick={onOpenAnalytics} aria-label={t("analytics.title")}>
+              <IconChartBar size={17} />
             </ActionIcon>
           </Tooltip>
           <Tooltip label={t("settings.title")}>
