@@ -290,6 +290,10 @@ public static class BookEndpoints
                 book.Rating,
                 book.DateAdded,
                 book.BookAuthors.OrderBy(ba => ba.Order).Select(ba => ba.Author.Name).ToArray(),
+                book.BookAuthors.OrderBy(ba => ba.Order).Select(ba =>
+                    new AuthorRefDto(
+                        IdCodec.Encode(ba.AuthorId), ba.Author.Name, AuthorImageLocator.Find(root, ba.AuthorId) is not null))
+                    .ToArray(),
                 series?.Series.Name,
                 series?.SeriesIndex,
                 book.BookTags.Select(bt => bt.Tag.Name).ToArray(),

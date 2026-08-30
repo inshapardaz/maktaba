@@ -4,6 +4,7 @@ import {
   ActionIcon,
   Alert,
   Anchor,
+  Avatar,
   Badge,
   Button,
   Center,
@@ -28,10 +29,12 @@ import {
   IconExternalLink,
   IconPlus,
   IconTrash,
+  IconUser,
 } from "@tabler/icons-react";
 import {
   getBook,
   addBookFile,
+  authorImageUrl,
   deleteBook,
   coverUrl,
   updateBookStatus,
@@ -209,7 +212,22 @@ export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelP
 
             <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
               <Title order={3}>{displayTitle(book)}</Title>
-              <Text c="dimmed">{displaySubtitle(book, t)}</Text>
+              {book.periodicalId ? (
+                <Text c="dimmed">{displaySubtitle(book, t)}</Text>
+              ) : book.authorRefs.length > 0 ? (
+                <Group gap="sm">
+                  {book.authorRefs.map((author) => (
+                    <Group key={author.id} gap={6} wrap="nowrap">
+                      <Avatar src={author.hasImage ? authorImageUrl(author.id) : null} size={36} radius="xl">
+                        <IconUser size={18} />
+                      </Avatar>
+                      <Text fw={500}>{author.name}</Text>
+                    </Group>
+                  ))}
+                </Group>
+              ) : (
+                <Text c="dimmed">{t("common.unknownAuthor")}</Text>
+              )}
               {book.seriesName && (
                 <Text size="sm">
                   {book.seriesName}

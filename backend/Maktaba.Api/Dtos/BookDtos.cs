@@ -51,6 +51,12 @@ public record ContinueReadingBookDto(
 
 public record IdentifierDto(string Scheme, string Value);
 
+// Same author names as BookDetailDto.Authors, but with id + photo presence too (issue #28) - lets
+// BookDetailPanel render each author as a pill with their photo, without a separate request per
+// author. Kept as a second field (AuthorRefs) rather than changing Authors' shape, so
+// BookSummaryDto/every list view that only needs plain names is untouched.
+public record AuthorRefDto(string Id, string Name, bool HasImage);
+
 public record BookFileDto(string Format, long FileSizeBytes, string AbsolutePath);
 
 public record BookCollectionDto(string Id, string Name);
@@ -66,6 +72,7 @@ public record BookDetailDto(
     int Rating,
     DateTime DateAdded,
     string[] Authors,
+    AuthorRefDto[] AuthorRefs,
     string? SeriesName,
     double? SeriesIndex,
     string[] Tags,

@@ -42,11 +42,20 @@ export interface BookCollectionRef {
   name: string;
 }
 
+export interface AuthorRef {
+  id: string;
+  name: string;
+  hasImage: boolean;
+}
+
 export interface BookDetail extends BookSummary {
   description: string | null;
   language: string | null;
   publisher: string | null;
   datePublished: string | null;
+  // Same names as BookSummary.authors, but with id + photo presence (issue #28) for
+  // BookDetailPanel's pills.
+  authorRefs: AuthorRef[];
   seriesName: string | null;
   seriesIndex: number | null;
   tags: string[];
