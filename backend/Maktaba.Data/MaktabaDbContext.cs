@@ -21,6 +21,7 @@ public class MaktabaDbContext(DbContextOptions<MaktabaDbContext> options) : DbCo
     public DbSet<Bookmark> Bookmarks => Set<Bookmark>();
     public DbSet<Note> Notes => Set<Note>();
     public DbSet<ReadingProgress> ReadingProgress => Set<ReadingProgress>();
+    public DbSet<ReadingActivity> ReadingActivities => Set<ReadingActivity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -91,6 +92,12 @@ public class MaktabaDbContext(DbContextOptions<MaktabaDbContext> options) : DbCo
         {
             e.HasKey(rp => rp.BookId);
             e.HasOne(rp => rp.Book).WithOne().HasForeignKey<ReadingProgress>(rp => rp.BookId);
+        });
+
+        modelBuilder.Entity<ReadingActivity>(e =>
+        {
+            e.HasOne(ra => ra.Book).WithMany().HasForeignKey(ra => ra.BookId);
+            e.HasIndex(ra => new { ra.BookId, ra.Date, ra.Hour }).IsUnique();
         });
 
         modelBuilder.Entity<Author>().HasIndex(a => a.Name);

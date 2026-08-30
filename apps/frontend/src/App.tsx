@@ -33,6 +33,7 @@ import { PublishersView } from "./components/PublishersView";
 import { LanguagesView } from "./components/LanguagesView";
 import { PeriodicalsView } from "./components/PeriodicalsView";
 import { PeriodicalDetailView } from "./components/PeriodicalDetailView";
+import { AnalyticsView } from "./components/AnalyticsView";
 import { FilterBar, type SortDirection, type SortKey, type ViewMode } from "./components/FilterBar";
 import { ImportDialog } from "./components/ImportDialog";
 import { ImportStatusBar, IMPORT_STATUS_BAR_HEIGHT } from "./components/ImportStatusBar";
@@ -541,6 +542,7 @@ function App() {
                   setSettingsTab(tab);
                   setSettingsOpen(true);
                 }}
+                onOpenAnalytics={() => setMainView("analytics")}
                 onLibraryChanged={handleLibraryChanged}
                 onDropBooks={handleDropBooksOnGroup}
               />
@@ -583,6 +585,8 @@ function App() {
               ) : (
                 <PeriodicalsView onOpen={setSelectedPeriodicalId} onBack={() => setMainView("library")} />
               )
+            ) : mainView === "analytics" ? (
+              <AnalyticsView onBack={() => setMainView("library")} />
             ) : (
               <>
                 <FilterBar

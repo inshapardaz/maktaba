@@ -34,6 +34,8 @@ public partial class LibraryRescanService(
         int CurrentChapter, int TotalChapters, int CurrentPage, int TotalPages, string? ChapterTitle,
         double Percentage, string? ChapterId, double? Position, DateTime UpdatedAt);
 
+    private sealed record ReadingActivityInfo(DateOnly Date, int DurationSeconds);
+
     private sealed record PreviousPeriodicalState(
         string Name,
         string SortName,
@@ -81,6 +83,7 @@ public partial class LibraryRescanService(
         List<BookmarkInfo> Bookmarks,
         List<NoteInfo> Notes,
         ProgressInfo? Progress,
+        List<ReadingActivityInfo> ReadingActivities,
         int? PeriodicalId,
         double? IssueNumber,
         int? VolumeNumber,
@@ -146,6 +149,7 @@ public partial class LibraryRescanService(
             await db.Bookmarks.ExecuteDeleteAsync(ct);
             await db.Notes.ExecuteDeleteAsync(ct);
             await db.ReadingProgress.ExecuteDeleteAsync(ct);
+            await db.ReadingActivities.ExecuteDeleteAsync(ct);
             await db.Books.ExecuteDeleteAsync(ct);
             await db.PeriodicalTags.ExecuteDeleteAsync(ct);
             await db.Periodicals.ExecuteDeleteAsync(ct);
@@ -311,6 +315,10 @@ public partial class LibraryRescanService(
             .Select(rp => new { rp.BookId, Info = new ProgressInfo(rp.CurrentChapter, rp.TotalChapters, rp.CurrentPage, rp.TotalPages, rp.ChapterTitle, rp.Percentage, rp.ChapterId, rp.Position, rp.UpdatedAt) })
             .ToListAsync(ct);
 
+        var readingActivities = await db.ReadingActivities
+            .Select(ra => new { ra.BookId, Info = new ReadingActivityInfo(ra.Date, ra.DurationSeconds) })
+            .ToListAsync(ct);
+
         return books.ToDictionary(
             b => b.Id,
             b => new PreviousBookState(
@@ -331,6 +339,7 @@ public partial class LibraryRescanService(
                 bookmarks.Where(bm => bm.BookId == b.Id).Select(bm => bm.Info).ToList(),
                 notes.Where(n => n.BookId == b.Id).Select(n => n.Info).ToList(),
                 progress.Where(p => p.BookId == b.Id).Select(p => p.Info).FirstOrDefault(),
+                readingActivities.Where(ra => ra.BookId == b.Id).Select(ra => ra.Info).ToList(),
                 b.PeriodicalId,
                 b.IssueNumber,
                 b.VolumeNumber,
@@ -572,6 +581,16 @@ public partial class LibraryRescanService(
                 ChapterId = previousProgress.ChapterId,
                 Position = previousProgress.Position,
                 UpdatedAt = previousProgress.UpdatedAt,
+            });
+        }
+
+        foreach (var activity in previous.ReadingActivities)
+        {
+            db.ReadingActivities.Add(new ReadingActivity
+            {
+                BookId = bookId,
+                Date = activity.Date,
+                DurationSeconds = activity.DurationSeconds,
             });
         }
     }

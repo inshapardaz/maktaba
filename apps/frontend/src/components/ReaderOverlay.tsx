@@ -23,6 +23,7 @@ import {
   saveNote,
   deleteNote,
   getReadingProgress,
+  recordReadingActivity,
   saveReadingProgress,
   updateBookStatus,
   type ReadingStatus,
@@ -104,11 +105,47 @@ function useDebouncedSave<T>(save: (value: T) => void, delayMs: number): (value:
   );
 }
 
+// Issue #23: accumulates whole seconds while this window is open and the document is visible (so
+// a backgrounded/minimized reader doesn't inflate "time read"), flushed as a heartbeat every 20s
+// and once more on unmount so the last partial interval isn't lost - same "flush on unmount"
+// principle as useDebouncedSave above, just accumulating instead of debouncing.
+const HEARTBEAT_INTERVAL_MS = 20_000;
+
+function useReadingTimeTracking(bookId: string): void {
+  useEffect(() => {
+    const pendingSeconds = { current: 0 };
+
+    const tick = setInterval(() => {
+      if (!document.hidden) {
+        pendingSeconds.current += 1;
+      }
+    }, 1000);
+
+    const flush = () => {
+      if (pendingSeconds.current > 0) {
+        const seconds = pendingSeconds.current;
+        pendingSeconds.current = 0;
+        void recordReadingActivity(bookId, seconds);
+      }
+    };
+
+    const heartbeat = setInterval(flush, HEARTBEAT_INTERVAL_MS);
+
+    return () => {
+      clearInterval(tick);
+      clearInterval(heartbeat);
+      flush();
+    };
+  }, [bookId]);
+}
+
 export function ReaderOverlay({ bookId, format, onClose, embedded }: ReaderOverlayProps) {
   const { t, language } = useLanguage();
   const queryClient = useQueryClient();
   const colorScheme = useComputedColorScheme("light");
   const [readerError, setReaderError] = useState<ReaderError | null>(null);
+
+  useReadingTimeTracking(bookId);
 
   // theme/scroll/columns/etc are fully controlled props on <Reader> - it has no internal fallback
   // state, so its own in-reader theme/layout buttons only take effect if we feed their
