@@ -193,6 +193,12 @@ public record UpdatePeriodicalRequestDto(
     string[] Tags
 );
 
+public record MetadataSearchResultDto(
+    string Key, string Title, string[] Authors, int? FirstPublishYear, string? CoverUrl, string? Isbn);
+
+public record MetadataDetailsDto(
+    string Title, string[] Authors, string? Description, string? Publisher, DateOnly? PublishedDate, string? Isbn);
+
 public record RecordReadingActivityRequestDto(int Seconds);
 
 public record AnalyticsBookDto(

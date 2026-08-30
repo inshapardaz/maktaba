@@ -252,6 +252,14 @@ const en = {
   "bookEdit.publisher": "Publisher",
   "bookEdit.language": "Language",
 
+  "metadataSearch.button": "Find online",
+  "metadataSearch.title": "Find book metadata",
+  "metadataSearch.searchPlaceholder": "Search by title…",
+  "metadataSearch.search": "Search",
+  "metadataSearch.noResults": "No matches found.",
+  "metadataSearch.backToResults": "Back to results",
+  "metadataSearch.apply": "Use this",
+
   // Display names for BookEditForm.tsx's LANGUAGE_OPTIONS dropdown (a book's metadata language,
   // not the UI language switcher - see LanguageSwitcher.tsx/LANGUAGES above for that) - keyed by
   // the same ISO 639-1 codes so getLanguageOptions() can just map codes to these via t().
@@ -657,6 +665,14 @@ const ur: TranslationDict = {
   "bookEdit.tags": "ٹیگز",
   "bookEdit.publisher": "ناشر",
   "bookEdit.language": "زبان",
+
+  "metadataSearch.button": "آن لائن تلاش کریں",
+  "metadataSearch.title": "کتاب کی معلومات تلاش کریں",
+  "metadataSearch.searchPlaceholder": "عنوان سے تلاش کریں…",
+  "metadataSearch.search": "تلاش کریں",
+  "metadataSearch.noResults": "کوئی نتیجہ نہیں ملا۔",
+  "metadataSearch.backToResults": "نتائج کی طرف واپس جائیں",
+  "metadataSearch.apply": "یہ استعمال کریں",
 
   "language.en": "انگریزی",
   "language.ur": "اردو",

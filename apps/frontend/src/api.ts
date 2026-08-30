@@ -605,6 +605,36 @@ export function saveReadingProgress(
   });
 }
 
+// Issue #24: "find metadata online, pick a match, copy it in" - backed by Open Library (see
+// backend IMetadataLookupService's doc comment for why, not Goodreads directly).
+export interface MetadataSearchResult {
+  key: string;
+  title: string;
+  authors: string[];
+  firstPublishYear: number | null;
+  coverUrl: string | null;
+  isbn: string | null;
+}
+
+export interface MetadataDetails {
+  title: string;
+  authors: string[];
+  description: string | null;
+  publisher: string | null;
+  publishedDate: string | null;
+  isbn: string | null;
+}
+
+export function searchMetadata(title: string): Promise<MetadataSearchResult[]> {
+  return request<MetadataSearchResult[]>(`/api/metadata/search?title=${encodeURIComponent(title)}`);
+}
+
+export function getMetadataDetails(key: string, isbn: string | null): Promise<MetadataDetails> {
+  const params = new URLSearchParams({ key });
+  if (isbn) params.set("isbn", isbn);
+  return request<MetadataDetails>(`/api/metadata/details?${params.toString()}`);
+}
+
 // Issue #23: a heartbeat the reader sends every ~20s while its window is open and visible, with
 // however many seconds elapsed since the last heartbeat - see ReaderOverlay.tsx's useReadingTimeTracking.
 export function recordReadingActivity(bookId: string, seconds: number): Promise<void> {
