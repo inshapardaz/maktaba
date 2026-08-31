@@ -150,8 +150,12 @@ export function ImportDialog() {
         }
         size="xl"
         closeOnClickOutside={false}
+        styles={{
+          content: { display: "flex", flexDirection: "column", maxHeight: "85vh" },
+          body: { display: "flex", flexDirection: "column", flex: 1, minHeight: 0 },
+        }}
       >
-        <Stack gap="md">
+        <Stack gap="md" style={{ flex: 1, minHeight: 0 }}>
           <Box
             onDragOver={(e) => {
               e.preventDefault();
@@ -292,7 +296,7 @@ export function ImportDialog() {
             </Stack>
           )}
 
-          <ScrollArea.Autosize mah={320}>
+          <ScrollArea style={{ flex: 1, minHeight: 0 }} type="auto">
             {queue.length === 0 ? (
               <Text size="sm" c="dimmed" ta="center" py="md">
                 {t("importDialog.empty")}
@@ -404,7 +408,7 @@ export function ImportDialog() {
                 ))}
               </Stack>
             )}
-          </ScrollArea.Autosize>
+          </ScrollArea>
 
           <Group justify="flex-end">
             <Button size="xs" onClick={cancel}>
