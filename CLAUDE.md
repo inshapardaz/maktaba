@@ -283,3 +283,8 @@ shape as the sidecar/update-status broadcasts.
 All Urdu content added for this feature (docs, onboarding copy, new `translations.ts` keys) is
 Claude-authored and has **not** been reviewed by a native speaker — treat it as a first draft that
 needs review before relying on it for real users.
+
+
+## Development notes
+
+Use `test_library` for any testing while development. Do not touch other libraries as they are registered on the machine and may contain real user data.
