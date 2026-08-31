@@ -159,23 +159,76 @@ function BookRow({ book, index, selected, selectedIds, onSelect, onEdit }: BookR
         border: "1px solid var(--mantine-color-default-border)",
       }}
     >
-      <Group gap="sm" wrap="nowrap" style={{ flexShrink: 0 }}>
-        <Text component="span" style={{ letterSpacing: 1 }}>
-          {"★".repeat(book.rating)}
-          {"☆".repeat(5 - book.rating)}
-        </Text>
-        <Badge color={READING_STATUS_COLOR[book.readingStatus]} variant="light">
-          {t(READING_STATUS_LABEL_KEY[book.readingStatus])}
-        </Badge>
-        {readableFormats.length > 1 &&
-          readableFormats.map((format) => (
-            <Badge key={format} size="xs" variant="outline" color="gray">
-              {format}
-            </Badge>
-          ))}
+      <Group gap="md" wrap="nowrap" style={{ minWidth: 0, flex: 1 }}>
+        {book.hasCover ? (
+          <Image
+            src={coverUrl(book.id)}
+            alt=""
+            loading="lazy"
+            w={THUMB_SIZE}
+            h={THUMB_SIZE}
+            fit="cover"
+            radius="sm"
+            style={{ flexShrink: 0, border: "1px solid var(--mantine-color-default-border)" }}
+          />
+        ) : (
+          <SpineCover id={book.id} title={displayTitle(book, t)} width={THUMB_SIZE} height={THUMB_SIZE} titleSize={10} padding={4} />
+        )}
+
+        <Stack gap={0} style={{ minWidth: 0, flex: 1 }}>
+          {isIssue ? (
+            <Text fw={600} truncate="end" style={{ maxWidth: "100%" }}>
+              {displayTitle(book, t)}
+            </Text>
+          ) : editingTitle ? (
+            <TextInput
+              size="xs"
+              autoFocus
+              value={titleDraft}
+              disabled={renameMutation.isPending}
+              onClick={(event) => event.stopPropagation()}
+              onChange={(event) => setTitleDraft(event.currentTarget.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") commitTitle();
+                if (event.key === "Escape") cancelTitleEdit();
+              }}
+              onBlur={commitTitle}
+            />
+          ) : (
+            <Group gap={4} wrap="nowrap">
+              <UnstyledButton
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setEditingTitle(true);
+                }}
+              >
+                <Text fw={600} truncate="end" style={{ maxWidth: "100%" }}>
+                  {book.title}
+                </Text>
+              </UnstyledButton>
+              {hovered && (
+                <ActionIcon
+                  size="xs"
+                  variant="subtle"
+                  color="gray"
+                  aria-label={t("bookGrid.renameTitle")}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setEditingTitle(true);
+                  }}
+                >
+                  <IconPencil size={12} />
+                </ActionIcon>
+              )}
+            </Group>
+          )}
+          <Text size="sm" c="dimmed" truncate="end" style={{ maxWidth: "100%" }}>
+            {displaySubtitle(book, t)}
+          </Text>
+        </Stack>
       </Group>
 
-      <Group gap="md" wrap="nowrap" justify="flex-end" style={{ minWidth: 0, flex: 1 }}>
+      <Group gap="sm" wrap="nowrap" style={{ flexShrink: 0 }}>
         {hovered && (
           <Group gap={4} wrap="nowrap" style={{ flexShrink: 0 }}>
             {readableFormats.length > 1 ? (
@@ -249,73 +302,19 @@ function BookRow({ book, index, selected, selectedIds, onSelect, onEdit }: BookR
             </Tooltip>
           </Group>
         )}
-
-        <Stack gap={0} align="flex-end" style={{ minWidth: 0 }}>
-          {isIssue ? (
-            <Text fw={600} truncate="end" style={{ maxWidth: "100%" }}>
-              {displayTitle(book, t)}
-            </Text>
-          ) : editingTitle ? (
-            <TextInput
-              size="xs"
-              autoFocus
-              value={titleDraft}
-              disabled={renameMutation.isPending}
-              onClick={(event) => event.stopPropagation()}
-              onChange={(event) => setTitleDraft(event.currentTarget.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") commitTitle();
-                if (event.key === "Escape") cancelTitleEdit();
-              }}
-              onBlur={commitTitle}
-            />
-          ) : (
-            <Group gap={4} wrap="nowrap">
-              {hovered && (
-                <ActionIcon
-                  size="xs"
-                  variant="subtle"
-                  color="gray"
-                  aria-label={t("bookGrid.renameTitle")}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    setEditingTitle(true);
-                  }}
-                >
-                  <IconPencil size={12} />
-                </ActionIcon>
-              )}
-              <UnstyledButton
-                onClick={(event) => {
-                  event.stopPropagation();
-                  setEditingTitle(true);
-                }}
-              >
-                <Text fw={600} truncate="end" style={{ maxWidth: "100%" }}>
-                  {book.title}
-                </Text>
-              </UnstyledButton>
-            </Group>
-          )}
-          <Text size="sm" c="dimmed" truncate="end" style={{ maxWidth: "100%" }}>
-            {displaySubtitle(book, t)}
-          </Text>
-        </Stack>
-
-        {book.hasCover ? (
-          <Image
-            src={coverUrl(book.id)}
-            alt=""
-            loading="lazy"
-            w={THUMB_SIZE}
-            h={THUMB_SIZE}
-            fit="cover"
-            radius="sm"
-            style={{ flexShrink: 0, border: "1px solid var(--mantine-color-default-border)" }}
-          />
-        ) : (
-          <SpineCover id={book.id} title={displayTitle(book, t)} width={THUMB_SIZE} height={THUMB_SIZE} titleSize={10} padding={4} />
-        )}
+        <Text component="span" style={{ letterSpacing: 1 }}>
+          {"★".repeat(book.rating)}
+          {"☆".repeat(5 - book.rating)}
+        </Text>
+        <Badge color={READING_STATUS_COLOR[book.readingStatus]} variant="light">
+          {t(READING_STATUS_LABEL_KEY[book.readingStatus])}
+        </Badge>
+        {readableFormats.length > 1 &&
+          readableFormats.map((format) => (
+            <Badge key={format} size="xs" variant="outline" color="gray">
+              {format}
+            </Badge>
+          ))}
       </Group>
     </Box>
   );
