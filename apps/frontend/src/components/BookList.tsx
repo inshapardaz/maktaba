@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { notifications } from "@mantine/notifications";
 import { ActionIcon, Badge, Box, Group, HoverCard, Image, Loader, Menu, Stack, Text, TextInput, Tooltip, UnstyledButton } from "@mantine/core";
@@ -13,6 +13,7 @@ import {
   type BookSummary,
 } from "../api";
 import { setBookDragData } from "../bookDrag";
+import { useDragSelect } from "../dragSelect";
 import { useLanguage } from "../i18n/LanguageContext";
 import { displaySubtitle, displayTitle } from "../issueDisplay";
 import { invalidateLibraryQueries } from "../queries";
@@ -29,6 +30,9 @@ interface BookListProps {
   books: BookSummary[];
   selectedIds: Set<string>;
   onSelect: (id: string, index: number, event: React.MouseEvent) => void;
+  // Issue #46: replaces the selection with whatever the marquee drag (or a plain click on empty
+  // space, which reports an empty array) covers - see dragSelect.ts's useDragSelect.
+  onDragSelect: (ids: string[]) => void;
 }
 
 interface BookRowProps {
@@ -139,6 +143,7 @@ function BookRow({ book, index, selected, selectedIds, onSelect, onEdit }: BookR
 
   return (
     <Box
+      data-book-id={book.id}
       draggable
       onDragStart={(event) => {
         const ids = selected && selectedIds.size > 1 ? Array.from(selectedIds) : [book.id];
@@ -344,11 +349,13 @@ function BookRow({ book, index, selected, selectedIds, onSelect, onEdit }: BookR
   );
 }
 
-export function BookList({ books, selectedIds, onSelect }: BookListProps) {
+export function BookList({ books, selectedIds, onSelect, onDragSelect }: BookListProps) {
   const [editingBookId, setEditingBookId] = useState<string | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const { marqueeRect, onMouseDown } = useDragSelect({ containerRef, onSelect: onDragSelect });
 
   return (
-    <Box style={{ flex: 1, overflow: "auto" }} p="md">
+    <Box ref={containerRef} onMouseDown={onMouseDown} style={{ flex: 1, overflow: "auto" }} p="md">
       <Stack gap="sm">
         {books.map((book, index) => (
           <BookRow
@@ -362,6 +369,22 @@ export function BookList({ books, selectedIds, onSelect }: BookListProps) {
           />
         ))}
       </Stack>
+
+      {marqueeRect && (
+        <Box
+          pos="fixed"
+          style={{
+            left: marqueeRect.left,
+            top: marqueeRect.top,
+            width: marqueeRect.width,
+            height: marqueeRect.height,
+            border: "1px solid var(--mantine-primary-color-6)",
+            backgroundColor: "var(--mantine-primary-color-light)",
+            pointerEvents: "none",
+            zIndex: 100,
+          }}
+        />
+      )}
 
       {editingBookId && (
         <BookEditForm

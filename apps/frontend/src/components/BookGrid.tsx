@@ -4,6 +4,7 @@ import { ActionIcon, Badge, Box, Group, Image, Loader, Menu, Text, Tooltip, Unst
 import { IconBook2, IconChevronDown, IconEdit, IconInfoCircle } from "../icons";
 import { coverUrl, getBook, pickPreferredReadFile, type BookFileInfo, type BookSummary } from "../api";
 import { setBookDragData } from "../bookDrag";
+import { useDragSelect } from "../dragSelect";
 import { useLanguage } from "../i18n/LanguageContext";
 import { displaySubtitle, displayTitle } from "../issueDisplay";
 import { useReaderLauncher } from "../ReaderLauncherContext";
@@ -15,6 +16,9 @@ interface BookGridProps {
   books: BookSummary[];
   selectedIds: Set<string>;
   onSelect: (id: string, index: number, event: React.MouseEvent) => void;
+  // Issue #46: replaces the selection with whatever the marquee drag (or a plain click on empty
+  // space, which reports an empty array) covers - see dragSelect.ts's useDragSelect.
+  onDragSelect: (ids: string[]) => void;
 }
 
 const CARD_WIDTH = 160;
@@ -70,6 +74,7 @@ function BookCard({ book, index, selected, selectedIds, onSelect, onEdit }: Book
 
   return (
     <UnstyledButton
+      data-book-id={book.id}
       w={CARD_WIDTH}
       draggable
       onDragStart={(event) => {
@@ -226,10 +231,11 @@ function BookCard({ book, index, selected, selectedIds, onSelect, onEdit }: Book
   );
 }
 
-export function BookGrid({ books, selectedIds, onSelect }: BookGridProps) {
+export function BookGrid({ books, selectedIds, onSelect, onDragSelect }: BookGridProps) {
   const parentRef = useRef<HTMLDivElement>(null);
   const [columnCount, setColumnCount] = useState(1);
   const [editingBookId, setEditingBookId] = useState<string | null>(null);
+  const { marqueeRect, onMouseDown } = useDragSelect({ containerRef: parentRef, onSelect: onDragSelect });
 
   useEffect(() => {
     const el = parentRef.current;
@@ -256,7 +262,7 @@ export function BookGrid({ books, selectedIds, onSelect }: BookGridProps) {
   });
 
   return (
-    <Box ref={parentRef} style={{ flex: 1, overflow: "auto" }} p="md">
+    <Box ref={parentRef} onMouseDown={onMouseDown} style={{ flex: 1, overflow: "auto" }} p="md">
       <div style={{ height: rowVirtualizer.getTotalSize(), position: "relative" }}>
         {rowVirtualizer.getVirtualItems().map((virtualRow) => {
           const rowStart = virtualRow.index * columnCount;
@@ -291,6 +297,22 @@ export function BookGrid({ books, selectedIds, onSelect }: BookGridProps) {
           );
         })}
       </div>
+
+      {marqueeRect && (
+        <Box
+          pos="fixed"
+          style={{
+            left: marqueeRect.left,
+            top: marqueeRect.top,
+            width: marqueeRect.width,
+            height: marqueeRect.height,
+            border: "1px solid var(--mantine-primary-color-6)",
+            backgroundColor: "var(--mantine-primary-color-light)",
+            pointerEvents: "none",
+            zIndex: 100,
+          }}
+        />
+      )}
 
       {editingBookId && (
         <BookEditForm

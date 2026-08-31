@@ -195,6 +195,27 @@ function App() {
     [booksQuery.data, sortKey, sortDirection],
   );
 
+  // Issue #46: Ctrl/Cmd+A selects every currently-visible book, same scope as the multi-select
+  // above - only wired up while the library's book grid/list is actually on screen, and ignored
+  // while focus is in a text field (search box, rename input, etc.) so their own native
+  // select-all-text behavior isn't hijacked.
+  useEffect(() => {
+    if (mainView !== "library") return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "a") return;
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
+        return;
+      }
+      event.preventDefault();
+      setSelectedBookIds(new Set(sortedBooks.map((book) => book.id)));
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [mainView, sortedBooks]);
+
   // Picking a new sort field resets direction to that field's sensible default, whether the user
   // changed it from the sort popover or a group filter selection changed it for them below.
   const handleSortKeyChange = (key: SortKey) => {
@@ -271,6 +292,13 @@ function App() {
     setSelectedBookIds(new Set());
     setLastClickedIndex(index);
     setSelectedBookId(id);
+  };
+
+  // Issue #46: a marquee drag over empty space (or a plain click on empty space, reported as an
+  // empty array - see dragSelect.ts) replaces the selection outright, same as a plain book click.
+  const handleDragSelect = (ids: string[]) => {
+    setSelectedBookIds(new Set(ids));
+    setLastClickedIndex(null);
   };
 
   const dragDropMessageKey: Record<
@@ -625,9 +653,19 @@ function App() {
 
                 {sortedBooks.length > 0 &&
                   (viewMode === "grid" ? (
-                    <BookGrid books={sortedBooks} selectedIds={selectedBookIds} onSelect={handleBookClick} />
+                    <BookGrid
+                      books={sortedBooks}
+                      selectedIds={selectedBookIds}
+                      onSelect={handleBookClick}
+                      onDragSelect={handleDragSelect}
+                    />
                   ) : (
-                    <BookList books={sortedBooks} selectedIds={selectedBookIds} onSelect={handleBookClick} />
+                    <BookList
+                      books={sortedBooks}
+                      selectedIds={selectedBookIds}
+                      onSelect={handleBookClick}
+                      onDragSelect={handleDragSelect}
+                    />
                   ))}
               </>
             )}
