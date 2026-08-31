@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { notifications } from "@mantine/notifications";
-import { ActionIcon, Badge, Box, Group, Image, Loader, Menu, Stack, Text, TextInput, Tooltip, UnstyledButton } from "@mantine/core";
+import { ActionIcon, Badge, Box, Group, HoverCard, Image, Loader, Menu, Stack, Text, TextInput, Tooltip, UnstyledButton } from "@mantine/core";
 import { IconBook2, IconChevronDown, IconEdit, IconPencil } from "../icons";
 import {
   coverUrl,
@@ -22,6 +22,8 @@ import { BookEditForm } from "./BookEditForm";
 import { SpineCover } from "./SpineCover";
 
 const THUMB_SIZE = 56;
+// Issue #45: a larger preview shown in a HoverCard when hovering a list row's cover thumbnail.
+const PREVIEW_SIZE = 220;
 
 interface BookListProps {
   books: BookSummary[];
@@ -160,20 +162,29 @@ function BookRow({ book, index, selected, selectedIds, onSelect, onEdit }: BookR
       }}
     >
       <Group gap="md" wrap="nowrap" style={{ minWidth: 0, flex: 1 }}>
-        {book.hasCover ? (
-          <Image
-            src={coverUrl(book.id)}
-            alt=""
-            loading="lazy"
-            w={THUMB_SIZE}
-            h={THUMB_SIZE}
-            fit="cover"
-            radius="sm"
-            style={{ flexShrink: 0, border: "1px solid var(--mantine-color-default-border)" }}
-          />
-        ) : (
-          <SpineCover id={book.id} title={displayTitle(book, t)} width={THUMB_SIZE} height={THUMB_SIZE} titleSize={10} padding={4} />
-        )}
+        <HoverCard openDelay={300} closeDelay={100} position="right" withArrow shadow="md" disabled={!book.hasCover}>
+          <HoverCard.Target>
+            <Box style={{ flexShrink: 0 }}>
+              {book.hasCover ? (
+                <Image
+                  src={coverUrl(book.id)}
+                  alt=""
+                  loading="lazy"
+                  w={THUMB_SIZE}
+                  h={THUMB_SIZE}
+                  fit="cover"
+                  radius="sm"
+                  style={{ border: "1px solid var(--mantine-color-default-border)" }}
+                />
+              ) : (
+                <SpineCover id={book.id} title={displayTitle(book, t)} width={THUMB_SIZE} height={THUMB_SIZE} titleSize={10} padding={4} />
+              )}
+            </Box>
+          </HoverCard.Target>
+          <HoverCard.Dropdown p={4}>
+            <Image src={coverUrl(book.id)} alt="" w={PREVIEW_SIZE} fit="contain" radius="sm" />
+          </HoverCard.Dropdown>
+        </HoverCard>
 
         <Stack gap={0} style={{ minWidth: 0, flex: 1 }}>
           {isIssue ? (
