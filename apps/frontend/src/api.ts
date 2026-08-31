@@ -369,6 +369,17 @@ export function deleteBook(id: string): Promise<{ folderPath: string }> {
   return request<{ folderPath: string }>(`/api/books/${id}`, { method: "DELETE" });
 }
 
+// Issue #49: merges sourceBookId's files into targetId (skipping any the target already has, by
+// content) - targetId's own metadata is left untouched. Leaves the now-emptied source book behind
+// for the caller to remove separately (deleteBook + window.maktaba.trashPath, same as removing any
+// other book) once every source in a merge has been folded in.
+export function mergeBooks(targetId: string, sourceBookId: string): Promise<void> {
+  return request<void>(`/api/books/${targetId}/merge`, {
+    method: "POST",
+    body: JSON.stringify({ sourceBookId }),
+  });
+}
+
 // Issue #27: renames the actual on-disk file (not just a display label) so it's identifiable when
 // browsing the folder or via "Show in folder" - see backend BookFolderRelocator's IsCustomNamed.
 export function renameBookFile(bookId: string, fileId: string, fileName: string): Promise<BookFileInfo> {

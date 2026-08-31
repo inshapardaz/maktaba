@@ -609,6 +609,31 @@ public static class BookEndpoints
             }
         });
 
+        // Issue #49: dropping one book onto another (see the frontend's bookDrag.ts) offers to merge
+        // them - every file the source has that the target doesn't (by content) moves into the
+        // target's folder and the target's own metadata is left untouched. The now-empty source book
+        // is left for the caller to delete via the normal DELETE /{id} endpoint once this succeeds,
+        // rather than this endpoint doing it itself - keeps "move the files" and "remove the book
+        // row + trash its folder" as the same two independently-reusable steps a plain delete uses.
+        group.MapPost("/{id}/merge", async (
+            string id, MergeBooksRequestDto request, IBookEditService editService, CancellationToken ct) =>
+        {
+            if (!IdCodec.TryDecode(id, out var targetId) || !IdCodec.TryDecode(request.SourceBookId, out var sourceId))
+            {
+                return Results.NotFound();
+            }
+
+            try
+            {
+                var merged = await editService.MergeAsync(targetId, sourceId, ct);
+                return merged is null ? Results.NotFound() : Results.NoContent();
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+        });
+
         group.MapPost("/import", async (ImportBookRequest request, IImportService importService, CancellationToken ct) =>
         {
             if (string.IsNullOrWhiteSpace(request.FilePath) || !File.Exists(request.FilePath))

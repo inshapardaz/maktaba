@@ -3,13 +3,14 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { ActionIcon, Badge, Box, Group, Image, Loader, Menu, Text, Tooltip, UnstyledButton } from "@mantine/core";
 import { IconBook2, IconChevronDown, IconEdit, IconInfoCircle } from "../icons";
 import { coverUrl, getBook, pickPreferredReadFile, type BookFileInfo, type BookSummary } from "../api";
-import { setBookDragData } from "../bookDrag";
+import { isBookDrag, readBookDragIds, setBookDragData } from "../bookDrag";
 import { useDragSelect } from "../dragSelect";
 import { useLanguage } from "../i18n/LanguageContext";
 import { displaySubtitle, displayTitle } from "../issueDisplay";
 import { useReaderLauncher } from "../ReaderLauncherContext";
 import { READING_STATUS_COLOR, READING_STATUS_LABEL_KEY } from "../readingStatus";
 import { BookEditForm } from "./BookEditForm";
+import { MergeConfirmDialog } from "./MergeConfirmDialog";
 import { SpineCover } from "./SpineCover";
 
 interface BookGridProps {
@@ -36,17 +37,21 @@ interface BookCardProps {
   selectedIds: Set<string>;
   onSelect: (id: string, index: number, event: React.MouseEvent) => void;
   onEdit: (id: string) => void;
+  // Issue #49: dropping a book (or the active multi-selection) onto this card offers to merge the
+  // dropped book(s) into this one - see App.tsx-level MergeConfirmDialog rendered by BookGrid below.
+  onMergeRequest: (targetId: string, sourceIds: string[]) => void;
 }
 
 function isReadableFormat(format: string): format is "Epub" | "Pdf" {
   return format === "Epub" || format === "Pdf";
 }
 
-function BookCard({ book, index, selected, selectedIds, onSelect, onEdit }: BookCardProps) {
+function BookCard({ book, index, selected, selectedIds, onSelect, onEdit, onMergeRequest }: BookCardProps) {
   const { t } = useLanguage();
   const launchReader = useReaderLauncher();
   const [hovered, setHovered] = useState(false);
   const [loadingRead, setLoadingRead] = useState(false);
+  const [mergeDragOver, setMergeDragOver] = useState(false);
   const readableFormats = book.formats.filter(isReadableFormat);
 
   const handleRead = async (format?: "Epub" | "Pdf") => {
@@ -84,9 +89,32 @@ function BookCard({ book, index, selected, selectedIds, onSelect, onEdit }: Book
       onClick={(event) => onSelect(book.id, index, event)}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      // Issue #49: dropping a book (or the active multi-selection) onto this card offers to merge
+      // it into this one - same book-drag payload BookCard's own onDragStart above produces, just
+      // dropped on a card instead of a sidebar row.
+      onDragOver={(event) => {
+        if (!isBookDrag(event)) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "copy";
+        setMergeDragOver(true);
+      }}
+      onDragLeave={() => setMergeDragOver(false)}
+      onDrop={(event) => {
+        event.preventDefault();
+        setMergeDragOver(false);
+        const draggedIds = readBookDragIds(event);
+        const sourceIds = draggedIds?.filter((id) => id !== book.id) ?? [];
+        if (sourceIds.length > 0) {
+          onMergeRequest(book.id, sourceIds);
+        }
+      }}
       style={{
         borderRadius: "var(--mantine-radius-sm)",
-        outline: selected ? "2px solid var(--mantine-primary-color-6)" : "2px solid transparent",
+        outline: mergeDragOver
+          ? "2px solid var(--mantine-color-orange-6)"
+          : selected
+            ? "2px solid var(--mantine-primary-color-6)"
+            : "2px solid transparent",
         outlineOffset: 2,
       }}
     >
@@ -232,9 +260,13 @@ function BookCard({ book, index, selected, selectedIds, onSelect, onEdit }: Book
 }
 
 export function BookGrid({ books, selectedIds, onSelect, onDragSelect }: BookGridProps) {
+  const { t } = useLanguage();
   const parentRef = useRef<HTMLDivElement>(null);
   const [columnCount, setColumnCount] = useState(1);
   const [editingBookId, setEditingBookId] = useState<string | null>(null);
+  // Issue #49: target/source ids only - resolved to titles at render time from `books` below, so
+  // the dialog always reflects the current title even if it changed since the drop.
+  const [mergeRequest, setMergeRequest] = useState<{ targetId: string; sourceIds: string[] } | null>(null);
   const { marqueeRect, onMouseDown } = useDragSelect({ containerRef: parentRef, onSelect: onDragSelect });
 
   useEffect(() => {
@@ -291,6 +323,7 @@ export function BookGrid({ books, selectedIds, onSelect, onDragSelect }: BookGri
                   selectedIds={selectedIds}
                   onSelect={onSelect}
                   onEdit={setEditingBookId}
+                  onMergeRequest={(targetId, sourceIds) => setMergeRequest({ targetId, sourceIds })}
                 />
               ))}
             </Box>
@@ -321,6 +354,22 @@ export function BookGrid({ books, selectedIds, onSelect, onDragSelect }: BookGri
           onSaved={() => setEditingBookId(null)}
         />
       )}
+
+      {mergeRequest &&
+        (() => {
+          const target = books.find((b) => b.id === mergeRequest.targetId);
+          if (!target) return null;
+          return (
+            <MergeConfirmDialog
+              target={{ id: target.id, title: displayTitle(target, t) }}
+              sources={mergeRequest.sourceIds.map((id) => {
+                const source = books.find((b) => b.id === id);
+                return { id, title: source ? displayTitle(source, t) : id };
+              })}
+              onClose={() => setMergeRequest(null)}
+            />
+          );
+        })()}
     </Box>
   );
 }

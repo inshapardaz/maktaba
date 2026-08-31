@@ -12,7 +12,7 @@ import {
   type BookFileInfo,
   type BookSummary,
 } from "../api";
-import { setBookDragData } from "../bookDrag";
+import { isBookDrag, readBookDragIds, setBookDragData } from "../bookDrag";
 import { useDragSelect } from "../dragSelect";
 import { useLanguage } from "../i18n/LanguageContext";
 import { displaySubtitle, displayTitle } from "../issueDisplay";
@@ -20,6 +20,7 @@ import { invalidateLibraryQueries } from "../queries";
 import { useReaderLauncher } from "../ReaderLauncherContext";
 import { READING_STATUS_COLOR, READING_STATUS_LABEL_KEY } from "../readingStatus";
 import { BookEditForm } from "./BookEditForm";
+import { MergeConfirmDialog } from "./MergeConfirmDialog";
 import { SpineCover } from "./SpineCover";
 
 const THUMB_SIZE = 56;
@@ -44,6 +45,9 @@ interface BookRowProps {
   selectedIds: Set<string>;
   onSelect: (id: string, index: number, event: React.MouseEvent) => void;
   onEdit: (id: string) => void;
+  // Issue #49: dropping a book (or the active multi-selection) onto this row offers to merge the
+  // dropped book(s) into this one - see BookGrid.tsx's BookCard for the same behavior in grid view.
+  onMergeRequest: (targetId: string, sourceIds: string[]) => void;
 }
 
 function isReadableFormat(format: string): format is "Epub" | "Pdf" {
@@ -53,12 +57,13 @@ function isReadableFormat(format: string): format is "Epub" | "Pdf" {
 // A row's own component (rather than inlining the .map body) so its Read action can hold its own
 // loading state, same reasoning as BookGrid.tsx's BookCard - fetching the book detail to resolve
 // which file to open is async, and without a per-row flag a rapid double-click would fire it twice.
-function BookRow({ book, index, selected, selectedIds, onSelect, onEdit }: BookRowProps) {
+function BookRow({ book, index, selected, selectedIds, onSelect, onEdit, onMergeRequest }: BookRowProps) {
   const { t } = useLanguage();
   const launchReader = useReaderLauncher();
   const queryClient = useQueryClient();
   const [loadingRead, setLoadingRead] = useState(false);
   const [hovered, setHovered] = useState(false);
+  const [mergeDragOver, setMergeDragOver] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(book.title);
   const readableFormats = book.formats.filter(isReadableFormat);
@@ -152,6 +157,25 @@ function BookRow({ book, index, selected, selectedIds, onSelect, onEdit }: BookR
       onClick={(event) => onSelect(book.id, index, event)}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      // Issue #49: dropping a book (or the active multi-selection) onto this row offers to merge
+      // it into this one - same book-drag payload this row's own onDragStart above produces, just
+      // dropped on another row instead of a sidebar group.
+      onDragOver={(event) => {
+        if (!isBookDrag(event)) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "copy";
+        setMergeDragOver(true);
+      }}
+      onDragLeave={() => setMergeDragOver(false)}
+      onDrop={(event) => {
+        event.preventDefault();
+        setMergeDragOver(false);
+        const draggedIds = readBookDragIds(event);
+        const sourceIds = draggedIds?.filter((id) => id !== book.id) ?? [];
+        if (sourceIds.length > 0) {
+          onMergeRequest(book.id, sourceIds);
+        }
+      }}
       style={{
         cursor: "pointer",
         display: "flex",
@@ -160,6 +184,8 @@ function BookRow({ book, index, selected, selectedIds, onSelect, onEdit }: BookR
         gap: "var(--mantine-spacing-md)",
         padding: "var(--mantine-spacing-sm) var(--mantine-spacing-md)",
         borderRadius: "var(--mantine-radius-md)",
+        outline: mergeDragOver ? "2px solid var(--mantine-color-orange-6)" : "2px solid transparent",
+        outlineOffset: -2,
         // Hover uses the same terracotta-tinted --mantine-primary-color-light-hover the sidebar's
         // NavLink rows already hover with (Mantine's own --nl-hover), rather than a bespoke tint.
         backgroundColor: selected ? "var(--mantine-primary-color-light)" : hovered ? "var(--mantine-primary-color-light-hover)" : "#ebddc5",
@@ -350,7 +376,11 @@ function BookRow({ book, index, selected, selectedIds, onSelect, onEdit }: BookR
 }
 
 export function BookList({ books, selectedIds, onSelect, onDragSelect }: BookListProps) {
+  const { t } = useLanguage();
   const [editingBookId, setEditingBookId] = useState<string | null>(null);
+  // Issue #49: target/source ids only - resolved to titles at render time from `books` below, so
+  // the dialog always reflects the current title even if it changed since the drop.
+  const [mergeRequest, setMergeRequest] = useState<{ targetId: string; sourceIds: string[] } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const { marqueeRect, onMouseDown } = useDragSelect({ containerRef, onSelect: onDragSelect });
 
@@ -366,6 +396,7 @@ export function BookList({ books, selectedIds, onSelect, onDragSelect }: BookLis
             selectedIds={selectedIds}
             onSelect={onSelect}
             onEdit={setEditingBookId}
+            onMergeRequest={(targetId, sourceIds) => setMergeRequest({ targetId, sourceIds })}
           />
         ))}
       </Stack>
@@ -393,6 +424,22 @@ export function BookList({ books, selectedIds, onSelect, onDragSelect }: BookLis
           onSaved={() => setEditingBookId(null)}
         />
       )}
+
+      {mergeRequest &&
+        (() => {
+          const target = books.find((b) => b.id === mergeRequest.targetId);
+          if (!target) return null;
+          return (
+            <MergeConfirmDialog
+              target={{ id: target.id, title: displayTitle(target, t) }}
+              sources={mergeRequest.sourceIds.map((id) => {
+                const source = books.find((b) => b.id === id);
+                return { id, title: source ? displayTitle(source, t) : id };
+              })}
+              onClose={() => setMergeRequest(null)}
+            />
+          );
+        })()}
     </Box>
   );
 }

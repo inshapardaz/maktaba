@@ -167,4 +167,57 @@ public class BookEditService(MaktabaDbContext db, ILibraryPathProvider libraryPa
         await db.SaveChangesAsync(ct);
         return true;
     }
+
+    public async Task<Book?> MergeAsync(int targetBookId, int sourceBookId, CancellationToken ct = default)
+    {
+        if (targetBookId == sourceBookId)
+        {
+            throw new InvalidOperationException("Cannot merge a book with itself.");
+        }
+
+        var target = await db.Books.Include(b => b.Files).FirstOrDefaultAsync(b => b.Id == targetBookId, ct);
+        var source = await db.Books.Include(b => b.Files).FirstOrDefaultAsync(b => b.Id == sourceBookId, ct);
+        if (target is null || source is null)
+        {
+            return null;
+        }
+
+        var root = libraryPath.LibraryRootPath!;
+        var targetFolderAbsolute = Path.Combine(root, target.FolderPath);
+        Directory.CreateDirectory(targetFolderAbsolute);
+
+        // Only files the target doesn't already have (by content, not just format - a book can have
+        // two files of the same format, e.g. a custom-named alternate) are brought over, so re-merging
+        // an already-merged pair (or a source with a file identical to one the target already has)
+        // doesn't pile up duplicate copies.
+        foreach (var file in source.Files.ToList())
+        {
+            if (target.Files.Any(f => f.ContentHash == file.ContentHash))
+            {
+                continue;
+            }
+
+            var sourceAbsolute = Path.Combine(root, file.FilePath);
+            var baseFileName = FileNaming.SanitizePathSegment(target.Title) + Path.GetExtension(file.FilePath);
+            var destAbsolute = EbookFileHelpers.GetUniqueFilePath(targetFolderAbsolute, baseFileName);
+
+            if (File.Exists(sourceAbsolute))
+            {
+                File.Move(sourceAbsolute, destAbsolute);
+            }
+
+            var mergedFile = new BookFile
+            {
+                BookId = target.Id,
+                Format = file.Format,
+                FilePath = Path.Combine(target.FolderPath, Path.GetFileName(destAbsolute)),
+                FileSizeBytes = File.Exists(destAbsolute) ? new FileInfo(destAbsolute).Length : file.FileSizeBytes,
+                ContentHash = file.ContentHash,
+            };
+            target.Files.Add(mergedFile);
+        }
+
+        await db.SaveChangesAsync(ct);
+        return target;
+    }
 }

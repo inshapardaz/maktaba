@@ -75,6 +75,10 @@ public record BookFileDto(string Id, string Format, long FileSizeBytes, string A
 
 public record RenameBookFileRequestDto(string FileName);
 
+// Issue #49 - the book at the URL's {id} is the merge target (whose metadata survives); this is
+// the other book being merged into it.
+public record MergeBooksRequestDto(string SourceBookId);
+
 public record BookCollectionDto(string Id, string Name);
 
 public record BookDetailDto(

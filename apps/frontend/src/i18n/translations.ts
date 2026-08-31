@@ -191,6 +191,12 @@ const en = {
   "bookGrid.viewDetails": "View details",
   "bookGrid.renameTitle": "Rename title",
 
+  "bookMerge.title": "Merge books",
+  "bookMerge.confirmOne": "Merge \"{source}\" into \"{target}\"? Any formats \"{source}\" has that \"{target}\" doesn't will be added to \"{target}\", which keeps its own title, authors, and other details. \"{source}\" will then be removed.",
+  "bookMerge.confirmMany": "Merge {count} books into \"{target}\"? Any formats they have that \"{target}\" doesn't will be added to it, which keeps its own title, authors, and other details. The other {count} books will then be removed.",
+  "bookMerge.confirm": "Merge",
+  "bookMerge.mergeFailed": "Couldn't merge into \"{title}\"",
+
   "bookDetail.edit": "Edit",
   "bookDetail.remove": "Remove",
   "bookDetail.confirmRemove": "Send files to trash?",
@@ -608,6 +614,12 @@ const ur: TranslationDict = {
   "bookGrid.read": "پڑھیں",
   "bookGrid.viewDetails": "تفصیلات دیکھیں",
   "bookGrid.renameTitle": "عنوان تبدیل کریں",
+
+  "bookMerge.title": "کتابیں ضم کریں",
+  "bookMerge.confirmOne": "\"{source}\" کو \"{target}\" میں ضم کریں؟ \"{source}\" کے وہ فارمیٹس جو \"{target}\" کے پاس نہیں ہیں \"{target}\" میں شامل کر دیے جائیں گے، جو اپنا عنوان، مصنفین، اور دیگر تفصیلات برقرار رکھے گی۔ اس کے بعد \"{source}\" کو ہٹا دیا جائے گا۔",
+  "bookMerge.confirmMany": "{count} کتابوں کو \"{target}\" میں ضم کریں؟ ان کے وہ فارمیٹس جو \"{target}\" کے پاس نہیں ہیں اس میں شامل کر دیے جائیں گے، جو اپنا عنوان، مصنفین، اور دیگر تفصیلات برقرار رکھے گی۔ باقی {count} کتابیں اس کے بعد ہٹا دی جائیں گی۔",
+  "bookMerge.confirm": "ضم کریں",
+  "bookMerge.mergeFailed": "\"{title}\" میں ضم نہیں کیا جا سکا",
 
   "bookDetail.edit": "ترمیم کریں",
   "bookDetail.remove": "ہٹا دیں",
