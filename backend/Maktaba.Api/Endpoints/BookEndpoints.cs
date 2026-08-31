@@ -161,6 +161,8 @@ public static class BookEndpoints
                     CoverLocator.Find(root, b.FolderPath) is not null,
                     b.ReadingStatus.ToString(),
                     b.BookSeries.FirstOrDefault()?.SeriesIndex,
+                    b.BookSeries.FirstOrDefault()?.Series.Name,
+                    b.BookTags.Select(bt => bt.Tag.Name).ToArray(),
                     lastReadByBookId.TryGetValue(b.Id, out var lastRead) ? lastRead : null,
                     b.Files.Select(f => f.Format.ToString()).Distinct().ToArray(),
                     b.PeriodicalId is not null ? IdCodec.Encode(b.PeriodicalId.Value) : null,
@@ -233,6 +235,8 @@ public static class BookEndpoints
 
             var query = db.Books
                 .Include(b => b.BookAuthors).ThenInclude(ba => ba.Author)
+                .Include(b => b.BookSeries).ThenInclude(bs => bs.Series)
+                .Include(b => b.BookTags).ThenInclude(bt => bt.Tag)
                 .Include(b => b.Files)
                 .Include(b => b.Periodical)
                 .AsNoTracking()
@@ -259,7 +263,9 @@ public static class BookEndpoints
                     b.DateAdded,
                     CoverLocator.Find(root, b.FolderPath) is not null,
                     b.ReadingStatus.ToString(),
-                    null,
+                    b.BookSeries.FirstOrDefault()?.SeriesIndex,
+                    b.BookSeries.FirstOrDefault()?.Series.Name,
+                    b.BookTags.Select(bt => bt.Tag.Name).ToArray(),
                     null,
                     b.Files.Select(f => f.Format.ToString()).Distinct().ToArray(),
                     b.PeriodicalId is not null ? IdCodec.Encode(b.PeriodicalId.Value) : null,

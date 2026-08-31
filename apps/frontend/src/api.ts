@@ -15,6 +15,11 @@ export interface BookSummary {
   // Null unless the book belongs to a series / has ever had reading progress saved - see
   // FilterBar.tsx's SortKey ("seriesIndex"/"lastRead").
   seriesIndex: number | null;
+  // Null unless the book belongs to a series - issue #43, lets BookList show it without a
+  // per-row detail fetch.
+  seriesName: string | null;
+  // Issue #43 - lets BookList show tag badges without a per-row detail fetch.
+  tags: string[];
   lastReadAt: string | null;
   // Distinct formats this book has a file for (e.g. ["Epub", "Pdf"]) - lets BookGrid/BookList
   // decide whether to show a split "Read" button without a per-row detail fetch; the file's

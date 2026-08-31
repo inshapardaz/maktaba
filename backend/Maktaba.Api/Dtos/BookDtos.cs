@@ -20,6 +20,11 @@ public record BookSummaryDto(
     // frontend offer "series order" and "last read" as sort keys without a second request per book
     // (see App.tsx's sortBooks and FilterBar.tsx's SortKey).
     double? SeriesIndex,
+    // Null unless the book belongs to a series - issue #43, lets BookList show the series name next
+    // to SeriesIndex without a per-row detail fetch.
+    string? SeriesName,
+    // Issue #43 - lets BookList show tag badges without a per-row detail fetch.
+    string[] Tags,
     DateTime? LastReadAt,
     // Distinct formats this book has a file for (e.g. ["Epub", "Pdf"]) - lets BookGrid/BookList show
     // a split "Read" button and BookList show format badges without a per-row detail fetch, since

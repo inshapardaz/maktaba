@@ -225,6 +225,20 @@ function BookRow({ book, index, selected, selectedIds, onSelect, onEdit }: BookR
           <Text size="sm" c="dimmed" truncate="end" style={{ maxWidth: "100%" }}>
             {displaySubtitle(book, t)}
           </Text>
+          {(book.seriesName || book.tags.length > 0) && (
+            <Group gap={4} mt={4} wrap="wrap">
+              {book.seriesName && (
+                <Badge size="xs" variant="dot" color="gray">
+                  {book.seriesIndex != null ? `${book.seriesName} #${book.seriesIndex}` : book.seriesName}
+                </Badge>
+              )}
+              {book.tags.map((tag) => (
+                <Badge key={tag} size="xs" variant="outline" color="gray">
+                  {tag}
+                </Badge>
+              ))}
+            </Group>
+          )}
         </Stack>
       </Group>
 
@@ -309,12 +323,11 @@ function BookRow({ book, index, selected, selectedIds, onSelect, onEdit }: BookR
         <Badge color={READING_STATUS_COLOR[book.readingStatus]} variant="light">
           {t(READING_STATUS_LABEL_KEY[book.readingStatus])}
         </Badge>
-        {readableFormats.length > 1 &&
-          readableFormats.map((format) => (
-            <Badge key={format} size="xs" variant="outline" color="gray">
-              {format}
-            </Badge>
-          ))}
+        {book.formats.map((format) => (
+          <Badge key={format} size="xs" variant="outline" color="gray">
+            {format}
+          </Badge>
+        ))}
       </Group>
     </Box>
   );
