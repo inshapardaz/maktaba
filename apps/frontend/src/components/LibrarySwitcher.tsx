@@ -49,15 +49,17 @@ export function LibrarySwitcher({ onLibraryChanged, onManage, compact }: Library
           </Tooltip>
         ) : (
           <UnstyledButton
-            px={8}
-            py={4}
+            px={10}
+            py={6}
             style={{
               display: "flex",
               alignItems: "center",
               gap: 6,
               minWidth: 0,
               flex: 1,
-              borderRadius: "var(--mantine-radius-sm)",
+              borderRadius: 999,
+              border: "1px solid var(--mantine-color-default-border)",
+              backgroundColor: "var(--mantine-color-body)",
             }}
           >
             <IconBooks size={15} style={{ flexShrink: 0, opacity: 0.6 }} />

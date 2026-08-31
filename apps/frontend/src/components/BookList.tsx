@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { notifications } from "@mantine/notifications";
-import { ActionIcon, Badge, Box, Group, Image, Loader, Menu, Table, TextInput, Tooltip } from "@mantine/core";
+import { ActionIcon, Badge, Box, Group, Image, Loader, Menu, Stack, Text, TextInput, Tooltip, UnstyledButton } from "@mantine/core";
 import { IconBook2, IconChevronDown, IconEdit, IconPencil } from "../icons";
 import {
   coverUrl,
@@ -21,8 +21,7 @@ import { READING_STATUS_COLOR, READING_STATUS_LABEL_KEY } from "../readingStatus
 import { BookEditForm } from "./BookEditForm";
 import { SpineCover } from "./SpineCover";
 
-const THUMB_WIDTH = 28;
-const THUMB_HEIGHT = 40;
+const THUMB_SIZE = 56;
 
 interface BookListProps {
   books: BookSummary[];
@@ -49,7 +48,7 @@ function isReadableFormat(format: string): format is "Epub" | "Pdf" {
 // loading state, same reasoning as BookGrid.tsx's BookCard - fetching the book detail to resolve
 // which file to open is async, and without a per-row flag a rapid double-click would fire it twice.
 function BookRow({ book, index, selected, selectedIds, onSelect, onEdit }: BookRowProps) {
-  const { t, language } = useLanguage();
+  const { t } = useLanguage();
   const launchReader = useReaderLauncher();
   const queryClient = useQueryClient();
   const [loadingRead, setLoadingRead] = useState(false);
@@ -137,7 +136,7 @@ function BookRow({ book, index, selected, selectedIds, onSelect, onEdit }: BookR
   };
 
   return (
-    <Table.Tr
+    <Box
       draggable
       onDragStart={(event) => {
         const ids = selected && selectedIds.size > 1 ? Array.from(selectedIds) : [book.id];
@@ -148,43 +147,120 @@ function BookRow({ book, index, selected, selectedIds, onSelect, onEdit }: BookR
       onMouseLeave={() => setHovered(false)}
       style={{
         cursor: "pointer",
-        backgroundColor: selected ? "var(--mantine-primary-color-light)" : "#ebddc5",
-        borderBottom: "1px solid var(--mantine-color-default-border)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: "var(--mantine-spacing-md)",
+        padding: "var(--mantine-spacing-sm) var(--mantine-spacing-md)",
+        borderRadius: "var(--mantine-radius-md)",
+        // Hover uses the same terracotta-tinted --mantine-primary-color-light-hover the sidebar's
+        // NavLink rows already hover with (Mantine's own --nl-hover), rather than a bespoke tint.
+        backgroundColor: selected ? "var(--mantine-primary-color-light)" : hovered ? "var(--mantine-primary-color-light-hover)" : "#ebddc5",
+        border: "1px solid var(--mantine-color-default-border)",
       }}
     >
-      <Table.Td fw={600}>
-        <Group gap="sm" wrap="nowrap">
-          {book.hasCover ? (
-            <Image
-              src={coverUrl(book.id)}
-              alt=""
-              loading="lazy"
-              w={THUMB_WIDTH}
-              h={THUMB_HEIGHT}
-              fit="cover"
-              radius={4}
-              style={{ flexShrink: 0, border: "1px solid var(--mantine-color-default-border)" }}
-            />
-          ) : (
-            <SpineCover id={book.id} title={displayTitle(book, t)} width={THUMB_WIDTH} height={THUMB_HEIGHT} titleSize={6} padding={3} />
-          )}
+      <Group gap="sm" wrap="nowrap" style={{ flexShrink: 0 }}>
+        <Text component="span" style={{ letterSpacing: 1 }}>
+          {"★".repeat(book.rating)}
+          {"☆".repeat(5 - book.rating)}
+        </Text>
+        <Badge color={READING_STATUS_COLOR[book.readingStatus]} variant="light">
+          {t(READING_STATUS_LABEL_KEY[book.readingStatus])}
+        </Badge>
+        {readableFormats.length > 1 &&
+          readableFormats.map((format) => (
+            <Badge key={format} size="xs" variant="outline" color="gray">
+              {format}
+            </Badge>
+          ))}
+      </Group>
+
+      <Group gap="md" wrap="nowrap" justify="flex-end" style={{ minWidth: 0, flex: 1 }}>
+        {hovered && (
+          <Group gap={4} wrap="nowrap" style={{ flexShrink: 0 }}>
+            {readableFormats.length > 1 ? (
+              <Menu position="bottom-end" withinPortal>
+                <ActionIcon.Group>
+                  <Tooltip label={t("bookGrid.read")}>
+                    <ActionIcon
+                      size="sm"
+                      variant="subtle"
+                      color="gray"
+                      aria-label={t("bookGrid.read")}
+                      disabled={loadingRead}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void handleRead();
+                      }}
+                    >
+                      {loadingRead ? <Loader size={14} /> : <IconBook2 size={14} />}
+                    </ActionIcon>
+                  </Tooltip>
+                  <Menu.Target>
+                    <ActionIcon
+                      size="sm"
+                      variant="subtle"
+                      color="gray"
+                      aria-label={t("bookDetail.chooseFormat")}
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <IconChevronDown size={12} />
+                    </ActionIcon>
+                  </Menu.Target>
+                </ActionIcon.Group>
+                <Menu.Dropdown onClick={(event) => event.stopPropagation()}>
+                  {readableFormats.map((format) => (
+                    <Menu.Item key={format} onClick={() => void handleRead(format)}>
+                      {format}
+                    </Menu.Item>
+                  ))}
+                </Menu.Dropdown>
+              </Menu>
+            ) : (
+              <Tooltip label={t("bookGrid.read")}>
+                <ActionIcon
+                  size="sm"
+                  variant="subtle"
+                  color="gray"
+                  aria-label={t("bookGrid.read")}
+                  disabled={loadingRead}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void handleRead();
+                  }}
+                >
+                  {loadingRead ? <Loader size={14} /> : <IconBook2 size={14} />}
+                </ActionIcon>
+              </Tooltip>
+            )}
+            <Tooltip label={t("bookDetail.edit")}>
+              <ActionIcon
+                size="sm"
+                variant="subtle"
+                color="gray"
+                aria-label={t("bookDetail.edit")}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onEdit(book.id);
+                }}
+              >
+                <IconEdit size={14} />
+              </ActionIcon>
+            </Tooltip>
+          </Group>
+        )}
+
+        <Stack gap={0} align="flex-end" style={{ minWidth: 0 }}>
           {isIssue ? (
-            <Group gap={4} wrap="nowrap">
-              <Box component="span">{displayTitle(book, t)}</Box>
-              {readableFormats.length > 1 &&
-                readableFormats.map((format) => (
-                  <Badge key={format} size="xs" variant="outline" color="gray">
-                    {format}
-                  </Badge>
-                ))}
-            </Group>
+            <Text fw={600} truncate="end" style={{ maxWidth: "100%" }}>
+              {displayTitle(book, t)}
+            </Text>
           ) : editingTitle ? (
             <TextInput
               size="xs"
               autoFocus
               value={titleDraft}
               disabled={renameMutation.isPending}
-              style={{ flex: 1 }}
               onClick={(event) => event.stopPropagation()}
               onChange={(event) => setTitleDraft(event.currentTarget.value)}
               onKeyDown={(event) => {
@@ -195,16 +271,6 @@ function BookRow({ book, index, selected, selectedIds, onSelect, onEdit }: BookR
             />
           ) : (
             <Group gap={4} wrap="nowrap">
-              <Box
-                component="span"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  setEditingTitle(true);
-                }}
-                style={{ cursor: "text" }}
-              >
-                {book.title}
-              </Box>
               {hovered && (
                 <ActionIcon
                   size="xs"
@@ -219,143 +285,60 @@ function BookRow({ book, index, selected, selectedIds, onSelect, onEdit }: BookR
                   <IconPencil size={12} />
                 </ActionIcon>
               )}
-              {readableFormats.length > 1 &&
-                readableFormats.map((format) => (
-                  <Badge key={format} size="xs" variant="outline" color="gray">
-                    {format}
-                  </Badge>
-                ))}
-            </Group>
-          )}
-        </Group>
-      </Table.Td>
-      <Table.Td>{displaySubtitle(book, t)}</Table.Td>
-      <Table.Td>
-        {"★".repeat(book.rating)}
-        {"☆".repeat(5 - book.rating)}
-      </Table.Td>
-      <Table.Td>
-        <Badge color={READING_STATUS_COLOR[book.readingStatus]} variant="light" size="sm">
-          {t(READING_STATUS_LABEL_KEY[book.readingStatus])}
-        </Badge>
-      </Table.Td>
-      <Table.Td>{new Date(book.dateAdded).toLocaleDateString(language === "ur" ? "ur" : undefined)}</Table.Td>
-      <Table.Td>
-        <Group gap={4} wrap="nowrap" justify="flex-end">
-          {readableFormats.length > 1 ? (
-            <Menu position="bottom-end" withinPortal>
-              <ActionIcon.Group>
-                <Tooltip label={t("bookGrid.read")}>
-                  <ActionIcon
-                    size="sm"
-                    variant="subtle"
-                    color="gray"
-                    aria-label={t("bookGrid.read")}
-                    disabled={loadingRead}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      void handleRead();
-                    }}
-                  >
-                    {loadingRead ? <Loader size={14} /> : <IconBook2 size={14} />}
-                  </ActionIcon>
-                </Tooltip>
-                <Menu.Target>
-                  <ActionIcon
-                    size="sm"
-                    variant="subtle"
-                    color="gray"
-                    aria-label={t("bookDetail.chooseFormat")}
-                    onClick={(event) => event.stopPropagation()}
-                  >
-                    <IconChevronDown size={12} />
-                  </ActionIcon>
-                </Menu.Target>
-              </ActionIcon.Group>
-              <Menu.Dropdown onClick={(event) => event.stopPropagation()}>
-                {readableFormats.map((format) => (
-                  <Menu.Item key={format} onClick={() => void handleRead(format)}>
-                    {format}
-                  </Menu.Item>
-                ))}
-              </Menu.Dropdown>
-            </Menu>
-          ) : (
-            <Tooltip label={t("bookGrid.read")}>
-              <ActionIcon
-                size="sm"
-                variant="subtle"
-                color="gray"
-                aria-label={t("bookGrid.read")}
-                disabled={loadingRead}
+              <UnstyledButton
                 onClick={(event) => {
                   event.stopPropagation();
-                  void handleRead();
+                  setEditingTitle(true);
                 }}
               >
-                {loadingRead ? <Loader size={14} /> : <IconBook2 size={14} />}
-              </ActionIcon>
-            </Tooltip>
+                <Text fw={600} truncate="end" style={{ maxWidth: "100%" }}>
+                  {book.title}
+                </Text>
+              </UnstyledButton>
+            </Group>
           )}
-          <Tooltip label={t("bookDetail.edit")}>
-            <ActionIcon
-              size="sm"
-              variant="subtle"
-              color="gray"
-              aria-label={t("bookDetail.edit")}
-              onClick={(event) => {
-                event.stopPropagation();
-                onEdit(book.id);
-              }}
-            >
-              <IconEdit size={14} />
-            </ActionIcon>
-          </Tooltip>
-        </Group>
-      </Table.Td>
-    </Table.Tr>
+          <Text size="sm" c="dimmed" truncate="end" style={{ maxWidth: "100%" }}>
+            {displaySubtitle(book, t)}
+          </Text>
+        </Stack>
+
+        {book.hasCover ? (
+          <Image
+            src={coverUrl(book.id)}
+            alt=""
+            loading="lazy"
+            w={THUMB_SIZE}
+            h={THUMB_SIZE}
+            fit="cover"
+            radius="sm"
+            style={{ flexShrink: 0, border: "1px solid var(--mantine-color-default-border)" }}
+          />
+        ) : (
+          <SpineCover id={book.id} title={displayTitle(book, t)} width={THUMB_SIZE} height={THUMB_SIZE} titleSize={10} padding={4} />
+        )}
+      </Group>
+    </Box>
   );
 }
 
 export function BookList({ books, selectedIds, onSelect }: BookListProps) {
-  const { t } = useLanguage();
   const [editingBookId, setEditingBookId] = useState<string | null>(null);
-
-  const columns = [
-    t("bookList.title"),
-    t("bookList.author"),
-    t("bookList.rating"),
-    t("bookList.status"),
-    t("bookList.dateAdded"),
-  ];
 
   return (
     <Box style={{ flex: 1, overflow: "auto" }} p="md">
-      <Table highlightOnHover highlightOnHoverColor="#ebddc5" verticalSpacing="sm">
-        <Table.Thead>
-          <Table.Tr>
-            {columns.map((label) => (
-              <Table.Th key={label} fz={11} fw={400} c="dimmed" tt="uppercase" style={{ letterSpacing: "0.08em" }}>
-                {label}
-              </Table.Th>
-            ))}
-            <Table.Th />
-          </Table.Tr>
-        </Table.Thead>
-        <Table.Tbody>
-          {books.map((book, index) => (
-            <BookRow
-              key={book.id}
-              book={book}
-              index={index}
-              selected={selectedIds.has(book.id)}
-              selectedIds={selectedIds}
-              onSelect={onSelect}
-              onEdit={setEditingBookId}
-            />
-          ))}
-        </Table.Tbody>
-      </Table>
+      <Stack gap="sm">
+        {books.map((book, index) => (
+          <BookRow
+            key={book.id}
+            book={book}
+            index={index}
+            selected={selectedIds.has(book.id)}
+            selectedIds={selectedIds}
+            onSelect={onSelect}
+            onEdit={setEditingBookId}
+          />
+        ))}
+      </Stack>
 
       {editingBookId && (
         <BookEditForm

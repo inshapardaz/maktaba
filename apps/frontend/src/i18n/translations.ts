@@ -186,10 +186,6 @@ const en = {
   "spotlight.noResults": "No matches found.",
 
   "bookList.title": "Title",
-  "bookList.author": "Author",
-  "bookList.rating": "Rating",
-  "bookList.dateAdded": "Date added",
-  "bookList.status": "Status",
 
   "bookGrid.read": "Read",
   "bookGrid.viewDetails": "View details",
@@ -312,6 +308,9 @@ const en = {
   "settings.changeLibraryErrorTitle": "Couldn't open library",
   "settings.general": "General",
   "settings.language": "Language",
+  "settings.appTheme": "Theme",
+  "settings.appTheme.organic": "Organic",
+  "settings.appTheme.white": "White",
   "settings.colorScheme": "Color scheme",
   "settings.urduFont": "Urdu font",
   "settings.menuBar": "Menu bar",
@@ -605,10 +604,6 @@ const ur: TranslationDict = {
   "spotlight.noResults": "کوئی نتیجہ نہیں ملا۔",
 
   "bookList.title": "عنوان",
-  "bookList.author": "مصنف",
-  "bookList.rating": "درجہ بندی",
-  "bookList.dateAdded": "شامل کرنے کی تاریخ",
-  "bookList.status": "حیثیت",
 
   "bookGrid.read": "پڑھیں",
   "bookGrid.viewDetails": "تفصیلات دیکھیں",
@@ -728,6 +723,9 @@ const ur: TranslationDict = {
   "settings.changeLibraryErrorTitle": "لائبریری نہیں کھل سکی",
   "settings.general": "عمومی",
   "settings.language": "زبان",
+  "settings.appTheme": "تھیم",
+  "settings.appTheme.organic": "آرگینک",
+  "settings.appTheme.white": "سفید",
   "settings.colorScheme": "رنگ سکیم",
   "settings.urduFont": "اردو فونٹ",
   "settings.menuBar": "مینو بار",

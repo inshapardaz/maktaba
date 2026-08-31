@@ -15,6 +15,7 @@ import {
   type ReaderOpenMode,
 } from "../readerSettings";
 import { getStoredShowIssuesInGrid, setStoredShowIssuesInGrid } from "../periodicalSettings";
+import { useAppTheme, type AppThemeName } from "../AppThemeContext";
 import { URDU_FONT_OPTIONS, type UrduFontName } from "../urduFont";
 import { AboutSettings } from "./AboutSettings";
 import { ColorSchemeToggle } from "./ColorSchemeToggle";
@@ -45,6 +46,7 @@ function FieldLabel({ children }: { children: string }) {
 
 export function SettingsScreen({ opened, onClose, onLibraryChanged, initialTab }: SettingsScreenProps) {
   const { t, urduFont, setUrduFont } = useLanguage();
+  const { appTheme, setAppTheme } = useAppTheme();
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab ?? "general");
   const [readerOpenMode, setReaderOpenMode] = useState<ReaderOpenMode>(getStoredReaderOpenMode());
   const [epubEngine, setEpubEngine] = useState<ReaderEngine>(getStoredReaderEngine("Epub"));
@@ -120,6 +122,18 @@ export function SettingsScreen({ opened, onClose, onLibraryChanged, initialTab }
             <Group justify="space-between">
               <FieldLabel>{t("settings.language")}</FieldLabel>
               <LanguageSwitcher />
+            </Group>
+            <Group justify="space-between">
+              <FieldLabel>{t("settings.appTheme")}</FieldLabel>
+              <SegmentedControl
+                size="xs"
+                value={appTheme}
+                onChange={(value) => setAppTheme(value as AppThemeName)}
+                data={[
+                  { value: "organic", label: t("settings.appTheme.organic") },
+                  { value: "white", label: t("settings.appTheme.white") },
+                ]}
+              />
             </Group>
             <Group justify="space-between">
               <FieldLabel>{t("settings.colorScheme")}</FieldLabel>

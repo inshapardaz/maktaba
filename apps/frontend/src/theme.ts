@@ -75,13 +75,19 @@ const organicShadows = {
   xl: "0 20px 44px rgba(101, 66, 42, 0.16), 0 8px 16px rgba(101, 66, 42, 0.10)",
 };
 
-export function createAppTheme(): MantineThemeOverride {
+// Plain Mantine, no customization at all - added back alongside "Organic" (below) as a selectable
+// second option (Settings -> Appearance) for anyone who wants the app to look the way it did
+// before the Organic redesign. No cssVariablesResolver is applied when this theme is active either
+// (see main.tsx) - organicCssVariablesResolver's overrides would otherwise leak into this theme too
+// since MantineProvider's resolver isn't itself scoped per-theme.
+export function createWhiteTheme(): MantineThemeOverride {
+  return createTheme({});
+}
+
+export function createOrganicTheme(): MantineThemeOverride {
   return createTheme({
     colors: { terracotta, sage },
     primaryColor: "terracotta",
-    // Light mode uses the ramp's base shade (index 6); dark mode uses the brighter index-4 variant
-    // called out in the design brief, rather than the ramp's own darkest end.
-    primaryShade: { light: 6, dark: 4 },
     autoContrast: true,
 
     defaultRadius: "md",
@@ -183,16 +189,12 @@ export const organicCssVariablesResolver: CSSVariablesResolver = () => ({
     "--mantine-color-placeholder": semantic.dimmed.light,
     "--mantine-color-default-border": semantic.divider.light,
   },
+  // Dark mode intentionally left at Mantine's own stock dark palette (bg/surface/text/border all
+  // untouched) - an earlier pass gave it the same custom near-black brown treatment as light mode's
+  // parchment look, which read as too dark/muddy. --app-surface still needs *something* (the Paper/
+  // Card/Modal style overrides above reference it unconditionally), so it points at Mantine's own
+  // --mantine-color-dark-6 (its usual "elevated surface" shade) rather than a hand-picked color.
   dark: {
-    "--mantine-color-body": semantic.bg.dark,
-    "--app-surface": semantic.surface.dark,
-    "--mantine-color-white": semantic.surface.dark,
-    "--mantine-color-default": semantic.surface.dark,
-    "--mantine-color-default-hover": "rgba(255, 255, 255, 0.06)",
-    "--mantine-color-text": semantic.text.dark,
-    "--mantine-color-bright": semantic.text.dark,
-    "--mantine-color-dimmed": semantic.dimmed.dark,
-    "--mantine-color-placeholder": semantic.dimmed.dark,
-    "--mantine-color-default-border": semantic.divider.dark,
+    "--app-surface": "var(--mantine-color-dark-6)",
   },
 });
