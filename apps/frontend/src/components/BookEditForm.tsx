@@ -527,7 +527,7 @@ export function BookEditForm({ bookId, onClose, onSaved }: BookEditFormProps) {
                 />
                 <NumberInput
                   label={t("bookEdit.seriesIndex")}
-                  step={0.1}
+                  step={1}
                   value={form.seriesIndex}
                   onChange={(value) => setForm({ ...form, seriesIndex: value === "" ? "" : String(value) })}
                 />
