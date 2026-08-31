@@ -14,6 +14,40 @@ once, and it appears in the sidebar from then on.
 - To rename one everywhere at once (fixing a typo in an author's name, for example), click the
   small arrow next to the section title in the sidebar to open the full list, then rename it
   there — every book using it updates automatically.
+- Books with no author information appear together under **Unknown Author** at the bottom of the
+  Authors list — edit one of them to give it a real author, and it moves out of that group
+  automatically.
+
+### Author photos
+
+Open the full Authors list (the arrow next to the section title in the sidebar) to see every
+author with a small avatar next to their name. Click an author's avatar to upload a photo for
+them from your computer — this is purely cosmetic and has no effect on how books are matched to
+that author.
+
+## Renaming a book's title
+
+You don't need to open the full edit screen just to fix a typo in a title. In the **list view**,
+click a book's title (or hover the row and click the small pencil icon) to edit it right there —
+press **Enter** to save, or **Escape** to cancel.
+
+## Selecting and organizing several books at once
+
+You can act on many books together instead of one at a time:
+
+- **Ctrl+click** (or **Cmd+click** on Mac) a book to add or remove it from the current selection.
+- **Shift+click** another book to select every book between it and the last one you clicked.
+- Press **Ctrl+A** (or **Cmd+A**) while browsing your library to select every book currently
+  shown.
+- Click and drag across empty space in the grid or list to draw a selection rectangle over
+  several books at once, the same way you'd select multiple icons on your desktop.
+
+With more than one book selected, drag any of them onto an **Author**, **Series**, **Tag**,
+**Collection**, or **Periodical** in the sidebar to apply that change to every selected book at
+once — for example, tagging a dozen books as "Favorites" in one drag instead of editing each book
+individually. Dropping onto an Author, Series, Publisher, or Language group replaces that field
+on each book (a book only has one of each); dropping onto a Tag or Collection adds to whatever
+tags/collections each book already has.
 
 ## Collections
 

@@ -4,8 +4,9 @@ Welcome to **Maktaba (مکتبہ)** — a simple way to keep all your ebooks org
 computer, with a built-in reader, no accounts, and no internet connection required.
 
 This guide walks you through everything you need for your first few minutes with Maktaba. If
-you'd rather be guided step-by-step inside the app itself, open **Settings → Help** and click
-**Replay Getting Started Tour** at any time.
+you'd rather be guided step-by-step inside the app itself, click the **Help** button (the "?"
+icon) in the title bar to open this guide in its own window, then click **Replay Getting Started
+Tour** at any time.
 
 ## 1. Open Maktaba for the first time
 
@@ -50,4 +51,4 @@ to open it.
 - [Settings & Preferences](./settings) — language, appearance, and more.
 
 If anything doesn't work the way you expect, check [Troubleshooting & FAQ](./troubleshooting) —
-or open **Settings → Help** inside the app any time you need this guide again.
+or click the **Help** button in the title bar any time you need this guide again.

@@ -1,8 +1,10 @@
 # Reading Books
 
-Click any book's cover, then click **Read** to open it. Maktaba opens the book in its own reading
-window, separate from your library window, so you can keep browsing your library while a book
-stays open — you can even have several books open for reading at the same time.
+Click any book's cover, then click **Read** to open it. By default Maktaba opens the book in its
+own reading window, separate from your library window, so you can keep browsing your library
+while a book stays open — you can even have several books open for reading at the same time. If
+you'd rather the book open inside the library window instead, switch to **Inline** under
+**Settings → Reading → Reader window**.
 
 ## Reader controls
 
@@ -19,6 +21,10 @@ Inside the reader you can:
 From a book's details, you can mark it as **Unread**, **Reading**, or **Finished**. This helps
 you keep track of what you're partway through and filter your library to just what you're
 currently reading.
+
+Maktaba can also update this for you automatically as you read — opening a book marks it
+**Reading**, and reaching the end marks it **Finished**. Choose whether this happens
+automatically or asks you first from **Settings → Reading**.
 
 ## Looking up word meanings
 
