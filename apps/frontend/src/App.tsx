@@ -47,7 +47,7 @@ import { useLanguage } from "./i18n/LanguageContext";
 import { ReaderLauncherProvider, type ReaderRequest } from "./ReaderLauncherContext";
 import { useImportQueue } from "./ImportContext";
 import { useRescan } from "./RescanContext";
-import { getStoredReaderEngine, getStoredReaderOpenMode } from "./readerSettings";
+import { getStoredAutoTagMode, getStoredReaderEngine, getStoredReaderOpenMode } from "./readerSettings";
 import { getStoredShowIssuesInGrid } from "./periodicalSettings";
 import { hasCompletedOnboarding } from "./onboarding";
 
@@ -416,8 +416,11 @@ function App() {
   const launchReader = (request: ReaderRequest) => {
     // First time opening this book - not on every subsequent resume, and never overriding
     // "Finished" back to "Reading" just because it was reopened (e.g. to check something).
-    // Fire-and-forget: nothing here should block or fail the actual read from opening.
-    if (request.readingStatus === "Unread") {
+    // Fire-and-forget: nothing here should block or fail the actual read from opening. Only done
+    // in "auto" mode - in "ask" mode this transition is left to ReaderOverlay's own
+    // maybeAutoTagStatus (fires once real progress is made), so the user's preference to be asked
+    // before a status changes is honored on open too, not just on finish.
+    if (request.readingStatus === "Unread" && getStoredAutoTagMode() === "auto") {
       void updateBookStatus(request.bookId, "Reading").then(() => {
         invalidateLibraryQueries(queryClient);
         void queryClient.invalidateQueries({ queryKey: ["book", request.bookId] });
