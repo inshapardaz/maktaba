@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { notifications } from "@mantine/notifications";
 import { ActionIcon, Badge, Box, Group, Image, Loader, Menu, Table, TextInput, Tooltip } from "@mantine/core";
-import { IconBook2, IconChevronDown, IconEdit, IconPencil } from "@tabler/icons-react";
+import { IconBook2, IconChevronDown, IconEdit, IconPencil } from "../icons";
 import {
   coverUrl,
   getBook,
@@ -148,7 +148,8 @@ function BookRow({ book, index, selected, selectedIds, onSelect, onEdit }: BookR
       onMouseLeave={() => setHovered(false)}
       style={{
         cursor: "pointer",
-        backgroundColor: selected ? "var(--mantine-primary-color-light)" : undefined,
+        backgroundColor: selected ? "var(--mantine-primary-color-light)" : "#ebddc5",
+        borderBottom: "1px solid var(--mantine-color-default-border)",
       }}
     >
       <Table.Td fw={600}>
@@ -330,7 +331,7 @@ export function BookList({ books, selectedIds, onSelect }: BookListProps) {
 
   return (
     <Box style={{ flex: 1, overflow: "auto" }} p="md">
-      <Table highlightOnHover verticalSpacing="sm">
+      <Table highlightOnHover highlightOnHoverColor="#ebddc5" verticalSpacing="sm">
         <Table.Thead>
           <Table.Tr>
             {columns.map((label) => (

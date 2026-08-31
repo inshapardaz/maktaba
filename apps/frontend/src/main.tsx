@@ -1,4 +1,4 @@
-import { StrictMode, useEffect, useMemo, type ReactNode } from "react";
+import { StrictMode, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { DirectionProvider, MantineProvider } from "@mantine/core";
@@ -7,8 +7,7 @@ import "@mantine/core/styles.css";
 import "@mantine/notifications/styles.css";
 import "@mantine/spotlight/styles.css";
 import "./index.css";
-import { createAppTheme } from "./theme";
-import { ThemeColorProvider, useThemeColor } from "./ThemeColorContext";
+import { createAppTheme, organicCssVariablesResolver } from "./theme";
 import { LanguageProvider, getStoredLanguage } from "./i18n/LanguageContext";
 import { ReaderOverlay } from "./components/ReaderOverlay";
 import { BackendGate } from "./components/BackendGate";
@@ -47,45 +46,33 @@ function ReaderWindow({ bookId, format, title }: { bookId: string; format: "Epub
   return <ReaderOverlay bookId={bookId} format={format} />;
 }
 
-// Reads the persisted theme color (see ThemeColorProvider, mounted just outside this component)
-// and rebuilds the Mantine theme whenever it changes - lives here rather than inline so the theme
-// object is memoized instead of rebuilt on every unrelated re-render.
-function ThemedMantineProvider({ children }: { children: ReactNode }) {
-  const { themeColor } = useThemeColor();
-  const theme = useMemo(() => createAppTheme(themeColor), [themeColor]);
-
-  return (
-    <MantineProvider theme={theme} defaultColorScheme="auto">
-      {children}
-    </MantineProvider>
-  );
-}
+// The "Organic" theme (see theme.ts) is one fixed design, not a per-user choice - built once at
+// module scope rather than re-created per render.
+const theme = createAppTheme();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <DirectionProvider initialDirection={initialDirection}>
-      <ThemeColorProvider>
-        <ThemedMantineProvider>
-          <LanguageProvider>
-            <Notifications position="bottom-right" />
-            <QueryClientProvider client={queryClient}>
-              <BackendGate showTitleBar={!readerRequest && !isHelpWindow}>
-                {readerRequest ? (
-                  <ReaderWindow bookId={readerRequest.bookId} format={readerRequest.format} title={readerRequest.title} />
-                ) : isHelpWindow ? (
-                  <HelpWindow />
-                ) : (
-                  <ImportProvider>
-                    <RescanProvider>
-                      <App />
-                    </RescanProvider>
-                  </ImportProvider>
-                )}
-              </BackendGate>
-            </QueryClientProvider>
-          </LanguageProvider>
-        </ThemedMantineProvider>
-      </ThemeColorProvider>
+      <MantineProvider theme={theme} cssVariablesResolver={organicCssVariablesResolver} defaultColorScheme="auto">
+        <LanguageProvider>
+          <Notifications position="bottom-right" />
+          <QueryClientProvider client={queryClient}>
+            <BackendGate showTitleBar={!readerRequest && !isHelpWindow}>
+              {readerRequest ? (
+                <ReaderWindow bookId={readerRequest.bookId} format={readerRequest.format} title={readerRequest.title} />
+              ) : isHelpWindow ? (
+                <HelpWindow />
+              ) : (
+                <ImportProvider>
+                  <RescanProvider>
+                    <App />
+                  </RescanProvider>
+                </ImportProvider>
+              )}
+            </BackendGate>
+          </QueryClientProvider>
+        </LanguageProvider>
+      </MantineProvider>
     </DirectionProvider>
   </StrictMode>,
 );

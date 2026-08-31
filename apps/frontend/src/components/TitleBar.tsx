@@ -25,10 +25,11 @@ import {
   IconMenu2,
   IconPlus,
   IconSearch,
-} from "@tabler/icons-react";
-import type { Icon } from "@tabler/icons-react";
+} from "../icons";
+import type { Icon } from "../icons";
 import { listReadingStatusCounts, type ReadingStatus } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
+import { READING_STATUS_COLOR } from "../readingStatus";
 import type { GroupFilter, MainView } from "./Sidebar";
 
 // Must match TITLEBAR_HEIGHT in apps/desktop/src/main.ts (both the win/linux titleBarOverlay
@@ -219,15 +220,18 @@ function ReadingStatusFilters({
         const isActive = activeFilter?.kind === "readingStatus" && activeFilter.id === status;
         const StatusIcon = icons[status];
         return (
-          <Tooltip key={status} label={`${labels[status]} (${count})`}>
-            <ActionIcon
+          <Tooltip key={status} label={labels[status]}>
+            <Button
               variant={isActive ? "light" : "subtle"}
-              color="gray"
+              color={READING_STATUS_COLOR[status]}
+              size="xs"
+              px={8}
+              leftSection={<StatusIcon size={16} />}
               onClick={() => onSelect(isActive ? null : { kind: "readingStatus", id: status, name: labels[status] })}
               aria-label={`${labels[status]} (${count})`}
             >
-              <StatusIcon size={16} />
-            </ActionIcon>
+              {count}
+            </Button>
           </Tooltip>
         );
       })}

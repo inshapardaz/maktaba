@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Avatar, Badge, Box, Button, Center, Group, Image, Progress, Stack, Text, UnstyledButton } from "@mantine/core";
-import { IconCircleCheck, IconPlayerPlay, IconUser } from "@tabler/icons-react";
+import { IconBooks, IconCircleCheck, IconPlayerPlay, IconUser } from "../icons";
 import {
   authorImageUrl,
   coverUrl,
@@ -57,7 +57,7 @@ export function HomeView({ onSelectBook }: HomeViewProps) {
   // but there's still plenty to show here (see backend BookEndpoints.cs's /recently-added).
   const recentlyAddedQuery = useQuery({
     queryKey: ["recentlyAdded"],
-    queryFn: () => listRecentlyAdded(12, getStoredShowIssuesInGrid()),
+    queryFn: () => listRecentlyAdded(20, getStoredShowIssuesInGrid()),
   });
 
   const resumeBook = (book: ContinueReadingBook) => {
@@ -119,8 +119,10 @@ export function HomeView({ onSelectBook }: HomeViewProps) {
               style={{
                 border: "1px solid var(--mantine-color-default-border)",
                 borderRadius: "var(--mantine-radius-lg)",
-                background:
-                  "linear-gradient(135deg, var(--mantine-primary-color-light) 0%, var(--mantine-color-body) 55%)",
+                // "to inline-end" (rather than a fixed angle like 135deg) follows the reading
+                // direction on its own - it flips to run right-to-left under the Urdu/RTL UI
+                // instead of always fading toward the physical right edge.
+                background: "linear-gradient(to inline-end, #ebddc5 0%, var(--mantine-color-body) 55%)",
               }}
             >
               <UnstyledButton
@@ -183,6 +185,32 @@ export function HomeView({ onSelectBook }: HomeViewProps) {
                 </Group>
               </Stack>
             </Group>
+          </Box>
+        )}
+
+        {/* Shown whenever nothing is currently "Reading" - a library with books but nothing in
+            progress would otherwise jump straight from nothing to the Recently Added list, which
+            reads as broken rather than intentional on a first run or right after finishing a book. */}
+        {!lastRead && (
+          <Box
+            p="xl"
+            style={{
+              border: "1px solid var(--mantine-color-default-border)",
+              borderRadius: "var(--mantine-radius-lg)",
+              background:
+                "linear-gradient(135deg, var(--mantine-primary-color-light) 0%, var(--mantine-color-body) 55%)",
+              textAlign: "center",
+            }}
+          >
+            <Stack gap={4} align="center">
+              <IconBooks size={32} style={{ opacity: 0.7 }} />
+              <Text fw={700} fz={20}>
+                {t("home.welcomeTitle")}
+              </Text>
+              <Text c="dimmed" size="sm">
+                {t("home.welcomeSubtitle")}
+              </Text>
+            </Stack>
           </Box>
         )}
 
@@ -260,46 +288,49 @@ export function HomeView({ onSelectBook }: HomeViewProps) {
         {recentBooks.length > 0 && (
           <Box>
             <SectionLabel>{t("home.recentlyAdded")}</SectionLabel>
-            <Group gap="md" wrap="nowrap" style={{ overflowX: "auto", paddingBottom: 4 }}>
+            <Stack gap="xs">
               {recentBooks.map((book) => (
                 <UnstyledButton
                   key={book.id}
                   draggable
                   onDragStart={(event) => setBookDragData(event, [book.id])}
                   onClick={() => onSelectBook(book.id)}
-                  style={{ flexShrink: 0, width: 110 }}
+                  style={{
+                    display: "block",
+                    padding: "var(--mantine-spacing-xs)",
+                    border: "1px solid var(--mantine-color-default-border)",
+                    borderRadius: "var(--mantine-radius-sm)",
+                  }}
                 >
-                  {book.hasCover ? (
-                    <Image
-                      src={coverUrl(book.id)}
-                      alt=""
-                      w={110}
-                      h={165}
-                      fit="cover"
-                      radius="sm"
-                      style={{ border: "1px solid var(--mantine-color-default-border)", boxShadow: "var(--mantine-shadow-sm)" }}
-                    />
-                  ) : (
-                    <SpineCover
-                      id={book.id}
-                      title={book.title}
-                      author={book.authors.join(", ") || t("common.unknownAuthor")}
-                      width={110}
-                      height={165}
-                    />
-                  )}
-                  <Text size="xs" fw={600} mt={6} lineClamp={1}>
-                    {book.title}
-                  </Text>
-                  <Group gap={4} wrap="nowrap" mt={2}>
-                    {book.authorRefs.length > 0 && <AuthorAvatar authorRefs={book.authorRefs} size={14} />}
-                    <Text size="xs" c="dimmed" lineClamp={1} style={{ minWidth: 0 }}>
-                      {book.authors.join(", ") || t("common.unknownAuthor")}
-                    </Text>
+                  <Group gap="sm" wrap="nowrap">
+                    {book.hasCover ? (
+                      <Image
+                        src={coverUrl(book.id)}
+                        alt=""
+                        w={36}
+                        h={54}
+                        fit="cover"
+                        radius={4}
+                        style={{ flexShrink: 0, border: "1px solid var(--mantine-color-default-border)" }}
+                      />
+                    ) : (
+                      <SpineCover id={book.id} title={book.title} width={36} height={54} titleSize={7} padding={4} />
+                    )}
+                    <Stack gap={2} style={{ minWidth: 0 }}>
+                      <Text fw={600} size="sm" truncate="end">
+                        {book.title}
+                      </Text>
+                      <Group gap={4} wrap="nowrap">
+                        {book.authorRefs.length > 0 && <AuthorAvatar authorRefs={book.authorRefs} size={16} />}
+                        <Text size="xs" c="dimmed" truncate="end">
+                          {book.authors.join(", ") || t("common.unknownAuthor")}
+                        </Text>
+                      </Group>
+                    </Stack>
                   </Group>
                 </UnstyledButton>
               ))}
-            </Group>
+            </Stack>
           </Box>
         )}
       </Stack>

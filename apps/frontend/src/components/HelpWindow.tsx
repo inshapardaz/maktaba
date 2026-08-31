@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Alert, Anchor, Box, Button, Group, Loader, ScrollArea, Skeleton, Stack, Text, Title, UnstyledButton } from "@mantine/core";
-import { IconAlertCircle, IconRefresh } from "@tabler/icons-react";
+import { IconAlertCircle, IconRefresh } from "../icons";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useLanguage } from "../i18n/LanguageContext";

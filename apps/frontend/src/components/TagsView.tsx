@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ActionIcon, Badge, Box, Group, NavLink, Stack, Text, TextInput, Tooltip } from "@mantine/core";
-import { IconCheck, IconPencil, IconSearch, IconX } from "@tabler/icons-react";
+import { IconCheck, IconPencil, IconSearch, IconX } from "../icons";
 import { listTags, renameTag } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
 import { BrowseViewHeader } from "./BrowseViewHeader";

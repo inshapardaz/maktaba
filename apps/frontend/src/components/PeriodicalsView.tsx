@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ActionIcon, Alert, Badge, Box, Button, Group, Modal, NavLink, Select, Stack, Text, TextInput, Tooltip } from "@mantine/core";
-import { IconAlertCircle, IconSearch, IconTrash } from "@tabler/icons-react";
+import { IconAlertCircle, IconSearch, IconTrash } from "../icons";
 import { createPeriodical, deletePeriodical, listPeriodicals, type Periodical, type PeriodicalFrequency } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
 import type { TranslationKey } from "../i18n/translations";

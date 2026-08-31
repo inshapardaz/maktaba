@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Alert, Button, Stack, Text, Title } from "@mantine/core";
-import { IconAlertCircle, IconFolderOpen } from "@tabler/icons-react";
+import { IconAlertCircle, IconFolderOpen } from "../icons";
 import { listLibraries, openLibrary, resyncLibrary } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
 

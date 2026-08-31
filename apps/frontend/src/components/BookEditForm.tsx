@@ -19,7 +19,7 @@ import {
   Textarea,
   TextInput,
 } from "@mantine/core";
-import { IconAlertCircle, IconCheck, IconUser, IconWorldSearch } from "@tabler/icons-react";
+import { IconAlertCircle, IconCheck, IconUser, IconWorldSearch } from "../icons";
 import {
   authorImageUrl,
   createCollection,

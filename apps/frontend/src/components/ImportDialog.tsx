@@ -27,7 +27,7 @@ import {
   IconRefresh,
   IconStack2,
   IconX,
-} from "@tabler/icons-react";
+} from "../icons";
 import { getSystemCapabilities, type DuplicateAction } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
 import type { TranslationKey } from "../i18n/translations";

@@ -238,6 +238,8 @@ const en = {
   "analytics.mostActiveDay": "Most active day",
   "analytics.mostActiveTime": "Most active time",
   "bookDetail.renameFile": "Rename file",
+  "bookDetail.deleteFile": "Delete file",
+  "bookDetail.deleteFileError": "Couldn't delete this file.",
 
   "bookEdit.title": "Edit book",
   "bookEdit.titleField": "Title",
@@ -311,7 +313,6 @@ const en = {
   "settings.general": "General",
   "settings.language": "Language",
   "settings.colorScheme": "Color scheme",
-  "settings.themeColor": "Theme color",
   "settings.urduFont": "Urdu font",
   "settings.menuBar": "Menu bar",
   "settings.menuBarHint": "Shows the File/Edit/View menu in reader windows and a menu button in the title bar.",
@@ -379,6 +380,8 @@ const en = {
   "home.recentlyAdded": "Recently Added",
   "home.resume": "Resume",
   "home.markAsFinished": "Mark as finished",
+  "home.welcomeTitle": "Welcome back",
+  "home.welcomeSubtitle": "Nothing in progress right now — pick a book below to start reading.",
 
   "importDialog.title": "Import books",
   "importDialog.dropzoneTitle": "Drag EPUB/PDF files or folders here",
@@ -654,6 +657,8 @@ const ur: TranslationDict = {
   "analytics.mostActiveDay": "سب سے زیادہ فعال دن",
   "analytics.mostActiveTime": "سب سے زیادہ فعال وقت",
   "bookDetail.renameFile": "فائل کا نام تبدیل کریں",
+  "bookDetail.deleteFile": "فائل حذف کریں",
+  "bookDetail.deleteFileError": "یہ فائل حذف نہیں ہو سکی۔",
 
   "bookEdit.title": "کتاب میں ترمیم کریں",
   "bookEdit.titleField": "عنوان",
@@ -724,7 +729,6 @@ const ur: TranslationDict = {
   "settings.general": "عمومی",
   "settings.language": "زبان",
   "settings.colorScheme": "رنگ سکیم",
-  "settings.themeColor": "تھیم کا رنگ",
   "settings.urduFont": "اردو فونٹ",
   "settings.menuBar": "مینو بار",
   "settings.menuBarHint": "ریڈر ونڈوز میں فائل/ایڈٹ/ویو مینو اور ٹائٹل بار میں ایک مینو بٹن دکھاتا ہے۔",
@@ -792,6 +796,8 @@ const ur: TranslationDict = {
   "home.recentlyAdded": "حال ہی میں شامل کی گئیں",
   "home.resume": "پڑھنا جاری رکھیں",
   "home.markAsFinished": "مکمل شدہ کے طور پر نشان زد کریں",
+  "home.welcomeTitle": "خوش آمدید",
+  "home.welcomeSubtitle": "فی الحال زیرِ مطالعہ کوئی کتاب نہیں — پڑھنا شروع کرنے کے لیے نیچے سے کوئی کتاب منتخب کریں۔",
 
   "importDialog.title": "کتابیں درآمد کریں",
   "importDialog.dropzoneTitle": "EPUB/PDF فائلیں یا فولڈرز یہاں گھسیٹ لائیں",

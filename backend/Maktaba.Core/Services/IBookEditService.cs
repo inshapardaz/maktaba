@@ -31,4 +31,9 @@ public interface IBookEditService
     /// <summary>Renames a single attached file's on-disk name (issue #27). Returns null if the book
     /// or file (scoped to that book) doesn't exist.</summary>
     Task<BookFile?> RenameFileAsync(int bookId, int fileId, string newName, CancellationToken ct = default);
+
+    /// <summary>Deletes a single attached file, both the DB row and the on-disk file. Returns null if
+    /// the book or file (scoped to that book) doesn't exist. Throws <see cref="InvalidOperationException"/>
+    /// if it's the book's only file - a book must always have at least one attached format.</summary>
+    Task<bool?> DeleteFileAsync(int bookId, int fileId, CancellationToken ct = default);
 }

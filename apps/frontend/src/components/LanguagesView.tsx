@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Badge, Box, NavLink, Stack, Text, TextInput } from "@mantine/core";
-import { IconSearch } from "@tabler/icons-react";
+import { IconSearch } from "../icons";
 import { listLanguageGroups } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
 import { BrowseViewHeader } from "./BrowseViewHeader";

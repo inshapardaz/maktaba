@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppShell, Box, Center, Loader, Overlay, Text, Group } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { IconUpload } from "@tabler/icons-react";
+import { IconUpload } from "./icons";
 import {
   getBook,
   getCurrentLibrary,
@@ -501,7 +501,7 @@ function App() {
           navbar={hasLibrary ? { width: sidebarCollapsed ? 56 : sidebarWidth, breakpoint: 0 } : undefined}
           padding={0}
         >
-          <AppShell.Header>
+          <AppShell.Header style={{ backgroundColor: "var(--app-surface)" }}>
             <TitleBar
               hasLibrary={hasLibrary}
               mainView={mainView}
@@ -519,7 +519,7 @@ function App() {
           </AppShell.Header>
 
           {hasLibrary && (
-            <AppShell.Navbar>
+            <AppShell.Navbar style={{ backgroundColor: "var(--app-surface)" }}>
               <Sidebar
                 activeFilter={groupFilter}
                 onSelect={handleSelectFilter}

@@ -1,5 +1,5 @@
 import { ActionIcon, Tooltip, useComputedColorScheme, useMantineColorScheme } from "@mantine/core";
-import { IconMoon, IconSun } from "@tabler/icons-react";
+import { IconMoon, IconSun } from "../icons";
 import { useLanguage } from "../i18n/LanguageContext";
 
 export function ColorSchemeToggle() {

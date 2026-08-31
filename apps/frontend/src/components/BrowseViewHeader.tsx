@@ -1,5 +1,5 @@
 import { ActionIcon, Anchor, Breadcrumbs, Group, Title } from "@mantine/core";
-import { IconArrowLeft } from "@tabler/icons-react";
+import { IconArrowLeft } from "../icons";
 import { useLanguage } from "../i18n/LanguageContext";
 
 interface BrowseViewHeaderProps {

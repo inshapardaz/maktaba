@@ -190,17 +190,19 @@ function webPreferencesFor(handle: SidecarHandle) {
   };
 }
 
-// Approximates Mantine's own default light/dark body colors (theme.ts is intentionally left thin,
-// so these are the library defaults, not a hand-picked palette) so the native Windows/Linux
-// caption-button strip doesn't flash a mismatched color against the custom title bar rendered in
-// the page (TitleBar.tsx calls maktaba:set-titlebar-overlay whenever the app's computed color
-// scheme changes). macOS has no titleBarOverlay concept — it gets inset traffic lights instead.
+// Matches the "Organic" theme's title bar surface/text colors (apps/frontend/src/theme.ts's
+// `semantic.surface`/`semantic.text`) so the native Windows/Linux caption-button strip blends into
+// the custom title bar rendered in the page instead of showing a mismatched generic light/dark
+// color (TitleBar.tsx calls maktaba:set-titlebar-overlay whenever the app's computed color scheme
+// changes). Electron's setTitleBarOverlay needs literal hex strings, not CSS variables, hence the
+// duplication - keep these in sync with theme.ts's semantic.surface/semantic.text if either
+// changes. macOS has no titleBarOverlay concept — it gets inset traffic lights instead.
 const TITLEBAR_HEIGHT = 40;
 
 function titleBarOverlayFor(scheme: "light" | "dark") {
   return scheme === "dark"
-    ? { color: "#1a1b1e", symbolColor: "#c1c2c5", height: TITLEBAR_HEIGHT }
-    : { color: "#ffffff", symbolColor: "#000000", height: TITLEBAR_HEIGHT };
+    ? { color: "#332c22", symbolColor: "#f3ead9", height: TITLEBAR_HEIGHT }
+    : { color: "#ebddc5", symbolColor: "#201e1d", height: TITLEBAR_HEIGHT };
 }
 
 ipcMain.handle("maktaba:set-titlebar-overlay", (_event, scheme: "light" | "dark") => {

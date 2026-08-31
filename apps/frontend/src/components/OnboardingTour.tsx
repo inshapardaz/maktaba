@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Alert, Button, Group, Modal, Skeleton, Stack, Stepper, Text, Title } from "@mantine/core";
-import { IconAlertCircle, IconBooks, IconCompass, IconFolderOpen, IconHelpCircle, IconUpload } from "@tabler/icons-react";
+import { IconAlertCircle, IconBooks, IconCompass, IconFolderOpen, IconHelpCircle, IconUpload } from "../icons";
 import { openLibrary } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
 import { LanguageSwitcher } from "./LanguageSwitcher";

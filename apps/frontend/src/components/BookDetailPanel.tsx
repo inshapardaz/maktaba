@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { notifications } from "@mantine/notifications";
 import {
   ActionIcon,
   Alert,
@@ -15,7 +16,7 @@ import {
   Loader,
   Menu,
   Modal,
-  SegmentedControl,
+  Rating,
   Stack,
   Text,
   TextInput,
@@ -24,24 +25,31 @@ import {
 } from "@mantine/core";
 import {
   IconAlertCircle,
+  IconBook,
   IconBook2,
+  IconBookmark,
+  IconBuildingStore,
+  IconCalendar,
   IconCheck,
   IconChevronDown,
   IconFolder,
   IconExternalLink,
+  IconLanguage,
   IconPencil,
   IconPlus,
   IconTrash,
   IconUser,
   IconX,
-} from "@tabler/icons-react";
+} from "../icons";
 import {
   getBook,
   addBookFile,
   authorImageUrl,
   deleteBook,
+  deleteBookFile,
   coverUrl,
   renameBookFile,
+  updateBook,
   updateBookStatus,
   getReadingProgress,
   pickPreferredReadFile,
@@ -51,6 +59,8 @@ import {
 import { useLanguage } from "../i18n/LanguageContext";
 import { formatDuration } from "../readingTime";
 import { displaySubtitle, displayTitle } from "../issueDisplay";
+import { invalidateLibraryQueries } from "../queries";
+import { READING_STATUS_COLOR, READING_STATUS_LABEL_KEY } from "../readingStatus";
 import { useReaderLauncher } from "../ReaderLauncherContext";
 import { BookEditForm } from "./BookEditForm";
 import { languageDisplayName } from "./Sidebar";
@@ -66,6 +76,19 @@ function FieldLabel({ children }: { children: string }) {
       {children}
     </Text>
   );
+}
+
+const READING_STATUSES: ReadingStatus[] = ["Unread", "Reading", "Finished"];
+
+function ReadingStatusIcon({ status }: { status: ReadingStatus }) {
+  switch (status) {
+    case "Unread":
+      return <IconBook size={16} />;
+    case "Reading":
+      return <IconBookmark size={16} />;
+    case "Finished":
+      return <IconCheck size={16} />;
+  }
 }
 
 interface BookDetailPanelProps {
@@ -107,6 +130,35 @@ export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelP
     },
   });
 
+  // No dedicated rating endpoint (unlike ReadingStatus) - same "fetch full detail, PUT the whole
+  // edit request back with just one field changed" pattern as BookList.tsx's inline title rename.
+  const ratingMutation = useMutation({
+    mutationFn: (rating: number) => {
+      if (!book) return Promise.resolve();
+      return updateBook(bookId, {
+        title: book.title,
+        authors: book.authors,
+        language: book.language,
+        publisher: book.publisher,
+        publishedDate: book.datePublished,
+        description: book.description,
+        rating,
+        seriesName: book.seriesName,
+        seriesIndex: book.seriesIndex,
+        tags: book.tags,
+        collectionIds: book.collections.map((c) => c.id),
+        periodicalId: book.periodicalId,
+        issueNumber: book.issueNumber,
+        volumeNumber: book.volumeNumber,
+        issueDate: book.issueDate,
+      });
+    },
+    onSuccess: () => {
+      invalidateLibraryQueries(queryClient);
+      void queryClient.invalidateQueries({ queryKey: ["book", bookId] });
+    },
+  });
+
   const addFileMutation = useMutation({
     mutationFn: (filePath: string) => addBookFile(bookId, filePath),
     onSuccess: () => {
@@ -124,6 +176,23 @@ export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelP
     onSuccess: () => {
       setRenamingFileId(null);
       void queryClient.invalidateQueries({ queryKey: ["book", bookId] });
+    },
+  });
+
+  // Refused by the backend if it's the book's only file (see api.ts's deleteBookFile) - the delete
+  // button is hidden in that case too, so this only ever fires when there's more than one file.
+  const deleteFileMutation = useMutation({
+    mutationFn: (fileId: string) => deleteBookFile(bookId, fileId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["book", bookId] });
+      void queryClient.invalidateQueries({ queryKey: ["books"] });
+    },
+    onError: (err) => {
+      notifications.show({
+        color: "red",
+        title: t("bookDetail.deleteFile"),
+        message: err instanceof Error ? err.message : String(err),
+      });
     },
   });
 
@@ -159,12 +228,6 @@ export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelP
     }
   };
 
-  const statusOptions: { value: ReadingStatus; label: string }[] = [
-    { value: "Unread", label: t("readingStatus.unread") },
-    { value: "Reading", label: t("readingStatus.reading") },
-    { value: "Finished", label: t("readingStatus.finished") },
-  ];
-
   if (isEditing) {
     return (
       <BookEditForm bookId={bookId} onClose={() => setEditing(false)} onSaved={() => setEditing(false)} />
@@ -199,6 +262,30 @@ export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelP
   const readableFiles: (BookFileInfo & { format: "Epub" | "Pdf" })[] =
     book?.files.filter((f): f is BookFileInfo & { format: "Epub" | "Pdf" } => isReadableFormat(f.format)) ?? [];
   const preferredReadFile = book ? pickPreferredReadFile(book.files) : undefined;
+
+  // Combines the chapter-progress and time-read lines into the one compact stats line shown
+  // alongside the reading-status icons, rather than each getting its own row.
+  const statsLine = book
+    ? [
+      progress && progress.totalChapters > 0
+        ? t("bookDetail.progress", {
+          percentage: Math.round(progress.percentage),
+          chapter: progress.currentChapter,
+          totalChapters: progress.totalChapters,
+        })
+        : null,
+      book.secondsRead > 0
+        ? book.remainingSeconds != null
+          ? t("bookDetail.timeReadWithRemaining", {
+            timeRead: formatDuration(book.secondsRead, t),
+            remaining: formatDuration(book.remainingSeconds, t),
+          })
+          : t("bookDetail.timeRead", { timeRead: formatDuration(book.secondsRead, t) })
+        : null,
+    ]
+      .filter(Boolean)
+      .join(" · ")
+    : "";
 
   return (
     <Modal opened onClose={onClose} centered size={560} padding="lg">
@@ -245,7 +332,9 @@ export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelP
             )}
 
             <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
-              <Title order={3}>{displayTitle(book, t)}</Title>
+              <Title order={3} style={{ minWidth: 0 }}>
+                {displayTitle(book, t)}
+              </Title>
               {book.periodicalId ? (
                 <>
                   <Text c="dimmed">{displaySubtitle(book, t)}</Text>
@@ -274,16 +363,41 @@ export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelP
               ) : (
                 <Text c="dimmed">{t("common.unknownAuthor")}</Text>
               )}
+              <Rating value={book.rating} onChange={(value) => ratingMutation.mutate(value)} readOnly={ratingMutation.isPending} />
               {book.seriesName && (
                 <Text size="sm">
                   {book.seriesName}
                   {book.seriesIndex != null ? ` #${book.seriesIndex}` : ""}
                 </Text>
               )}
-              <Text>
-                {"★".repeat(book.rating)}
-                {"☆".repeat(5 - book.rating)}
-              </Text>
+              <Group justify="space-between" wrap="wrap" align="center" gap="sm">
+                <ActionIcon.Group>
+                  {READING_STATUSES.map((status) => (
+                    <Tooltip key={status} label={t(READING_STATUS_LABEL_KEY[status])} withinPortal>
+                      <ActionIcon
+                        size="md"
+                        variant={book.readingStatus === status ? "filled" : "default"}
+                        color={READING_STATUS_COLOR[status]}
+                        aria-label={t(READING_STATUS_LABEL_KEY[status])}
+                        disabled={statusMutation.isPending}
+                        onClick={() => statusMutation.mutate(status)}
+                      >
+                        <ReadingStatusIcon status={status} />
+                      </ActionIcon>
+                    </Tooltip>
+                  ))}
+                </ActionIcon.Group>
+              </Group>
+              {statsLine && (
+                <Text size="xs" c="dimmed">
+                  {statsLine}
+                </Text>
+              )}
+              {book.description && (
+                <Text size="sm" lineClamp={4}>
+                  {book.description}
+                </Text>
+              )}
             </Stack>
           </Group>
 
@@ -327,61 +441,28 @@ export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelP
             )
           )}
 
-          <Stack gap={6}>
-            <FieldLabel>{t("bookDetail.readingStatus")}</FieldLabel>
-            <SegmentedControl
-              size="xs"
-              fullWidth
-              data={statusOptions}
-              value={book.readingStatus}
-              onChange={(value) => statusMutation.mutate(value as ReadingStatus)}
-              disabled={statusMutation.isPending}
-            />
-            {progress && progress.totalChapters > 0 && (
-              <Text size="xs" c="dimmed">
-                {t("bookDetail.progress", {
-                  percentage: Math.round(progress.percentage),
-                  chapter: progress.currentChapter,
-                  totalChapters: progress.totalChapters,
-                })}
-              </Text>
-            )}
-            {book.secondsRead > 0 && (
-              <Text size="xs" c="dimmed">
-                {book.remainingSeconds != null
-                  ? t("bookDetail.timeReadWithRemaining", {
-                      timeRead: formatDuration(book.secondsRead, t),
-                      remaining: formatDuration(book.remainingSeconds, t),
-                    })
-                  : t("bookDetail.timeRead", { timeRead: formatDuration(book.secondsRead, t) })}
-              </Text>
-            )}
-          </Stack>
-
-          {book.description && <Text size="sm">{book.description}</Text>}
 
           <Divider />
-
-          <Group gap="lg">
+          <Stack gap={4}>
             {book.publisher && (
-              <div>
-                <FieldLabel>{t("bookDetail.publisher")}</FieldLabel>
+              <Group gap={6} wrap="nowrap">
+                <IconBuildingStore size={16} color="var(--mantine-color-dimmed)" />
                 <Text size="sm">{book.publisher}</Text>
-              </div>
+              </Group>
             )}
             {book.datePublished && (
-              <div>
-                <FieldLabel>{t("bookDetail.published")}</FieldLabel>
+              <Group gap={6} wrap="nowrap">
+                <IconCalendar size={16} color="var(--mantine-color-dimmed)" />
                 <Text size="sm">{book.datePublished}</Text>
-              </div>
+              </Group>
             )}
             {book.language && (
-              <div>
-                <FieldLabel>{t("bookDetail.language")}</FieldLabel>
+              <Group gap={6} wrap="nowrap">
+                <IconLanguage size={16} color="var(--mantine-color-dimmed)" />
                 <Text size="sm">{languageDisplayName(book.language, t)}</Text>
-              </div>
+              </Group>
             )}
-          </Group>
+          </Stack>
 
           {book.tags.length > 0 && (
             <Group gap={6}>
@@ -485,6 +566,21 @@ export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelP
                           <IconFolder size={14} />
                         </ActionIcon>
                       </Tooltip>
+                      {book.files.length > 1 && (
+                        <Tooltip label={t("bookDetail.deleteFile")}>
+                          <ActionIcon
+                            size="sm"
+                            variant="subtle"
+                            color="red"
+                            aria-label={t("bookDetail.deleteFile")}
+                            loading={deleteFileMutation.isPending && deleteFileMutation.variables === f.id}
+                            disabled={deleteFileMutation.isPending}
+                            onClick={() => deleteFileMutation.mutate(f.id)}
+                          >
+                            <IconTrash size={14} />
+                          </ActionIcon>
+                        </Tooltip>
+                      )}
                     </Group>
                   </Group>
                 </List.Item>

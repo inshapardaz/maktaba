@@ -16,7 +16,7 @@ import {
   TextInput,
   UnstyledButton,
 } from "@mantine/core";
-import { IconAlertCircle, IconArrowLeft, IconSearch } from "@tabler/icons-react";
+import { IconAlertCircle, IconArrowLeft, IconSearch } from "../icons";
 import { getMetadataDetails, searchMetadata, type MetadataDetails, type MetadataSearchResult } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
 

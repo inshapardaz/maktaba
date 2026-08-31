@@ -23,7 +23,7 @@ import {
   IconRefresh,
   IconTrash,
   IconX,
-} from "@tabler/icons-react";
+} from "../icons";
 import {
   listLibraries,
   openLibrary,

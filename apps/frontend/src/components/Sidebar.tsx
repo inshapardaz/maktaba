@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import {
   ActionIcon,
   Avatar,
@@ -23,6 +23,8 @@ import {
   IconBuildingStore,
   IconChartBar,
   IconCheck,
+  IconChevronDown,
+  IconChevronUp,
   IconFolder,
   IconFolderOpen,
   IconLanguage,
@@ -34,8 +36,8 @@ import {
   IconSun,
   IconTag,
   IconUser,
-} from "@tabler/icons-react";
-import type { Icon } from "@tabler/icons-react";
+} from "../icons";
+import type { Icon } from "../icons";
 import {
   authorImageUrl,
   createCollection,
@@ -167,19 +169,63 @@ function sectionRowStyles(isActive: boolean, dragOver = false) {
   };
 }
 
-function SectionTitle({ children, action }: { children: string; action?: React.ReactNode }) {
+// A section's header: icon + title + optional action (see-all/add, shown regardless of expanded
+// state so those stay reachable at a glance) + expand/collapse chevron. Single-select accordion -
+// opening one closes whichever was open before it (see Sidebar's expandedSection state).
+function CollapsibleSection({
+  title,
+  icon: SectionIcon,
+  expanded,
+  onToggle,
+  action,
+  children,
+}: {
+  title: string;
+  icon: Icon;
+  expanded: boolean;
+  onToggle: () => void;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}) {
   return (
-    <Group justify="space-between" px="md" mb={5} wrap="nowrap">
-      <Text fz={10.5} fw={600} c="dimmed" tt="uppercase" style={{ letterSpacing: "0.1em" }}>
-        {children}
-      </Text>
-      {action}
-    </Group>
+    <Box
+      style={{
+        borderBottom: "1px solid var(--mantine-color-default-border)",
+        // Collapsed sections keep their natural (header-only) height and stack at the top/bottom
+        // of the sidebar; the one expanded section stretches to fill whatever space is left, with
+        // its own ScrollArea below rather than letting the whole sidebar scroll.
+        flex: expanded ? 1 : "0 0 auto",
+        minHeight: expanded ? 0 : undefined,
+        display: expanded ? "flex" : undefined,
+        flexDirection: expanded ? "column" : undefined,
+      }}
+    >
+      <Group gap={0} wrap="nowrap" px="md" py={8} style={{ flexShrink: 0 }}>
+        <UnstyledButton
+          onClick={onToggle}
+          style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 0 }}
+          aria-expanded={expanded}
+        >
+          <SectionIcon size={16} />
+          <Text fw={500} fz="sm" truncate="end">
+            {title}
+          </Text>
+        </UnstyledButton>
+        {action}
+        <ActionIcon variant="subtle" color="gray" size="xs" onClick={onToggle} aria-label={title}>
+          {expanded ? <IconChevronUp size={14} /> : <IconChevronDown size={14} />}
+        </ActionIcon>
+      </Group>
+      {expanded && (
+        <ScrollArea style={{ flex: 1, minHeight: 0 }}>
+          <Box pb="sm">{children}</Box>
+        </ScrollArea>
+      )}
+    </Box>
   );
 }
 
 function GroupSection({
-  title,
   kind,
   icon: RowIcon,
   renderIcon,
@@ -187,10 +233,8 @@ function GroupSection({
   activeFilter,
   onSelect,
   groups,
-  action,
   onDropBooks,
 }: {
-  title: string;
   kind: GroupFilterKind;
   icon: Icon;
   // Authors override the plain RowIcon with their own avatar (falling back to RowIcon when they
@@ -202,7 +246,6 @@ function GroupSection({
   activeFilter: GroupFilter | null;
   onSelect: (filter: GroupFilter | null) => void;
   groups: BrowseGroup[] | undefined;
-  action?: React.ReactNode;
   // Only passed for Authors/Series/Tags/Collections/Publishers (see Sidebar's own onDropBooks
   // prop) - issue #10's "drag a book from the grid/list onto a sidebar row to edit it" feature.
   // Undefined here (reading-status rows don't get one) just means those rows aren't drop targets.
@@ -211,15 +254,14 @@ function GroupSection({
   const [dragOverId, setDragOverId] = useState<string | null>(null);
 
   return (
-    <Box py="sm" px={4}>
-      <SectionTitle action={action}>{title}</SectionTitle>
+    <Box px={4}>
       {groups?.map((group) => {
         const isActive = activeFilter?.kind === kind && activeFilter.id === group.id;
         const navLink = (
           <NavLink
             key={renderHoverCard ? undefined : group.id}
             label={group.name}
-            leftSection={renderIcon ? renderIcon(group) : <RowIcon size={16} stroke={1.5} />}
+            leftSection={renderIcon ? renderIcon(group) : <RowIcon size={16} />}
             active={isActive}
             onClick={() => onSelect(isActive ? null : { kind, id: group.id, name: group.name })}
             onDragOver={
@@ -337,7 +379,7 @@ export function Sidebar({
   const seeAllAction = (onClick: () => void) => (
     <Tooltip label={t("sidebar.seeAll")}>
       <UnstyledButton onClick={onClick} c="dimmed" style={{ display: "flex" }} aria-label={t("sidebar.seeAll")}>
-        <IconFolderOpen size={14} stroke={1.5} />
+        <IconFolderOpen size={14} />
       </UnstyledButton>
     </Tooltip>
   );
@@ -375,7 +417,7 @@ export function Sidebar({
             style={{ display: "flex" }}
             aria-label={t("collectionsView.add")}
           >
-            <IconPlus size={14} stroke={1.5} />
+            <IconPlus size={14} />
           </UnstyledButton>
         </Tooltip>
       </Popover.Target>
@@ -438,7 +480,7 @@ export function Sidebar({
             style={{ display: "flex" }}
             aria-label={t("periodicalsView.add")}
           >
-            <IconPlus size={14} stroke={1.5} />
+            <IconPlus size={14} />
           </UnstyledButton>
         </Tooltip>
       </Popover.Target>
@@ -468,22 +510,19 @@ export function Sidebar({
     </Popover>
   );
 
-  const [browseSection, setBrowseSection] = useState<BrowseSection>("authors");
+  // Single-select accordion - opening a section closes whichever one was open before it. Authors
+  // starts open since it's usually the most-browsed section; null means every section collapsed.
+  const [expandedSection, setExpandedSection] = useState<BrowseSection | null>("authors");
 
-  // Falls back off the Periodicals section if this library's setting (Settings -> Libraries) gets
-  // toggled off while it's the one currently showing - stale local UI state, not persisted.
-  useEffect(() => {
-    if (!periodicalsEnabled && browseSection === "periodicals") {
-      setBrowseSection("authors");
-    }
-  }, [periodicalsEnabled, browseSection]);
+  const toggleSection = (key: BrowseSection) => {
+    setExpandedSection((prev) => (prev === key ? null : key));
+  };
 
   // "Active" here means "this is the filter currently applied to the book list" - matched against
-  // activeFilter.kind, not the locally-browsed section - so this view bar and the title bar's
-  // filter row (All books/Unread/Reading/Finished - see TitleBar.tsx) stay mutually exclusive:
-  // picking a reading-status filter there clears any highlighted tab here, and picking an
-  // author/collection/series/tag filter here clears that filter row's selection, since neither can
-  // be simultaneously "the" active filter.
+  // activeFilter.kind - so this browse list and the title bar's filter row (All books/Unread/
+  // Reading/Finished - see TitleBar.tsx) stay mutually exclusive: picking a reading-status filter
+  // there clears any highlighted row here, and picking an author/collection/series/tag filter here
+  // clears that filter row's selection, since neither can be simultaneously "the" active filter.
   const sectionFilterKind: Record<BrowseSection, GroupFilterKind> = {
     authors: "authorId",
     collections: "collectionId",
@@ -535,58 +574,47 @@ export function Sidebar({
         />
       )}
 
-      {/* View bar - which browse section (Collections/Authors/Series/Tags) shows below. The
-          All books/Unread/Reading/Finished filter row now lives in the title bar (see
-          TitleBar.tsx). Icon-only, so this degrades cleanly into the collapsed rail via wrapping.
-          SIDEBAR_DEFAULT_WIDTH is sized to fit every section icon on one row at the default
-          width; a narrower drag-resized width just wraps to a second row instead. */}
-      <Group gap={4} px="xs" py={6} wrap="wrap" style={{ borderBottom: "1px solid var(--mantine-color-default-border)" }}>
-        {sections.map((section) => (
-          <Tooltip key={section.key} label={section.label}>
-            <ActionIcon
-              variant={section.active ? "filled" : "subtle"}
-              color={section.active ? undefined : "gray"}
-              size="lg"
-              onClick={() => setBrowseSection(section.key)}
-              aria-label={section.label}
-            >
-              <section.icon size={17} stroke={1.5} />
-            </ActionIcon>
-          </Tooltip>
-        ))}
-      </Group>
+      {/* Collapsed rail only - the expanded sidebar shows every section as its own collapsible
+          block below instead (see the accordion in the ScrollArea branch). Icon-only; clicking one
+          here marks that section expanded so it's already open once the sidebar is re-expanded
+          (via the title bar's own collapse toggle - this rail has no expand control of its own). */}
+      {collapsed && (
+        <Group gap={4} px="xs" py={6} wrap="wrap" style={{ borderBottom: "1px solid var(--mantine-color-default-border)" }}>
+          {sections.map((section) => (
+            <Tooltip key={section.key} label={section.label}>
+              <ActionIcon
+                variant={section.active ? "filled" : "subtle"}
+                color={section.active ? undefined : "gray"}
+                size="lg"
+                onClick={() => setExpandedSection(section.key)}
+                aria-label={section.label}
+              >
+                <section.icon size={17} />
+              </ActionIcon>
+            </Tooltip>
+          ))}
+        </Group>
+      )}
 
       {collapsed ? (
         <Box style={{ flex: 1 }} />
       ) : (
-        <ScrollArea component="nav" style={{ flex: 1 }}>
-          {browseSection === "collections" && (
+        <Box component="nav" style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          <CollapsibleSection
+            title={t("sidebar.authors")}
+            icon={IconUser}
+            expanded={expandedSection === "authors"}
+            onToggle={() => toggleSection("authors")}
+            action={seeAllAction(onOpenAuthors)}
+          >
             <GroupSection
-              title={t("sidebar.collections")}
-              kind="collectionId"
-              icon={IconFolder}
-              activeFilter={activeFilter}
-              onSelect={onSelect}
-              groups={byBookCount(collectionsQuery.data)}
-              action={
-                <Group gap={6} wrap="nowrap">
-                  {addCollectionAction}
-                  {seeAllAction(onOpenCollections)}
-                </Group>
-              }
-              onDropBooks={(target, bookIds, shiftKey) => onDropBooks("collectionId", target, bookIds, shiftKey)}
-            />
-          )}
-          {browseSection === "authors" && (
-            <GroupSection
-              title={t("sidebar.authors")}
               kind="authorId"
               icon={IconUser}
               renderIcon={(group) =>
                 group.hasImage ? (
                   <Avatar src={authorImageUrl(group.id)} size={16} radius="xl" />
                 ) : (
-                  <IconUser size={16} stroke={1.5} />
+                  <IconUser size={16} />
                 )
               }
               renderHoverCard={(group) => (
@@ -610,68 +638,117 @@ export function Sidebar({
               activeFilter={activeFilter}
               onSelect={onSelect}
               groups={byBookCount(authorsQuery.data)}
-              action={seeAllAction(onOpenAuthors)}
               onDropBooks={(target, bookIds, shiftKey) => onDropBooks("authorId", target, bookIds, shiftKey)}
             />
-          )}
-          {browseSection === "series" && (
+          </CollapsibleSection>
+
+          <CollapsibleSection
+            title={t("sidebar.collections")}
+            icon={IconFolder}
+            expanded={expandedSection === "collections"}
+            onToggle={() => toggleSection("collections")}
+            action={
+              <Group gap={6} wrap="nowrap">
+                {addCollectionAction}
+                {seeAllAction(onOpenCollections)}
+              </Group>
+            }
+          >
             <GroupSection
-              title={t("sidebar.series")}
+              kind="collectionId"
+              icon={IconFolder}
+              activeFilter={activeFilter}
+              onSelect={onSelect}
+              groups={byBookCount(collectionsQuery.data)}
+              onDropBooks={(target, bookIds, shiftKey) => onDropBooks("collectionId", target, bookIds, shiftKey)}
+            />
+          </CollapsibleSection>
+
+          <CollapsibleSection
+            title={t("sidebar.series")}
+            icon={IconStack2}
+            expanded={expandedSection === "series"}
+            onToggle={() => toggleSection("series")}
+            action={seeAllAction(onOpenSeries)}
+          >
+            <GroupSection
               kind="seriesId"
               icon={IconStack2}
               activeFilter={activeFilter}
               onSelect={onSelect}
               groups={byBookCount(seriesQuery.data)}
-              action={seeAllAction(onOpenSeries)}
               onDropBooks={(target, bookIds, shiftKey) => onDropBooks("seriesId", target, bookIds, shiftKey)}
             />
-          )}
-          {browseSection === "tags" && (
+          </CollapsibleSection>
+
+          <CollapsibleSection
+            title={t("sidebar.tags")}
+            icon={IconTag}
+            expanded={expandedSection === "tags"}
+            onToggle={() => toggleSection("tags")}
+            action={seeAllAction(onOpenTags)}
+          >
             <GroupSection
-              title={t("sidebar.tags")}
               kind="tagId"
               icon={IconTag}
               activeFilter={activeFilter}
               onSelect={onSelect}
               groups={byBookCount(tagsQuery.data)}
-              action={seeAllAction(onOpenTags)}
               onDropBooks={(target, bookIds, shiftKey) => onDropBooks("tagId", target, bookIds, shiftKey)}
             />
-          )}
-          {browseSection === "periodicals" && (
-            <GroupSection
+          </CollapsibleSection>
+
+          {periodicalsEnabled && (
+            <CollapsibleSection
               title={t("sidebar.periodicals")}
-              kind="periodicalId"
               icon={IconNews}
-              activeFilter={activeFilter}
-              onSelect={onSelect}
-              groups={byBookCount(
-                (periodicalsQuery.data ?? []).map((p) => ({ id: p.id, name: p.name, bookCount: p.issueCount })),
-              )}
+              expanded={expandedSection === "periodicals"}
+              onToggle={() => toggleSection("periodicals")}
               action={
                 <Group gap={6} wrap="nowrap">
                   {addPeriodicalAction}
                   {seeAllAction(onOpenPeriodicals)}
                 </Group>
               }
-              onDropBooks={(target, bookIds, shiftKey) => onDropBooks("periodicalId", target, bookIds, shiftKey)}
-            />
+            >
+              <GroupSection
+                kind="periodicalId"
+                icon={IconNews}
+                activeFilter={activeFilter}
+                onSelect={onSelect}
+                groups={byBookCount(
+                  (periodicalsQuery.data ?? []).map((p) => ({ id: p.id, name: p.name, bookCount: p.issueCount })),
+                )}
+                onDropBooks={(target, bookIds, shiftKey) => onDropBooks("periodicalId", target, bookIds, shiftKey)}
+              />
+            </CollapsibleSection>
           )}
-          {browseSection === "publishers" && (
+
+          <CollapsibleSection
+            title={t("sidebar.publishers")}
+            icon={IconBuildingStore}
+            expanded={expandedSection === "publishers"}
+            onToggle={() => toggleSection("publishers")}
+            action={seeAllAction(onOpenPublishers)}
+          >
             <GroupSection
-              title={t("sidebar.publishers")}
               kind="publisher"
               icon={IconBuildingStore}
               activeFilter={activeFilter}
               onSelect={onSelect}
               groups={byBookCount(publishersQuery.data)}
-              action={seeAllAction(onOpenPublishers)}
               onDropBooks={(target, bookIds, shiftKey) => onDropBooks("publisher", target, bookIds, shiftKey)}
             />
-          )}
-          {browseSection === "languages" && (
+          </CollapsibleSection>
+
+          <CollapsibleSection
+            title={t("sidebar.languages")}
+            icon={IconLanguage}
+            expanded={expandedSection === "languages"}
+            onToggle={() => toggleSection("languages")}
+            action={seeAllAction(onOpenLanguages)}
+          >
             <GroupSection
-              title={t("sidebar.languages")}
               kind="language"
               icon={IconLanguage}
               activeFilter={activeFilter}
@@ -680,11 +757,10 @@ export function Sidebar({
                 ...group,
                 name: languageDisplayName(group.id, t),
               }))}
-              action={seeAllAction(onOpenLanguages)}
               onDropBooks={(target, bookIds, shiftKey) => onDropBooks("language", target, bookIds, shiftKey)}
             />
-          )}
-        </ScrollArea>
+          </CollapsibleSection>
+        </Box>
       )}
 
       <Box p={4} style={{ borderTop: "1px solid var(--mantine-color-default-border)" }}>

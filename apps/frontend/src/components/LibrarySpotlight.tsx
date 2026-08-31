@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Spotlight, type SpotlightActionData, type SpotlightActionGroupData } from "@mantine/spotlight";
-import { IconBook2, IconFolder, IconSearch, IconTag, IconUser } from "@tabler/icons-react";
+import { IconBook2, IconFolder, IconSearch, IconTag, IconUser } from "../icons";
 import { listAuthors, listBooks, listCollections, listTags } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
 import { useDebounced } from "../useDebounced";

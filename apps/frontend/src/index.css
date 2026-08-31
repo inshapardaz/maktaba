@@ -55,3 +55,11 @@ body.lang-ur .mantine-Drawer-title {
 .maktaba-titlebar-no-drag {
   -webkit-app-region: no-drag;
 }
+
+/* "Organic" design system (see theme.ts) - every interactive element gets a themed focus ring
+   instead of the browser's default blue one, and only when actually navigating by keyboard
+   (:focus-visible, not plain :focus, so a mouse click doesn't leave a ring behind). */
+:focus-visible {
+  outline: 2px solid var(--mantine-primary-color-filled);
+  outline-offset: 2px;
+}

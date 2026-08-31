@@ -373,6 +373,12 @@ export function renameBookFile(bookId: string, fileId: string, fileName: string)
   });
 }
 
+// Refused by the backend (409) if this is the book's only file - a book must always keep at least
+// one attached format, so the UI hides/disables the delete action in that case too (BookDetailPanel.tsx).
+export function deleteBookFile(bookId: string, fileId: string): Promise<void> {
+  return request<void>(`/api/books/${bookId}/files/${fileId}`, { method: "DELETE" });
+}
+
 export interface RescanProgress {
   isRunning: boolean;
   processed: number;

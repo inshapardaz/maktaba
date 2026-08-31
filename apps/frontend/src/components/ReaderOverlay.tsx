@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Box, Button, Center, Loader, useComputedColorScheme } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { IconAlertCircle, IconCircleCheck } from "@tabler/icons-react";
+import { IconAlertCircle, IconCircleCheck } from "../icons";
 import {
   Reader,
   LOCALES,

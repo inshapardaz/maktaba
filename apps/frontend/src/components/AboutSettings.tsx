@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Alert, Button, Group, Image, Progress, Stack, Text } from "@mantine/core";
-import { IconAlertCircle, IconCircleCheck, IconRefresh } from "@tabler/icons-react";
+import { IconAlertCircle, IconCircleCheck, IconRefresh } from "../icons";
 import type { UpdateStatus } from "../maktaba";
 import { useLanguage } from "../i18n/LanguageContext";
 

@@ -27,7 +27,7 @@ import {
   Tooltip,
   UnstyledButton,
 } from "@mantine/core";
-import { IconAlertCircle, IconCamera, IconEdit, IconLayoutGrid, IconList, IconPencil, IconTrash } from "@tabler/icons-react";
+import { IconAlertCircle, IconCamera, IconEdit, IconLayoutGrid, IconList, IconPencil, IconTrash } from "../icons";
 import {
   coverUrl,
   deleteBook,

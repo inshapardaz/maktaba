@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Alert, Box, Button, Loader, Stack, Text } from "@mantine/core";
-import { IconAlertCircle, IconRefresh } from "@tabler/icons-react";
+import { IconAlertCircle, IconRefresh } from "../icons";
 import { useLanguage } from "../i18n/LanguageContext";
 import type { SidecarStatus } from "../maktaba";
 import { TITLEBAR_HEIGHT, TitleBarBrand, useTitleBarOverlayPadding } from "./TitleBar";

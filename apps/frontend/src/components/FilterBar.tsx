@@ -13,7 +13,7 @@ import {
   Text,
   Tooltip,
 } from "@mantine/core";
-import { IconArrowsSort, IconFilter, IconLayoutGrid, IconList } from "@tabler/icons-react";
+import { IconArrowsSort, IconFilter, IconLayoutGrid, IconList } from "../icons";
 import { useLanguage } from "../i18n/LanguageContext";
 import type { GroupFilter } from "./Sidebar";
 

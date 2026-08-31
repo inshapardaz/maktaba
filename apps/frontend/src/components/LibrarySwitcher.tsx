@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ActionIcon, Box, Menu, Text, Tooltip, UnstyledButton } from "@mantine/core";
-import { IconBooks, IconCheck, IconChevronDown, IconSettings } from "@tabler/icons-react";
+import { IconBooks, IconCheck, IconChevronDown, IconSettings } from "../icons";
 import { listLibraries, openLibraryById } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
 import { invalidateLibraryQueries } from "../queries";

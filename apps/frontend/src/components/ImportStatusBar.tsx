@@ -1,5 +1,5 @@
 import { ActionIcon, Group, Loader, Progress, Text, Tooltip } from "@mantine/core";
-import { IconAlertTriangle, IconLayoutBottombarExpand, IconX } from "@tabler/icons-react";
+import { IconAlertTriangle, IconLayoutBottombarExpand, IconX } from "../icons";
 import { useLanguage } from "../i18n/LanguageContext";
 import { useImportQueue } from "../ImportContext";
 

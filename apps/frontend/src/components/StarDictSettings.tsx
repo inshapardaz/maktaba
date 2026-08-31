@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ActionIcon, Alert, Button, Group, Select, Stack, Text, Tooltip } from "@mantine/core";
-import { IconAlertCircle, IconFileUpload, IconTrash } from "@tabler/icons-react";
+import { IconAlertCircle, IconFileUpload, IconTrash } from "../icons";
 import { DICTIONARY_LANGUAGE_CODES } from "../dictionaryLanguages";
 import { useLanguage } from "../i18n/LanguageContext";
 import type { TranslationKey } from "../i18n/translations";

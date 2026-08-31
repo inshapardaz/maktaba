@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Alert, Badge, Button, Center, Group, Image, Loader, Modal, Stack, Text } from "@mantine/core";
-import { IconAlertCircle } from "@tabler/icons-react";
+import { IconAlertCircle } from "../icons";
 import { coverUrl, getBook } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
 import { SpineCover } from "./SpineCover";

@@ -134,4 +134,37 @@ public class BookEditService(MaktabaDbContext db, ILibraryPathProvider libraryPa
         await db.SaveChangesAsync(ct);
         return file;
     }
+
+    public async Task<bool?> DeleteFileAsync(int bookId, int fileId, CancellationToken ct = default)
+    {
+        var book = await db.Books.Include(b => b.Files).FirstOrDefaultAsync(b => b.Id == bookId, ct);
+        if (book is null)
+        {
+            return null;
+        }
+
+        var file = book.Files.FirstOrDefault(f => f.Id == fileId);
+        if (file is null)
+        {
+            return null;
+        }
+
+        // A book must always have at least one attached format - deleting its last file would leave
+        // an entry with nothing to read, which the frontend has no UI to recover from.
+        if (book.Files.Count <= 1)
+        {
+            throw new InvalidOperationException("Cannot delete a book's only file.");
+        }
+
+        var root = libraryPath.LibraryRootPath!;
+        var absolutePath = Path.Combine(root, file.FilePath);
+        if (File.Exists(absolutePath))
+        {
+            File.Delete(absolutePath);
+        }
+
+        db.BookFiles.Remove(file);
+        await db.SaveChangesAsync(ct);
+        return true;
+    }
 }

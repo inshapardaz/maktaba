@@ -578,6 +578,25 @@ public static class BookEndpoints
             return Results.Ok(new BookFileDto(fileId, file.Format.ToString(), file.FileSizeBytes, Path.Combine(root, file.FilePath)));
         });
 
+        group.MapDelete("/{id}/files/{fileId}", async (
+            string id, string fileId, IBookEditService editService, CancellationToken ct) =>
+        {
+            if (!IdCodec.TryDecode(id, out var bookId) || !IdCodec.TryDecode(fileId, out var bookFileId))
+            {
+                return Results.NotFound();
+            }
+
+            try
+            {
+                var result = await editService.DeleteFileAsync(bookId, bookFileId, ct);
+                return result is null ? Results.NotFound() : Results.NoContent();
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.Conflict(new { error = ex.Message });
+            }
+        });
+
         group.MapPost("/import", async (ImportBookRequest request, IImportService importService, CancellationToken ct) =>
         {
             if (string.IsNullOrWhiteSpace(request.FilePath) || !File.Exists(request.FilePath))

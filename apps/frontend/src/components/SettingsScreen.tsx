@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Alert, ColorSwatch, Group, Modal, Select, SegmentedControl, Stack, Switch, Tabs, Text, UnstyledButton } from "@mantine/core";
-import { IconAlertTriangle, IconBook2, IconBooks, IconCheck, IconInfoCircle, IconLanguage, IconSettings } from "@tabler/icons-react";
+import { Alert, Group, Modal, Select, SegmentedControl, Stack, Switch, Tabs, Text } from "@mantine/core";
+import { IconAlertTriangle, IconBook2, IconBooks, IconInfoCircle, IconLanguage, IconSettings } from "../icons";
 import { useLanguage } from "../i18n/LanguageContext";
 import {
   getStoredAutoTagMode,
@@ -15,8 +15,6 @@ import {
   type ReaderOpenMode,
 } from "../readerSettings";
 import { getStoredShowIssuesInGrid, setStoredShowIssuesInGrid } from "../periodicalSettings";
-import { useThemeColor } from "../ThemeColorContext";
-import { THEME_COLOR_OPTIONS } from "../theme";
 import { URDU_FONT_OPTIONS, type UrduFontName } from "../urduFont";
 import { AboutSettings } from "./AboutSettings";
 import { ColorSchemeToggle } from "./ColorSchemeToggle";
@@ -47,7 +45,6 @@ function FieldLabel({ children }: { children: string }) {
 
 export function SettingsScreen({ opened, onClose, onLibraryChanged, initialTab }: SettingsScreenProps) {
   const { t, urduFont, setUrduFont } = useLanguage();
-  const { themeColor, setThemeColor } = useThemeColor();
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab ?? "general");
   const [readerOpenMode, setReaderOpenMode] = useState<ReaderOpenMode>(getStoredReaderOpenMode());
   const [epubEngine, setEpubEngine] = useState<ReaderEngine>(getStoredReaderEngine("Epub"));
@@ -127,31 +124,6 @@ export function SettingsScreen({ opened, onClose, onLibraryChanged, initialTab }
             <Group justify="space-between">
               <FieldLabel>{t("settings.colorScheme")}</FieldLabel>
               <ColorSchemeToggle />
-            </Group>
-            <Group justify="space-between">
-              <FieldLabel>{t("settings.themeColor")}</FieldLabel>
-              <Group gap="xs">
-                {THEME_COLOR_OPTIONS.map((option) => (
-                  <UnstyledButton
-                    key={option.value}
-                    onClick={() => setThemeColor(option.value)}
-                    aria-label={option.label}
-                    title={option.label}
-                  >
-                    <ColorSwatch
-                      color={option.swatch}
-                      size={26}
-                      style={{
-                        cursor: "pointer",
-                        outline: themeColor === option.value ? "2px solid var(--mantine-color-text)" : "none",
-                        outlineOffset: 2,
-                      }}
-                    >
-                      {themeColor === option.value && <IconCheck size={13} color="white" />}
-                    </ColorSwatch>
-                  </UnstyledButton>
-                ))}
-              </Group>
             </Group>
             <Group justify="space-between">
               <FieldLabel>{t("settings.urduFont")}</FieldLabel>
