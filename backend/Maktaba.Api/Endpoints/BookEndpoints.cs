@@ -52,8 +52,14 @@ public static class BookEndpoints
 
             // An id that fails to decode can't match anything, so its filter is just left applied with
             // no matching rows below rather than treated as "no filter" - a malformed/stale id should
-            // yield an empty result, not silently ignore the filter.
-            if (authorId is not null)
+            // yield an empty result, not silently ignore the filter. "unknown" is a sentinel (not an
+            // IdCodec-encoded id, see BrowseEndpoints.cs's /api/authors) matching books with no author
+            // at all - see issue #41.
+            if (authorId == "unknown")
+            {
+                query = query.Where(b => !b.BookAuthors.Any());
+            }
+            else if (authorId is not null)
             {
                 var aId = IdCodec.TryDecode(authorId, out var decoded) ? decoded : -1;
                 query = query.Where(b => b.BookAuthors.Any(ba => ba.AuthorId == aId));

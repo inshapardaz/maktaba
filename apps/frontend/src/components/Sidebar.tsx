@@ -116,6 +116,16 @@ function byBookCount(groups: BrowseGroup[] | undefined): BrowseGroup[] {
   return [...groups].sort((a, b) => b.bookCount - a.bookCount);
 }
 
+// /api/authors sends the "unknown author" sentinel row (id "unknown", see issue #41 and
+// BrowseEndpoints.cs) with an empty name since it has no i18n access server-side - filled in here
+// and in AuthorsView.tsx, the only two places that render the authors list.
+export function withUnknownAuthorLabel(
+  groups: BrowseGroup[] | undefined,
+  t: (key: TranslationKey) => string,
+): BrowseGroup[] | undefined {
+  return groups?.map((group) => (group.id === "unknown" ? { ...group, name: t("common.unknownAuthor") } : group));
+}
+
 interface SidebarProps {
   activeFilter: GroupFilter | null;
   onSelect: (filter: GroupFilter | null) => void;
@@ -265,7 +275,9 @@ function GroupSection({
             active={isActive}
             onClick={() => onSelect(isActive ? null : { kind, id: group.id, name: group.name })}
             onDragOver={
-              onDropBooks &&
+              // The "unknown author" sentinel row (id "unknown", see issue #41) isn't a real
+              // Author row to assign books to - it's just a filter - so it's not a drop target.
+              onDropBooks && group.id !== "unknown" &&
               ((event) => {
                 if (!isBookDrag(event)) return;
                 event.preventDefault();
@@ -273,9 +285,9 @@ function GroupSection({
                 setDragOverId(group.id);
               })
             }
-            onDragLeave={onDropBooks && (() => setDragOverId((id) => (id === group.id ? null : id)))}
+            onDragLeave={onDropBooks && group.id !== "unknown" && (() => setDragOverId((id) => (id === group.id ? null : id)))}
             onDrop={
-              onDropBooks &&
+              onDropBooks && group.id !== "unknown" &&
               ((event) => {
                 event.preventDefault();
                 setDragOverId(null);
@@ -637,7 +649,7 @@ export function Sidebar({
               )}
               activeFilter={activeFilter}
               onSelect={onSelect}
-              groups={byBookCount(authorsQuery.data)}
+              groups={byBookCount(withUnknownAuthorLabel(authorsQuery.data, t))}
               onDropBooks={(target, bookIds, shiftKey) => onDropBooks("authorId", target, bookIds, shiftKey)}
             />
           </CollapsibleSection>

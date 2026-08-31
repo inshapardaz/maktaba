@@ -98,7 +98,10 @@ export function AuthorsView({ onSelect, onBack }: AuthorsViewProps) {
   };
 
   const filtered = useMemo(() => {
-    const authors = authorsQuery.data ?? [];
+    // The "unknown author" sentinel (id "unknown", see Sidebar.tsx and issue #41) isn't a real
+    // Author row - it has no name to rename and no image to upload - so this management screen
+    // only lists it via the sidebar's own Authors group, not here.
+    const authors = (authorsQuery.data ?? []).filter((a) => a.id !== "unknown");
     const term = search.trim().toLowerCase();
     const matched = term ? authors.filter((a) => a.name.toLowerCase().includes(term)) : authors;
     return [...matched].sort((a, b) => a.name.localeCompare(b.name));

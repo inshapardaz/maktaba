@@ -24,8 +24,21 @@ public static class BrowseEndpoints
                 .ToListAsync();
 
             var root = libraryPath.LibraryRootPath!;
-            return Results.Ok(authors.Select(a => new BrowseGroupDto(
-                IdCodec.Encode(a.Id), a.Name, a.Count, AuthorImageLocator.Find(root, a.Id) is not null)));
+            var result = authors.Select(a => new BrowseGroupDto(
+                IdCodec.Encode(a.Id), a.Name, a.Count, AuthorImageLocator.Find(root, a.Id) is not null)).ToList();
+
+            // Issue #41: a book can have zero authors (import falls back to "Unknown Author" for the
+            // folder name only, see ImportService.cs - the Author entity/row is never created for it).
+            // Those books are otherwise unreachable from this sidebar list since it only enumerates
+            // rows in the Authors table, so a sentinel "unknown" group (matched directly in
+            // BookEndpoints.cs's authorId filter, not via IdCodec) is appended when any exist.
+            var unknownCount = await db.Books.CountAsync(b => !b.BookAuthors.Any());
+            if (unknownCount > 0)
+            {
+                result.Add(new BrowseGroupDto("unknown", "", unknownCount));
+            }
+
+            return Results.Ok(result);
         });
 
         app.MapGet("/api/series", async (MaktabaDbContext db) =>
