@@ -30,6 +30,9 @@ public record BookSummaryDto(
     // as SeriesIndex above.
     string? PeriodicalId,
     string? PeriodicalName,
+    // Null unless PeriodicalId is set - lets the frontend pick the right date granularity
+    // (year/quarter/month/exact date) for an issue's displayed date without a second request.
+    string? PeriodicalFrequency,
     double? IssueNumber,
     int? VolumeNumber,
     DateOnly? IssueDate
@@ -91,6 +94,7 @@ public record BookDetailDto(
     BookCollectionDto[] Collections,
     string? PeriodicalId,
     string? PeriodicalName,
+    string? PeriodicalFrequency,
     double? IssueNumber,
     int? VolumeNumber,
     DateOnly? IssueDate,

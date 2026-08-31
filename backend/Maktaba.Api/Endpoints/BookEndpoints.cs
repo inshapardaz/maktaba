@@ -159,6 +159,7 @@ public static class BookEndpoints
                     b.Files.Select(f => f.Format.ToString()).Distinct().ToArray(),
                     b.PeriodicalId is not null ? IdCodec.Encode(b.PeriodicalId.Value) : null,
                     b.Periodical?.Name,
+                    b.Periodical?.Frequency.ToString(),
                     b.IssueNumber,
                     b.VolumeNumber,
                     b.IssueDate))
@@ -257,6 +258,7 @@ public static class BookEndpoints
                     b.Files.Select(f => f.Format.ToString()).Distinct().ToArray(),
                     b.PeriodicalId is not null ? IdCodec.Encode(b.PeriodicalId.Value) : null,
                     b.Periodical?.Name,
+                    b.Periodical?.Frequency.ToString(),
                     b.IssueNumber,
                     b.VolumeNumber,
                     b.IssueDate))
@@ -324,6 +326,7 @@ public static class BookEndpoints
                     .ToArray(),
                 book.PeriodicalId is not null ? IdCodec.Encode(book.PeriodicalId.Value) : null,
                 book.Periodical?.Name,
+                book.Periodical?.Frequency.ToString(),
                 book.IssueNumber,
                 book.VolumeNumber,
                 book.IssueDate,

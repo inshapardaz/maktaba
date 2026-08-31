@@ -27,9 +27,10 @@ import {
   Tooltip,
   UnstyledButton,
 } from "@mantine/core";
-import { IconAlertCircle, IconCamera, IconLayoutGrid, IconList, IconPencil, IconTrash } from "@tabler/icons-react";
+import { IconAlertCircle, IconCamera, IconEdit, IconLayoutGrid, IconList, IconPencil, IconTrash } from "@tabler/icons-react";
 import {
   coverUrl,
+  deleteBook,
   deletePeriodical,
   getPeriodical,
   listBooks,
@@ -44,7 +45,11 @@ import {
 import { buildCreatableData } from "../creatableSelect";
 import { useLanguage } from "../i18n/LanguageContext";
 import type { TranslationKey } from "../i18n/translations";
+import { formatIssueDateInfo } from "../issueDisplay";
 import { getLanguageOptions, withCurrentLanguage } from "../languageOptions";
+import { invalidateLibraryQueries } from "../queries";
+import { READING_STATUS_COLOR, READING_STATUS_LABEL_KEY } from "../readingStatus";
+import { BookEditForm } from "./BookEditForm";
 import { BrowseViewHeader } from "./BrowseViewHeader";
 import type { ViewMode } from "./FilterBar";
 import { languageDisplayName } from "./Sidebar";
@@ -136,16 +141,21 @@ function monthName(month: number): string {
   return new Date(2000, month, 1).toLocaleDateString(undefined, { month: "long" });
 }
 
-// Deliberately not displayTitle/displaySubtitle (issueDisplay.ts) here - those resolve an issue's
-// "title" to its periodical's own name, which is exactly what every card/row on this page would
-// otherwise repeat back at the user since they're already looking at that periodical. Volume/
-// issue number and date are what actually distinguish one issue from another in this view.
-function issueBadge(issue: BookSummary, t: (key: TranslationKey, vars?: Record<string, string | number>) => string): string {
+// Deliberately not displayTitle/displaySubtitle (issueDisplay.ts) here - those put the periodical's
+// own name front and center, which is exactly what every card/row on this page would otherwise
+// repeat back at the user since they're already looking at that periodical. The issue's date is
+// the headline instead, with volume/issue number underneath - together those actually distinguish
+// one issue from another in this view; the file-derived title (issue.title) is shown nowhere here.
+function issueVolumeIssueLabel(
+  issue: BookSummary,
+  t: (key: TranslationKey, vars?: Record<string, string | number>) => string,
+): string {
   return [
     issue.volumeNumber != null ? t("periodicalDetail.volumeShort", { number: issue.volumeNumber }) : null,
     issue.issueNumber != null ? t("periodicalDetail.issueShort", { number: issue.issueNumber }) : null,
-    issue.issueDate ? new Date(issue.issueDate).toLocaleDateString() : null,
-  ].filter(Boolean).join(" · ");
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 // A grouped-by-date view is expected to render many small groups rather than one huge list, so
@@ -154,21 +164,24 @@ function issueBadge(issue: BookSummary, t: (key: TranslationKey, vars?: Record<s
 // stacked inside one already-scrolling parent (each group here).
 function IssueCard({ issue, onClick }: { issue: BookSummary; onClick: () => void }) {
   const { t } = useLanguage();
-  const badge = issueBadge(issue, t);
+  const dateLabel = formatIssueDateInfo(issue.issueDate, issue.periodicalFrequency, t);
+  const volumeIssueLabel = issueVolumeIssueLabel(issue, t);
 
   return (
     <UnstyledButton onClick={onClick} style={{ display: "flex", flexDirection: "column" }}>
       {issue.hasCover ? (
         <Image src={coverUrl(issue.id)} w={140} h={200} radius="sm" fit="cover" />
       ) : (
-        <SpineCover id={issue.id} title={issue.title} width={140} height={200} />
+        <SpineCover id={issue.id} title={dateLabel || issue.title} width={140} height={200} />
       )}
-      <Text size="sm" fw={600} mt={8} lineClamp={2} title={issue.title}>
-        {issue.title}
-      </Text>
-      {badge && (
+      {dateLabel && (
+        <Text size="sm" fw={600} mt={8} lineClamp={1} title={dateLabel}>
+          {dateLabel}
+        </Text>
+      )}
+      {volumeIssueLabel && (
         <Text size="xs" c="dimmed">
-          {badge}
+          {volumeIssueLabel}
         </Text>
       )}
     </UnstyledButton>
@@ -176,33 +189,130 @@ function IssueCard({ issue, onClick }: { issue: BookSummary; onClick: () => void
 }
 
 // List-view counterpart to IssueCard, above - same reasoning (custom rather than reusing
-// BookList.tsx, which would show the redundant periodical name as every row's title).
-function IssueTable({ issues, onSelectIssue }: { issues: BookSummary[]; onSelectIssue: (id: string) => void }) {
+// BookList.tsx, which would show the redundant periodical name as every row's title). Its own
+// row component (rather than inlining the .map body) so the delete confirmation can hold its own
+// local state, same pattern as BookList.tsx's BookRow.
+function IssueRow({
+  issue,
+  onSelectIssue,
+  onEdit,
+}: {
+  issue: BookSummary;
+  onSelectIssue: (id: string) => void;
+  onEdit: (id: string) => void;
+}) {
   const { t } = useLanguage();
+  const queryClient = useQueryClient();
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const dateLabel = formatIssueDateInfo(issue.issueDate, issue.periodicalFrequency, t);
+  const volumeIssueLabel = issueVolumeIssueLabel(issue, t);
 
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
+      const { folderPath } = await deleteBook(issue.id);
+      await window.maktaba.trashPath(folderPath);
+    },
+    onSuccess: () => {
+      setConfirmingDelete(false);
+      invalidateLibraryQueries(queryClient);
+    },
+  });
+
+  return (
+    <>
+      <Table.Tr onClick={() => onSelectIssue(issue.id)} style={{ cursor: "pointer" }}>
+        <Table.Td w={44}>
+          {issue.hasCover ? (
+            <Image src={coverUrl(issue.id)} w={30} h={42} radius="sm" fit="cover" />
+          ) : (
+            <SpineCover id={issue.id} title={dateLabel || issue.title} width={30} height={42} />
+          )}
+        </Table.Td>
+        <Table.Td>
+          <Text size="sm" fw={600} lineClamp={1} title={dateLabel}>
+            {dateLabel}
+          </Text>
+        </Table.Td>
+        <Table.Td>
+          <Text size="xs" c="dimmed">
+            {volumeIssueLabel}
+          </Text>
+        </Table.Td>
+        <Table.Td>
+          <Badge color={READING_STATUS_COLOR[issue.readingStatus]} variant="light" size="sm">
+            {t(READING_STATUS_LABEL_KEY[issue.readingStatus])}
+          </Badge>
+        </Table.Td>
+        <Table.Td>
+          <Group gap={4} wrap="nowrap" justify="flex-end">
+            <Tooltip label={t("bookDetail.edit")}>
+              <ActionIcon
+                size="sm"
+                variant="subtle"
+                color="gray"
+                aria-label={t("bookDetail.edit")}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onEdit(issue.id);
+                }}
+              >
+                <IconEdit size={14} />
+              </ActionIcon>
+            </Tooltip>
+            <Tooltip label={t("bookDetail.remove")}>
+              <ActionIcon
+                size="sm"
+                variant="subtle"
+                color="red"
+                aria-label={t("bookDetail.remove")}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setConfirmingDelete(true);
+                }}
+              >
+                <IconTrash size={14} />
+              </ActionIcon>
+            </Tooltip>
+          </Group>
+        </Table.Td>
+      </Table.Tr>
+
+      <Modal opened={confirmingDelete} onClose={() => setConfirmingDelete(false)} title={t("bookDetail.remove")} centered>
+        <Stack gap="md">
+          <Text size="sm">{t("bookDetail.confirmRemove")}</Text>
+          {deleteMutation.isError && (
+            <Alert color="red" icon={<IconAlertCircle size={16} />}>
+              {deleteMutation.error instanceof Error ? deleteMutation.error.message : String(deleteMutation.error)}
+            </Alert>
+          )}
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setConfirmingDelete(false)} disabled={deleteMutation.isPending}>
+              {t("common.cancel")}
+            </Button>
+            <Button color="red" loading={deleteMutation.isPending} onClick={() => deleteMutation.mutate()}>
+              {t("common.confirm")}
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+    </>
+  );
+}
+
+function IssueTable({
+  issues,
+  onSelectIssue,
+  onEdit,
+}: {
+  issues: BookSummary[];
+  onSelectIssue: (id: string) => void;
+  onEdit: (id: string) => void;
+}) {
   return (
     <Table verticalSpacing="xs" highlightOnHover>
       <Table.Tbody>
         {issues.map((issue) => (
-          <Table.Tr key={issue.id} onClick={() => onSelectIssue(issue.id)} style={{ cursor: "pointer" }}>
-            <Table.Td w={44}>
-              {issue.hasCover ? (
-                <Image src={coverUrl(issue.id)} w={30} h={42} radius="sm" fit="cover" />
-              ) : (
-                <SpineCover id={issue.id} title={issue.title} width={30} height={42} />
-              )}
-            </Table.Td>
-            <Table.Td>
-              <Text size="sm" fw={600} lineClamp={1} title={issue.title}>
-                {issue.title}
-              </Text>
-            </Table.Td>
-            <Table.Td>
-              <Text size="xs" c="dimmed">
-                {issueBadge(issue, t)}
-              </Text>
-            </Table.Td>
-          </Table.Tr>
+          <IssueRow key={issue.id} issue={issue} onSelectIssue={onSelectIssue} onEdit={onEdit} />
         ))}
       </Table.Tbody>
     </Table>
@@ -216,6 +326,7 @@ export function PeriodicalDetailView({ periodicalId, onBack, onSelectBook }: Per
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [selection, setSelection] = useState<IssueSelection>({ type: "all" });
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
+  const [editingIssueId, setEditingIssueId] = useState<string | null>(null);
   const [form, setForm] = useState({
     name: "",
     description: "",
@@ -592,13 +703,17 @@ export function PeriodicalDetailView({ periodicalId, onBack, onSelectBook }: Per
                     ))}
                   </SimpleGrid>
                 ) : (
-                  <IssueTable issues={visibleIssues} onSelectIssue={onSelectBook} />
+                  <IssueTable issues={visibleIssues} onSelectIssue={onSelectBook} onEdit={setEditingIssueId} />
                 )}
               </ScrollArea>
             )}
           </Box>
         </Group>
       </Box>
+
+      {editingIssueId && (
+        <BookEditForm bookId={editingIssueId} onClose={() => setEditingIssueId(null)} onSaved={() => setEditingIssueId(null)} />
+      )}
 
       <Modal
         opened={confirmingDelete}

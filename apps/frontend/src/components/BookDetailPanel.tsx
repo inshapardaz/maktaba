@@ -193,7 +193,7 @@ export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelP
   // while the book loads.
   const openReader = (format: "Epub" | "Pdf", absolutePath: string) => {
     onClose();
-    launchReader({ bookId, format, title: book && displayTitle(book), absolutePath, readingStatus: book?.readingStatus ?? "Unread" });
+    launchReader({ bookId, format, title: book && displayTitle(book, t), absolutePath, readingStatus: book?.readingStatus ?? "Unread" });
   };
 
   const readableFiles: (BookFileInfo & { format: "Epub" | "Pdf" })[] =
@@ -234,7 +234,7 @@ export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelP
             ) : (
               <SpineCover
                 id={book.id}
-                title={displayTitle(book)}
+                title={displayTitle(book, t)}
                 author={displaySubtitle(book, t)}
                 width={110}
                 height={165}
@@ -245,9 +245,21 @@ export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelP
             )}
 
             <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
-              <Title order={3}>{displayTitle(book)}</Title>
+              <Title order={3}>{displayTitle(book, t)}</Title>
               {book.periodicalId ? (
-                <Text c="dimmed">{displaySubtitle(book, t)}</Text>
+                <>
+                  <Text c="dimmed">{displaySubtitle(book, t)}</Text>
+                  {(book.volumeNumber != null || book.issueNumber != null) && (
+                    <Text size="sm" c="dimmed">
+                      {[
+                        book.volumeNumber != null ? t("periodicalDetail.volumeShort", { number: book.volumeNumber }) : null,
+                        book.issueNumber != null ? t("periodicalDetail.issueShort", { number: book.issueNumber }) : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </Text>
+                  )}
+                </>
               ) : book.authorRefs.length > 0 ? (
                 <Group gap="sm">
                   {book.authorRefs.map((author) => (

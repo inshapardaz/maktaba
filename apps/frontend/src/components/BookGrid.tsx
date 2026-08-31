@@ -58,7 +58,7 @@ function BookCard({ book, index, selected, selectedIds, onSelect, onEdit }: Book
         launchReader({
           bookId: book.id,
           format: file.format,
-          title: displayTitle(detail),
+          title: displayTitle(detail, t),
           absolutePath: file.absolutePath,
           readingStatus: detail.readingStatus,
         });
@@ -100,7 +100,7 @@ function BookCard({ book, index, selected, selectedIds, onSelect, onEdit }: Book
         ) : (
           <SpineCover
             id={book.id}
-            title={displayTitle(book)}
+            title={displayTitle(book, t)}
             author={displaySubtitle(book, t)}
             width={CARD_WIDTH}
             height={COVER_HEIGHT}
@@ -216,8 +216,8 @@ function BookCard({ book, index, selected, selectedIds, onSelect, onEdit }: Book
           "activate the button" even with stopPropagation on the input). Disabled for card view -
           use the pencil-edit affordance in list view (BookList.tsx), or the full edit form
           (onEdit, above), to rename a title instead. */}
-      <Text size="sm" fw={600} mt={8} lineClamp={2} title={displayTitle(book)}>
-        {displayTitle(book)}
+      <Text size="sm" fw={600} mt={8} lineClamp={2} title={displayTitle(book, t)}>
+        {displayTitle(book, t)}
       </Text>
       <Text size="xs" c="dimmed" truncate="end" title={displaySubtitle(book, t)}>
         {displaySubtitle(book, t)}

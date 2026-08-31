@@ -126,7 +126,7 @@ function BookRow({ book, index, selected, selectedIds, onSelect, onEdit }: BookR
         launchReader({
           bookId: book.id,
           format: file.format,
-          title: displayTitle(detail),
+          title: displayTitle(detail, t),
           absolutePath: file.absolutePath,
           readingStatus: detail.readingStatus,
         });
@@ -165,11 +165,11 @@ function BookRow({ book, index, selected, selectedIds, onSelect, onEdit }: BookR
               style={{ flexShrink: 0, border: "1px solid var(--mantine-color-default-border)" }}
             />
           ) : (
-            <SpineCover id={book.id} title={displayTitle(book)} width={THUMB_WIDTH} height={THUMB_HEIGHT} titleSize={6} padding={3} />
+            <SpineCover id={book.id} title={displayTitle(book, t)} width={THUMB_WIDTH} height={THUMB_HEIGHT} titleSize={6} padding={3} />
           )}
           {isIssue ? (
             <Group gap={4} wrap="nowrap">
-              <Box component="span">{displayTitle(book)}</Box>
+              <Box component="span">{displayTitle(book, t)}</Box>
               {readableFormats.length > 1 &&
                 readableFormats.map((format) => (
                   <Badge key={format} size="xs" variant="outline" color="gray">

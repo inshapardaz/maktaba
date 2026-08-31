@@ -24,6 +24,9 @@ export interface BookSummary {
   // frontend render issue badges (volume/number/date) without a second request per book.
   periodicalId: string | null;
   periodicalName: string | null;
+  // The issue's periodical's own frequency - lets issueDisplay.ts pick the right granularity
+  // (year/quarter/month/exact date) for the issue's displayed date without a second request.
+  periodicalFrequency: PeriodicalFrequency | null;
   issueNumber: number | null;
   volumeNumber: number | null;
   issueDate: string | null;

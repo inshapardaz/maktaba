@@ -149,8 +149,12 @@ const en = {
   "periodicalDetail.issueShort": "No. {number}",
 
   // Replaces the author line for an issue everywhere a book's authors would normally show
-  // (BookGrid/BookList/BookDetailPanel/the reader) - see issueDisplay.ts.
-  "issueInfo.dateLine": "{year} · {month} · Week {week}",
+  // (BookGrid/BookList/BookDetailPanel/the reader) - see issueDisplay.ts. Which of these is used
+  // depends on the issue's periodical's frequency (Yearly/Quarterly/Monthly get their own coarser
+  // format; Daily/Weekly/BiWeekly/Occasional fall back to a plain long date, formatted locally).
+  "issueInfo.dateYear": "{year}",
+  "issueInfo.dateQuarter": "Q{quarter} {year}",
+  "issueInfo.dateMonth": "{month} {year}",
 
   "dragDrop.authorSet_one": 'Author set to "{name}" for {count} book',
   "dragDrop.authorSet_other": 'Author set to "{name}" for {count} books',
@@ -564,7 +568,9 @@ const ur: TranslationDict = {
   "periodicalDetail.volumeShort": "جلد {number}",
   "periodicalDetail.issueShort": "شمارہ {number}",
 
-  "issueInfo.dateLine": "{year} · {month} · ہفتہ {week}",
+  "issueInfo.dateYear": "{year}",
+  "issueInfo.dateQuarter": "سہ ماہی {quarter} {year}",
+  "issueInfo.dateMonth": "{month} {year}",
 
   "dragDrop.authorSet_one": '{count} کتاب کے لیے مصنف "{name}" مقرر کر دیا گیا',
   "dragDrop.authorSet_other": '{count} کتابوں کے لیے مصنف "{name}" مقرر کر دیا گیا',
