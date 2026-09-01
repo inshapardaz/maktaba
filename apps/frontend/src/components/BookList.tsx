@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { notifications } from "@mantine/notifications";
 import { ActionIcon, Badge, Box, Group, HoverCard, Image, Loader, Menu, Stack, Text, TextInput, Tooltip, UnstyledButton } from "@mantine/core";
-import { IconBook2, IconChevronDown, IconEdit, IconPencil } from "../icons";
+import { IconBook2, IconChevronDown, IconEdit, IconFolder, IconPencil, IconTag } from "../icons";
 import {
   coverUrl,
   getBook,
@@ -275,12 +275,12 @@ function BookRow({ book, index, selected, selectedIds, onSelect, onEdit, onMerge
                 </Badge>
               )}
               {book.collectionNames.map((collection) => (
-                <Badge key={collection} size="xs" variant="light" color="blue">
+                <Badge key={collection} size="xs" variant="light" color="blue" leftSection={<IconFolder size={10} />}>
                   {collection}
                 </Badge>
               ))}
               {book.tags.map((tag) => (
-                <Badge key={tag} size="xs" variant="outline" color="gray">
+                <Badge key={tag} size="xs" variant="outline" color="gray" leftSection={<IconTag size={10} />}>
                   {tag}
                 </Badge>
               ))}
