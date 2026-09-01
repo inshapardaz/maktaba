@@ -148,10 +148,10 @@ export function ImportDialog() {
             </Tooltip>
           </Group>
         }
-        size="xl"
+        fullScreen
         closeOnClickOutside={false}
         styles={{
-          content: { display: "flex", flexDirection: "column", maxHeight: "85vh" },
+          content: { display: "flex", flexDirection: "column" },
           body: { display: "flex", flexDirection: "column", flex: 1, minHeight: 0 },
         }}
       >
@@ -296,7 +296,7 @@ export function ImportDialog() {
             </Stack>
           )}
 
-          <ScrollArea style={{ flex: 1, minHeight: 0 }} type="auto">
+          <ScrollArea style={{ flex: 1, minHeight: 0 }} type="always">
             {queue.length === 0 ? (
               <Text size="sm" c="dimmed" ta="center" py="md">
                 {t("importDialog.empty")}
