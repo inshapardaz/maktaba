@@ -20,6 +20,10 @@ export interface BookSummary {
   seriesName: string | null;
   // Issue #43 - lets BookList show tag badges without a per-row detail fetch.
   tags: string[];
+  // Issue #43 (follow-up) - collection ("category") names, same rationale as tags above. Named
+  // differently from BookDetail's own `collections` (richer {id, name} refs, needed there to link
+  // back to a collection) to avoid the two clashing where BookDetail extends BookSummary.
+  collectionNames: string[];
   lastReadAt: string | null;
   // Distinct formats this book has a file for (e.g. ["Epub", "Pdf"]) - lets BookGrid/BookList
   // decide whether to show a split "Read" button without a per-row detail fetch; the file's

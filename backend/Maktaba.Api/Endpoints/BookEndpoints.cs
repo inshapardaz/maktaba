@@ -45,6 +45,7 @@ public static class BookEndpoints
                 .Include(b => b.BookAuthors).ThenInclude(ba => ba.Author)
                 .Include(b => b.BookSeries).ThenInclude(bs => bs.Series)
                 .Include(b => b.BookTags).ThenInclude(bt => bt.Tag)
+                .Include(b => b.BookCollections).ThenInclude(bc => bc.Collection)
                 .Include(b => b.Files)
                 .Include(b => b.Periodical)
                 .AsNoTracking()
@@ -163,6 +164,7 @@ public static class BookEndpoints
                     b.BookSeries.FirstOrDefault()?.SeriesIndex,
                     b.BookSeries.FirstOrDefault()?.Series.Name,
                     b.BookTags.Select(bt => bt.Tag.Name).ToArray(),
+                    b.BookCollections.Select(bc => bc.Collection.Name).ToArray(),
                     lastReadByBookId.TryGetValue(b.Id, out var lastRead) ? lastRead : null,
                     b.Files.Select(f => f.Format.ToString()).Distinct().ToArray(),
                     b.PeriodicalId is not null ? IdCodec.Encode(b.PeriodicalId.Value) : null,
@@ -237,6 +239,7 @@ public static class BookEndpoints
                 .Include(b => b.BookAuthors).ThenInclude(ba => ba.Author)
                 .Include(b => b.BookSeries).ThenInclude(bs => bs.Series)
                 .Include(b => b.BookTags).ThenInclude(bt => bt.Tag)
+                .Include(b => b.BookCollections).ThenInclude(bc => bc.Collection)
                 .Include(b => b.Files)
                 .Include(b => b.Periodical)
                 .AsNoTracking()
@@ -266,6 +269,7 @@ public static class BookEndpoints
                     b.BookSeries.FirstOrDefault()?.SeriesIndex,
                     b.BookSeries.FirstOrDefault()?.Series.Name,
                     b.BookTags.Select(bt => bt.Tag.Name).ToArray(),
+                    b.BookCollections.Select(bc => bc.Collection.Name).ToArray(),
                     null,
                     b.Files.Select(f => f.Format.ToString()).Distinct().ToArray(),
                     b.PeriodicalId is not null ? IdCodec.Encode(b.PeriodicalId.Value) : null,

@@ -267,13 +267,18 @@ function BookRow({ book, index, selected, selectedIds, onSelect, onEdit, onMerge
           <Text size="sm" c="dimmed" truncate="end" style={{ maxWidth: "100%" }}>
             {displaySubtitle(book, t)}
           </Text>
-          {(book.seriesName || book.tags.length > 0) && (
+          {(book.seriesName || book.tags.length > 0 || book.collectionNames.length > 0) && (
             <Group gap={4} mt={4} wrap="wrap">
               {book.seriesName && (
                 <Badge size="xs" variant="dot" color="gray">
                   {book.seriesIndex != null ? `${book.seriesName} #${book.seriesIndex}` : book.seriesName}
                 </Badge>
               )}
+              {book.collectionNames.map((collection) => (
+                <Badge key={collection} size="xs" variant="light" color="blue">
+                  {collection}
+                </Badge>
+              ))}
               {book.tags.map((tag) => (
                 <Badge key={tag} size="xs" variant="outline" color="gray">
                   {tag}

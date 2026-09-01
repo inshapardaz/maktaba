@@ -25,6 +25,11 @@ public record BookSummaryDto(
     string? SeriesName,
     // Issue #43 - lets BookList show tag badges without a per-row detail fetch.
     string[] Tags,
+    // Issue #43 (follow-up) - lets BookList show collection ("category") badges without a per-row
+    // detail fetch, same rationale as Tags above. Named differently from BookDetailDto's own
+    // Collections (richer {id, name} objects, needed there to link back to a collection) since the
+    // frontend's BookDetail interface extends BookSummary and the two would otherwise clash.
+    string[] CollectionNames,
     DateTime? LastReadAt,
     // Distinct formats this book has a file for (e.g. ["Epub", "Pdf"]) - lets BookGrid/BookList show
     // a split "Read" button and BookList show format badges without a per-row detail fetch, since
