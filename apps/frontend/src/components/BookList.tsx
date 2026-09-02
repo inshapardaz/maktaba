@@ -188,7 +188,15 @@ function BookRow({ book, index, selected, selectedIds, onSelect, onEdit, onMerge
         outlineOffset: -2,
         // Hover uses the same terracotta-tinted --mantine-primary-color-light-hover the sidebar's
         // NavLink rows already hover with (Mantine's own --nl-hover), rather than a bespoke tint.
-        backgroundColor: selected ? "var(--mantine-primary-color-light)" : hovered ? "var(--mantine-primary-color-light-hover)" : "#ebddc5",
+        // The idle background uses the Organic theme's own surface token (--app-surface, see
+        // theme.ts) with Mantine's own body color as fallback - --app-surface is only ever defined
+        // when the Organic theme's cssVariablesResolver is active, so under the White theme this
+        // correctly falls back instead of resolving to Organic's hardcoded sepia hex.
+        backgroundColor: selected
+          ? "var(--mantine-primary-color-light)"
+          : hovered
+            ? "var(--mantine-primary-color-light-hover)"
+            : "var(--app-surface, var(--mantine-color-body))",
         border: "1px solid var(--mantine-color-default-border)",
       }}
     >
