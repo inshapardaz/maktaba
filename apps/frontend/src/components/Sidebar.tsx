@@ -4,11 +4,14 @@ import {
   Avatar,
   Badge,
   Box,
+  Divider,
   Group,
   HoverCard,
+  Menu,
   NavLink,
   Popover,
   ScrollArea,
+  SegmentedControl,
   Stack,
   Text,
   TextInput,
@@ -30,6 +33,7 @@ import {
   IconLanguage,
   IconMoon,
   IconNews,
+  IconPalette,
   IconPlus,
   IconSettings,
   IconStack2,
@@ -53,10 +57,12 @@ import {
   type BrowseGroup,
 } from "../api";
 import { isBookDrag, readBookDragIds } from "../bookDrag";
+import { useAppTheme, type AppThemeName } from "../AppThemeContext";
 import { useLanguage } from "../i18n/LanguageContext";
 import { LANGUAGES, type TranslationKey } from "../i18n/translations";
 import { LibrarySwitcher } from "./LibrarySwitcher";
 import type { SettingsTab } from "./SettingsScreen";
+import { ThemeColorSwatches } from "./ThemeColorSwatches";
 
 export type GroupFilterKind =
   | "authorId"
@@ -346,6 +352,7 @@ export function Sidebar({
   const { dir } = useDirection();
   const { setColorScheme } = useMantineColorScheme();
   const computedColorScheme = useComputedColorScheme("light");
+  const { appTheme, setAppTheme } = useAppTheme();
   const queryClient = useQueryClient();
   const authorsQuery = useQuery({ queryKey: ["authors"], queryFn: listAuthors });
   const publishersQuery = useQuery({ queryKey: ["publisherGroups"], queryFn: listPublisherGroups });
@@ -778,17 +785,53 @@ export function Sidebar({
       <Box p={4} style={{ borderTop: "1px solid var(--mantine-color-default-border)" }}>
         <Group gap={4} wrap="wrap" align="center">
           <LibrarySwitcher onLibraryChanged={onLibraryChanged} onManage={() => onOpenSettings("libraries")} compact={collapsed} />
-          <Tooltip label={t("toolbar.colorSchemeToggle")}>
-            <ActionIcon
-              variant="subtle"
-              color="gray"
-              size="lg"
-              onClick={() => setColorScheme(computedColorScheme === "light" ? "dark" : "light")}
-              aria-label={t("toolbar.colorSchemeToggle")}
-            >
-              {computedColorScheme === "light" ? <IconMoon size={17} /> : <IconSun size={17} />}
-            </ActionIcon>
-          </Tooltip>
+          <Menu position="top-start" shadow="md" width={220}>
+            <Menu.Target>
+              <Tooltip label={t("toolbar.theme")}>
+                <ActionIcon variant="subtle" color="gray" size="lg" aria-label={t("toolbar.theme")}>
+                  <IconPalette size={17} />
+                </ActionIcon>
+              </Tooltip>
+            </Menu.Target>
+            <Menu.Dropdown>
+              <Menu.Label>{t("settings.appTheme")}</Menu.Label>
+              <Box px="xs" pb="xs">
+                <SegmentedControl
+                  fullWidth
+                  size="xs"
+                  value={appTheme}
+                  onChange={(value) => setAppTheme(value as AppThemeName)}
+                  data={[
+                    { value: "organic", label: t("settings.appTheme.organic") },
+                    { value: "white", label: t("settings.appTheme.white") },
+                  ]}
+                />
+              </Box>
+              <Divider />
+              <Menu.Label>{t("settings.colorScheme")}</Menu.Label>
+              <Box px="xs" pb="xs">
+                <SegmentedControl
+                  fullWidth
+                  size="xs"
+                  value={computedColorScheme}
+                  onChange={(value) => setColorScheme(value as "light" | "dark")}
+                  data={[
+                    { value: "light", label: <IconSun size={14} /> },
+                    { value: "dark", label: <IconMoon size={14} /> },
+                  ]}
+                />
+              </Box>
+              {appTheme === "white" && (
+                <>
+                  <Divider />
+                  <Menu.Label>{t("settings.accentColor")}</Menu.Label>
+                  <Box px="xs" pb="xs">
+                    <ThemeColorSwatches />
+                  </Box>
+                </>
+              )}
+            </Menu.Dropdown>
+          </Menu>
           <Tooltip label={`${t("toolbar.language")}: ${otherLanguage.label}`}>
             <ActionIcon
               variant="subtle"

@@ -274,10 +274,14 @@ export function ReaderOverlay({ bookId, format, onClose, embedded }: ReaderOverl
   const statusMutation = useMutation({
     mutationFn: (status: ReadingStatus) => updateBookStatus(bookId, status),
     onSuccess: () => {
-      // This reader window's own cache, not the main window's (separate process, separate
-      // QueryClient - see main.tsx) - the main window picks up the change next time it refetches
-      // (focus, navigation, etc.), same as any other cross-window edit today.
+      // When embedded (InlineReader), this shares the main window's QueryClient, so these
+      // invalidations keep the title bar's reading-status counts in sync. When popped out into
+      // its own window (separate process, separate QueryClient - see main.tsx), these are no-ops
+      // here and the main window picks up the change next time it refetches (focus, navigation,
+      // etc.), same as any other cross-window edit today.
       void queryClient.invalidateQueries({ queryKey: ["book", bookId] });
+      void queryClient.invalidateQueries({ queryKey: ["books"] });
+      void queryClient.invalidateQueries({ queryKey: ["readingStatusCounts"] });
     },
   });
 

@@ -341,6 +341,7 @@ export function BookGrid({ books, selectedIds, onSelect, onDragSelect }: BookGri
             height: marqueeRect.height,
             border: "1px solid var(--mantine-primary-color-6)",
             backgroundColor: "var(--mantine-primary-color-light)",
+            opacity: 0.5,
             pointerEvents: "none",
             zIndex: 100,
           }}

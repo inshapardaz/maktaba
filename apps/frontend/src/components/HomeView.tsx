@@ -15,7 +15,14 @@ import { useLanguage } from "../i18n/LanguageContext";
 import { getStoredShowIssuesInGrid } from "../periodicalSettings";
 import { useReaderLauncher } from "../ReaderLauncherContext";
 import { invalidateLibraryQueries } from "../queries";
+import { BookRow } from "./BookList";
 import { SpineCover } from "./SpineCover";
+
+// No-op stand-ins for BookList's selection/merge machinery - the Recently Added shelf reuses
+// BookRow (issue #52) purely for its richer per-book detail, not for multi-select or drag-to-merge,
+// which don't make sense in this compact Home-page context.
+const NO_SELECTION = new Set<string>();
+function noopMergeRequest() {}
 
 function SectionLabel({ children }: { children: string }) {
   return (
@@ -288,47 +295,18 @@ export function HomeView({ onSelectBook }: HomeViewProps) {
         {recentBooks.length > 0 && (
           <Box>
             <SectionLabel>{t("home.recentlyAdded")}</SectionLabel>
-            <Stack gap="xs">
-              {recentBooks.map((book) => (
-                <UnstyledButton
+            <Stack gap="sm">
+              {recentBooks.map((book, index) => (
+                <BookRow
                   key={book.id}
-                  draggable
-                  onDragStart={(event) => setBookDragData(event, [book.id])}
-                  onClick={() => onSelectBook(book.id)}
-                  style={{
-                    display: "block",
-                    padding: "var(--mantine-spacing-xs)",
-                    border: "1px solid var(--mantine-color-default-border)",
-                    borderRadius: "var(--mantine-radius-sm)",
-                  }}
-                >
-                  <Group gap="sm" wrap="nowrap">
-                    {book.hasCover ? (
-                      <Image
-                        src={coverUrl(book.id)}
-                        alt=""
-                        w={36}
-                        h={54}
-                        fit="cover"
-                        radius={4}
-                        style={{ flexShrink: 0, border: "1px solid var(--mantine-color-default-border)" }}
-                      />
-                    ) : (
-                      <SpineCover id={book.id} title={book.title} width={36} height={54} titleSize={7} padding={4} />
-                    )}
-                    <Stack gap={2} style={{ minWidth: 0 }}>
-                      <Text fw={600} size="sm" truncate="end">
-                        {book.title}
-                      </Text>
-                      <Group gap={4} wrap="nowrap">
-                        {book.authorRefs.length > 0 && <AuthorAvatar authorRefs={book.authorRefs} size={16} />}
-                        <Text size="xs" c="dimmed" truncate="end">
-                          {book.authors.join(", ") || t("common.unknownAuthor")}
-                        </Text>
-                      </Group>
-                    </Stack>
-                  </Group>
-                </UnstyledButton>
+                  book={book}
+                  index={index}
+                  selected={false}
+                  selectedIds={NO_SELECTION}
+                  onSelect={() => onSelectBook(book.id)}
+                  onEdit={() => onSelectBook(book.id)}
+                  onMergeRequest={noopMergeRequest}
+                />
               ))}
             </Stack>
           </Box>

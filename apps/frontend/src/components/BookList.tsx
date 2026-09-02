@@ -36,7 +36,7 @@ interface BookListProps {
   onDragSelect: (ids: string[]) => void;
 }
 
-interface BookRowProps {
+export interface BookRowProps {
   book: BookSummary;
   index: number;
   selected: boolean;
@@ -57,7 +57,10 @@ function isReadableFormat(format: string): format is "Epub" | "Pdf" {
 // A row's own component (rather than inlining the .map body) so its Read action can hold its own
 // loading state, same reasoning as BookGrid.tsx's BookCard - fetching the book detail to resolve
 // which file to open is async, and without a per-row flag a rapid double-click would fire it twice.
-function BookRow({ book, index, selected, selectedIds, onSelect, onEdit, onMergeRequest }: BookRowProps) {
+// Exported for reuse by HomeView's "Recently Added" shelf (issue #52) so it shows the same rating/
+// status/format/series/tags/collection details as the main library list view instead of a
+// stripped-down cover+title+author row.
+export function BookRow({ book, index, selected, selectedIds, onSelect, onEdit, onMergeRequest }: BookRowProps) {
   const { t } = useLanguage();
   const launchReader = useReaderLauncher();
   const queryClient = useQueryClient();
@@ -424,6 +427,7 @@ export function BookList({ books, selectedIds, onSelect, onDragSelect }: BookLis
             height: marqueeRect.height,
             border: "1px solid var(--mantine-primary-color-6)",
             backgroundColor: "var(--mantine-primary-color-light)",
+            opacity: 0.5,
             pointerEvents: "none",
             zIndex: 100,
           }}

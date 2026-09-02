@@ -12,4 +12,6 @@ export function invalidateLibraryQueries(queryClient: QueryClient) {
   void queryClient.invalidateQueries({ queryKey: ["collections"] });
   void queryClient.invalidateQueries({ queryKey: ["periodicals"] });
   void queryClient.invalidateQueries({ queryKey: ["readingStatusCounts"] });
+  void queryClient.invalidateQueries({ queryKey: ["continueReading"] });
+  void queryClient.invalidateQueries({ queryKey: ["recentlyAdded"] });
 }

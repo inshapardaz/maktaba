@@ -190,24 +190,21 @@ function webPreferencesFor(handle: SidecarHandle) {
   };
 }
 
-// Matches the "Organic" theme's title bar surface/text colors (apps/frontend/src/theme.ts's
-// `semantic.surface`/`semantic.text`) so the native Windows/Linux caption-button strip blends into
-// the custom title bar rendered in the page instead of showing a mismatched generic light/dark
-// color (TitleBar.tsx calls maktaba:set-titlebar-overlay whenever the app's computed color scheme
-// changes). Electron's setTitleBarOverlay needs literal hex strings, not CSS variables, hence the
-// duplication - keep these in sync with theme.ts's semantic.surface/semantic.text if either
-// changes. macOS has no titleBarOverlay concept — it gets inset traffic lights instead.
+// Default colors used only until the page has painted and TitleBar.tsx sends the real, theme-aware
+// colors via maktaba:set-titlebar-overlay (see below) - matches the "Organic" theme's light-mode
+// title bar surface/text (apps/frontend/src/theme.ts's `semantic.surface`/`semantic.text`), which
+// is the app's default theme. macOS has no titleBarOverlay concept — it gets inset traffic lights
+// instead.
 const TITLEBAR_HEIGHT = 40;
+const DEFAULT_TITLEBAR_OVERLAY = { color: "#ebddc5", symbolColor: "#201e1d", height: TITLEBAR_HEIGHT };
 
-function titleBarOverlayFor(scheme: "light" | "dark") {
-  return scheme === "dark"
-    ? { color: "#332c22", symbolColor: "#f3ead9", height: TITLEBAR_HEIGHT }
-    : { color: "#ebddc5", symbolColor: "#201e1d", height: TITLEBAR_HEIGHT };
-}
-
-ipcMain.handle("maktaba:set-titlebar-overlay", (_event, scheme: "light" | "dark") => {
+// The native Windows/Linux caption-button strip needs literal color strings, not CSS variables, so
+// TitleBar.tsx reads the page's own currently-active theme colors (via getComputedStyle - whatever
+// app theme/color scheme is active, organic or white, light or dark) and forwards them here rather
+// than main.ts trying to duplicate/guess the renderer's theme logic.
+ipcMain.handle("maktaba:set-titlebar-overlay", (_event, colors: { color: string; symbolColor: string }) => {
   if (!isMac && mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.setTitleBarOverlay(titleBarOverlayFor(scheme));
+    mainWindow.setTitleBarOverlay({ ...colors, height: TITLEBAR_HEIGHT });
   }
 });
 
@@ -228,7 +225,7 @@ async function createWindow(): Promise<void> {
     show: false,
     ...(isMac
       ? { trafficLightPosition: { x: 16, y: (TITLEBAR_HEIGHT - 12) / 2 } }
-      : { titleBarOverlay: titleBarOverlayFor("light") }),
+      : { titleBarOverlay: DEFAULT_TITLEBAR_OVERLAY }),
   });
 
   mainWindow.once("ready-to-show", () => {

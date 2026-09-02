@@ -9,6 +9,7 @@ import "@mantine/spotlight/styles.css";
 import "./index.css";
 import { createOrganicTheme, createWhiteTheme, organicCssVariablesResolver } from "./theme";
 import { AppThemeProvider, useAppTheme } from "./AppThemeContext";
+import { ThemeColorProvider, useThemeColor } from "./ThemeColorContext";
 import { LanguageProvider, getStoredLanguage } from "./i18n/LanguageContext";
 import { ReaderOverlay } from "./components/ReaderOverlay";
 import { BackendGate } from "./components/BackendGate";
@@ -50,9 +51,15 @@ function ReaderWindow({ bookId, format, title }: { bookId: string; format: "Epub
 // Picks between the two selectable themes (Settings -> Appearance -> Theme) and rebuilds only when
 // the choice actually changes - organicCssVariablesResolver only applies to "organic" since its
 // overrides would otherwise leak into "white" too (MantineProvider's resolver isn't scoped per-theme).
+// The accent-color choice (ThemeColorContext) only affects "white" - "organic" hardcodes terracotta
+// as part of its own design system.
 function ThemedMantineProvider({ children }: { children: ReactNode }) {
   const { appTheme } = useAppTheme();
-  const theme = useMemo(() => (appTheme === "white" ? createWhiteTheme() : createOrganicTheme()), [appTheme]);
+  const { themeColor } = useThemeColor();
+  const theme = useMemo(
+    () => (appTheme === "white" ? createWhiteTheme(themeColor) : createOrganicTheme()),
+    [appTheme, themeColor],
+  );
   const cssVariablesResolver = appTheme === "white" ? undefined : organicCssVariablesResolver;
 
   return (
@@ -66,26 +73,28 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <DirectionProvider initialDirection={initialDirection}>
       <AppThemeProvider>
-        <ThemedMantineProvider>
-          <LanguageProvider>
-            <Notifications position="bottom-right" />
-            <QueryClientProvider client={queryClient}>
-              <BackendGate showTitleBar={!readerRequest && !isHelpWindow}>
-                {readerRequest ? (
-                  <ReaderWindow bookId={readerRequest.bookId} format={readerRequest.format} title={readerRequest.title} />
-                ) : isHelpWindow ? (
-                  <HelpWindow />
-                ) : (
-                  <ImportProvider>
-                    <RescanProvider>
-                      <App />
-                    </RescanProvider>
-                  </ImportProvider>
-                )}
-              </BackendGate>
-            </QueryClientProvider>
-          </LanguageProvider>
-        </ThemedMantineProvider>
+        <ThemeColorProvider>
+          <ThemedMantineProvider>
+            <LanguageProvider>
+              <Notifications position="bottom-right" />
+              <QueryClientProvider client={queryClient}>
+                <BackendGate showTitleBar={!readerRequest && !isHelpWindow}>
+                  {readerRequest ? (
+                    <ReaderWindow bookId={readerRequest.bookId} format={readerRequest.format} title={readerRequest.title} />
+                  ) : isHelpWindow ? (
+                    <HelpWindow />
+                  ) : (
+                    <ImportProvider>
+                      <RescanProvider>
+                        <App />
+                      </RescanProvider>
+                    </ImportProvider>
+                  )}
+                </BackendGate>
+              </QueryClientProvider>
+            </LanguageProvider>
+          </ThemedMantineProvider>
+        </ThemeColorProvider>
       </AppThemeProvider>
     </DirectionProvider>
   </StrictMode>,

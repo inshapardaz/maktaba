@@ -1,10 +1,27 @@
 import {
   createTheme,
+  DEFAULT_THEME,
   rem,
   type CSSVariablesResolver,
   type MantineColorsTuple,
   type MantineThemeOverride,
 } from "@mantine/core";
+
+// Selectable accent color for the "White" app theme (Settings -> Appearance, and the Sidebar's own
+// theme menu - see ThemeColorContext.tsx) - limited to Mantine's own built-in palettes so the app
+// stays visually stock Mantine. "Organic" doesn't use this - it hardcodes terracotta as part of its
+// own design system (see createOrganicTheme below).
+export type ThemeColorName = "blue" | "grape" | "green" | "orange" | "red";
+
+export const DEFAULT_THEME_COLOR: ThemeColorName = "blue";
+
+export const THEME_COLOR_OPTIONS: { value: ThemeColorName; label: string; swatch: string }[] = [
+  { value: "blue", label: "Blue", swatch: DEFAULT_THEME.colors.blue[6] },
+  { value: "grape", label: "Grape", swatch: DEFAULT_THEME.colors.grape[6] },
+  { value: "green", label: "Green", swatch: DEFAULT_THEME.colors.green[6] },
+  { value: "orange", label: "Orange", swatch: DEFAULT_THEME.colors.orange[6] },
+  { value: "red", label: "Red", swatch: DEFAULT_THEME.colors.red[6] },
+];
 
 /**
  * Maktaba's "Organic" design system: warm, rounded, a little playful. Everything below is driven
@@ -80,8 +97,8 @@ const organicShadows = {
 // before the Organic redesign. No cssVariablesResolver is applied when this theme is active either
 // (see main.tsx) - organicCssVariablesResolver's overrides would otherwise leak into this theme too
 // since MantineProvider's resolver isn't itself scoped per-theme.
-export function createWhiteTheme(): MantineThemeOverride {
-  return createTheme({});
+export function createWhiteTheme(primaryColor: ThemeColorName = DEFAULT_THEME_COLOR): MantineThemeOverride {
+  return createTheme({ primaryColor });
 }
 
 export function createOrganicTheme(): MantineThemeOverride {

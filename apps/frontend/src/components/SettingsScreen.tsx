@@ -22,6 +22,7 @@ import { ColorSchemeToggle } from "./ColorSchemeToggle";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { LibrariesSettings } from "./LibrariesSettings";
 import { StarDictSettings } from "./StarDictSettings";
+import { ThemeColorSwatches } from "./ThemeColorSwatches";
 
 export type SettingsTab = "general" | "libraries" | "reading" | "dictionaries" | "about";
 
@@ -139,6 +140,12 @@ export function SettingsScreen({ opened, onClose, onLibraryChanged, initialTab }
               <FieldLabel>{t("settings.colorScheme")}</FieldLabel>
               <ColorSchemeToggle />
             </Group>
+            {appTheme === "white" && (
+              <Group justify="space-between">
+                <FieldLabel>{t("settings.accentColor")}</FieldLabel>
+                <ThemeColorSwatches />
+              </Group>
+            )}
             <Group justify="space-between">
               <FieldLabel>{t("settings.urduFont")}</FieldLabel>
               <Select

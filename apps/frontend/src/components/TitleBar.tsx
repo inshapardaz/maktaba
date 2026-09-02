@@ -28,6 +28,7 @@ import {
 } from "../icons";
 import type { Icon } from "../icons";
 import { listReadingStatusCounts, type ReadingStatus } from "../api";
+import { useAppTheme } from "../AppThemeContext";
 import { useLanguage } from "../i18n/LanguageContext";
 import { READING_STATUS_COLOR } from "../readingStatus";
 import type { GroupFilter, MainView } from "./Sidebar";
@@ -260,15 +261,21 @@ export function TitleBar({
 }: TitleBarProps) {
   const { t } = useLanguage();
   const colorScheme = useComputedColorScheme("light");
+  const { appTheme } = useAppTheme();
   const libraryActive = mainView === "library" && !activeFilter;
   const showActions = hasLibrary && !actionsHidden;
   const { paddingLeft, paddingRight } = useTitleBarOverlayPadding();
 
-  // Keeps the native win/linux caption-button strip's colors matching the app's own light/dark
-  // setting rather than the OS default, which can otherwise mismatch the page right next to it.
+  // Keeps the native win/linux caption-button strip's colors matching the app's own currently
+  // active theme (organic/white) and light/dark setting rather than a hardcoded/mismatched color -
+  // reads the same CSS variables the page itself is themed with, so it stays correct across theme
+  // and accent-color changes without main.ts needing to know anything about the renderer's theme.
   useEffect(() => {
-    void window.maktaba.setTitleBarOverlay(colorScheme);
-  }, [colorScheme]);
+    const styles = getComputedStyle(document.body);
+    const color = styles.getPropertyValue("--mantine-color-body").trim() || (colorScheme === "dark" ? "#242019" : "#f5ead8");
+    const symbolColor = styles.getPropertyValue("--mantine-color-text").trim() || (colorScheme === "dark" ? "#f3ead9" : "#201e1d");
+    void window.maktaba.setTitleBarOverlay({ color, symbolColor });
+  }, [colorScheme, appTheme]);
 
   return (
     <Box

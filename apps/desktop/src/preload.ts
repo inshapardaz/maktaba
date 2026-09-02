@@ -78,10 +78,12 @@ contextBridge.exposeInMainWorld("maktaba", {
   // existing sidecar's health, or respawns it (and this window) entirely if it actually died.
   retrySidecar: (): Promise<void> => ipcRenderer.invoke("maktaba:retry-sidecar"),
 
-  // Keeps the native win/linux caption-button overlay in sync with the app's own light/dark
-  // setting (TitleBar.tsx calls this from a useComputedColorScheme effect); no-op on mac.
-  setTitleBarOverlay: (scheme: "light" | "dark"): Promise<void> =>
-    ipcRenderer.invoke("maktaba:set-titlebar-overlay", scheme),
+  // Keeps the native win/linux caption-button overlay in sync with the app's own active theme
+  // (organic/white) and light/dark setting - TitleBar.tsx computes these literal colors itself
+  // (via getComputedStyle, reading the same CSS variables the page is themed with) and calls this
+  // whenever the color scheme or app theme changes; no-op on mac.
+  setTitleBarOverlay: (colors: { color: string; symbolColor: string }): Promise<void> =>
+    ipcRenderer.invoke("maktaba:set-titlebar-overlay", colors),
 
   // Whether the standard File/Edit/View/Window/Help app menu (see main.ts/menu.ts) is on - a
   // persisted preference, not per-window state, toggled from Settings and reflected live in every
