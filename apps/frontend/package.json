@@ -9,7 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@inshapardaz/qari": "^0.2.23",
+    "@inshapardaz/qari": "^0.2.24",
     "@mantine/colors-generator": "^9.6.0",
     "@mantine/core": "^9.5.1",
     "@mantine/hooks": "^9.5.1",
