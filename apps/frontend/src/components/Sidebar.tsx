@@ -4,40 +4,30 @@ import {
   Avatar,
   Badge,
   Box,
-  Divider,
   Group,
   HoverCard,
-  Menu,
   NavLink,
   Popover,
   ScrollArea,
-  SegmentedControl,
   Stack,
   Text,
   TextInput,
   Tooltip,
   UnstyledButton,
-  useComputedColorScheme,
   useDirection,
-  useMantineColorScheme,
 } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   IconBuildingStore,
-  IconChartBar,
   IconCheck,
   IconChevronDown,
   IconChevronUp,
   IconFolder,
   IconFolderOpen,
   IconLanguage,
-  IconMoon,
   IconNews,
-  IconPalette,
   IconPlus,
-  IconSettings,
   IconStack2,
-  IconSun,
   IconTag,
   IconUser,
 } from "../icons";
@@ -57,12 +47,10 @@ import {
   type BrowseGroup,
 } from "../api";
 import { isBookDrag, readBookDragIds } from "../bookDrag";
-import { useAppTheme, type AppThemeName } from "../AppThemeContext";
 import { useLanguage } from "../i18n/LanguageContext";
-import { LANGUAGES, type TranslationKey } from "../i18n/translations";
+import type { TranslationKey } from "../i18n/translations";
 import { LibrarySwitcher } from "./LibrarySwitcher";
 import type { SettingsTab } from "./SettingsScreen";
-import { ThemeColorSwatches } from "./ThemeColorSwatches";
 
 export type GroupFilterKind =
   | "authorId"
@@ -135,11 +123,8 @@ export function withUnknownAuthorLabel(
 interface SidebarProps {
   activeFilter: GroupFilter | null;
   onSelect: (filter: GroupFilter | null) => void;
-  settingsOpen: boolean;
-  collapsed: boolean;
-  // Current expanded-state width in px and its setter, for the drag handle at the sidebar's
-  // inline-end edge (see the resize handling below) - ignored while collapsed (fixed at the
-  // 56px icon rail instead, see App.tsx's AppShell navbar width).
+  // Current width in px and its setter, for the drag handle at the sidebar's inline-end edge (see
+  // the resize handling below).
   width: number;
   onWidthChange: (width: number) => void;
   onOpenAuthors: () => void;
@@ -149,11 +134,10 @@ interface SidebarProps {
   onOpenPeriodicals: () => void;
   onOpenPublishers: () => void;
   onOpenLanguages: () => void;
-  // Optional tab (see SettingsScreen.tsx's SettingsTab) to land on when Settings opens - the
-  // footer gear button opens on whatever the default is, while "Manage Libraries" below jumps
-  // straight to "libraries" (issue #15).
+  // Only used to jump Settings straight to the "libraries" tab from LibrarySwitcher's "Manage"
+  // action below - the rest of Settings/Analytics/Theme/Language now live in the title bar (see
+  // TitleBar.tsx).
   onOpenSettings: (tab?: SettingsTab) => void;
-  onOpenAnalytics: () => void;
   onLibraryChanged: () => void;
   // Issue #10: dragging a book (or the active multi-selection) from the grid/list onto an
   // Author/Series/Tag/Collection/Publisher/Language row here applies that edit - see App.tsx's
@@ -332,8 +316,6 @@ function GroupSection({
 export function Sidebar({
   activeFilter,
   onSelect,
-  settingsOpen,
-  collapsed,
   width,
   onWidthChange,
   onOpenAuthors,
@@ -344,15 +326,11 @@ export function Sidebar({
   onOpenPublishers,
   onOpenLanguages,
   onOpenSettings,
-  onOpenAnalytics,
   onLibraryChanged,
   onDropBooks,
 }: SidebarProps) {
-  const { t, language, setLanguage } = useLanguage();
+  const { t } = useLanguage();
   const { dir } = useDirection();
-  const { setColorScheme } = useMantineColorScheme();
-  const computedColorScheme = useComputedColorScheme("light");
-  const { appTheme, setAppTheme } = useAppTheme();
   const queryClient = useQueryClient();
   const authorsQuery = useQuery({ queryKey: ["authors"], queryFn: listAuthors });
   const publishersQuery = useQuery({ queryKey: ["publisherGroups"], queryFn: listPublisherGroups });
@@ -391,9 +369,6 @@ export function Sidebar({
     resizeStart.current = null;
     event.currentTarget.releasePointerCapture(event.pointerId);
   };
-
-  const otherLanguage = LANGUAGES.find((option) => option.value !== language)!;
-  const currentLanguage = LANGUAGES.find((option) => option.value === language)!;
 
   const seeAllAction = (onClick: () => void) => (
     <Tooltip label={t("sidebar.seeAll")}>
@@ -537,35 +512,6 @@ export function Sidebar({
     setExpandedSection((prev) => (prev === key ? null : key));
   };
 
-  // "Active" here means "this is the filter currently applied to the book list" - matched against
-  // activeFilter.kind - so this browse list and the title bar's filter row (All books/Unread/
-  // Reading/Finished - see TitleBar.tsx) stay mutually exclusive: picking a reading-status filter
-  // there clears any highlighted row here, and picking an author/collection/series/tag filter here
-  // clears that filter row's selection, since neither can be simultaneously "the" active filter.
-  const sectionFilterKind: Record<BrowseSection, GroupFilterKind> = {
-    authors: "authorId",
-    collections: "collectionId",
-    series: "seriesId",
-    tags: "tagId",
-    periodicals: "periodicalId",
-    publishers: "publisher",
-    languages: "language",
-  };
-
-  const sections: { key: BrowseSection; icon: Icon; label: string; active: boolean }[] = [
-    { key: "authors", icon: IconUser, label: t("sidebar.authors"), active: activeFilter?.kind === sectionFilterKind.authors },
-    { key: "collections", icon: IconFolder, label: t("sidebar.collections"), active: activeFilter?.kind === sectionFilterKind.collections },
-    { key: "series", icon: IconStack2, label: t("sidebar.series"), active: activeFilter?.kind === sectionFilterKind.series },
-    { key: "tags", icon: IconTag, label: t("sidebar.tags"), active: activeFilter?.kind === sectionFilterKind.tags },
-    // Omitted entirely (not just visually disabled) when this library has the feature turned off
-    // (Settings -> Libraries) - see periodicalsEnabled above.
-    ...(periodicalsEnabled
-      ? [{ key: "periodicals" as const, icon: IconNews, label: t("sidebar.periodicals"), active: activeFilter?.kind === sectionFilterKind.periodicals }]
-      : []),
-    { key: "publishers", icon: IconBuildingStore, label: t("sidebar.publishers"), active: activeFilter?.kind === sectionFilterKind.publishers },
-    { key: "languages", icon: IconLanguage, label: t("sidebar.languages"), active: activeFilter?.kind === sectionFilterKind.languages },
-  ];
-
   return (
     <Box
       h="100%"
@@ -573,52 +519,24 @@ export function Sidebar({
       style={{ position: "relative", flexDirection: "column", borderInlineEnd: "1px solid var(--mantine-color-default-border)" }}
     >
       {/* Drag-to-resize handle - a thin invisible strip along the sidebar's inline-end edge
-          (right in LTR, left in RTL - see handleResizePointerMove's dir handling above). Only
-          shown expanded; the collapsed rail is a fixed 56px, not user-resizable. */}
-      {!collapsed && (
-        <Box
-          onPointerDown={handleResizePointerDown}
-          onPointerMove={handleResizePointerMove}
-          onPointerUp={handleResizePointerUp}
-          style={{
-            position: "absolute",
-            top: 0,
-            bottom: 0,
-            insetInlineEnd: 0,
-            width: 6,
-            cursor: "ew-resize",
-            touchAction: "none",
-            zIndex: 100,
-          }}
-        />
-      )}
+          (right in LTR, left in RTL - see handleResizePointerMove's dir handling above). */}
+      <Box
+        onPointerDown={handleResizePointerDown}
+        onPointerMove={handleResizePointerMove}
+        onPointerUp={handleResizePointerUp}
+        style={{
+          position: "absolute",
+          top: 0,
+          bottom: 0,
+          insetInlineEnd: 0,
+          width: 6,
+          cursor: "ew-resize",
+          touchAction: "none",
+          zIndex: 100,
+        }}
+      />
 
-      {/* Collapsed rail only - the expanded sidebar shows every section as its own collapsible
-          block below instead (see the accordion in the ScrollArea branch). Icon-only; clicking one
-          here marks that section expanded so it's already open once the sidebar is re-expanded
-          (via the title bar's own collapse toggle - this rail has no expand control of its own). */}
-      {collapsed && (
-        <Group gap={4} px="xs" py={6} wrap="wrap" style={{ borderBottom: "1px solid var(--mantine-color-default-border)" }}>
-          {sections.map((section) => (
-            <Tooltip key={section.key} label={section.label}>
-              <ActionIcon
-                variant={section.active ? "filled" : "subtle"}
-                color={section.active ? undefined : "gray"}
-                size="lg"
-                onClick={() => setExpandedSection(section.key)}
-                aria-label={section.label}
-              >
-                <section.icon size={17} />
-              </ActionIcon>
-            </Tooltip>
-          ))}
-        </Group>
-      )}
-
-      {collapsed ? (
-        <Box style={{ flex: 1 }} />
-      ) : (
-        <Box component="nav" style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      <Box component="nav" style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <CollapsibleSection
             title={t("sidebar.authors")}
             icon={IconUser}
@@ -779,88 +697,13 @@ export function Sidebar({
               onDropBooks={(target, bookIds, shiftKey) => onDropBooks("language", target, bookIds, shiftKey)}
             />
           </CollapsibleSection>
-        </Box>
-      )}
+      </Box>
 
+      {/* Theme/Language/Analytics/Settings moved to the title bar (see TitleBar.tsx) - this footer
+          is now just the library switcher, which fills the whole width. */}
       <Box p={4} style={{ borderTop: "1px solid var(--mantine-color-default-border)" }}>
-        <Group gap={4} wrap="wrap" align="center">
-          <LibrarySwitcher onLibraryChanged={onLibraryChanged} onManage={() => onOpenSettings("libraries")} compact={collapsed} />
-          <Menu position="top-start" shadow="md" width={220}>
-            <Menu.Target>
-              <Tooltip label={t("toolbar.theme")}>
-                <ActionIcon variant="subtle" color="gray" size="lg" aria-label={t("toolbar.theme")}>
-                  <IconPalette size={17} />
-                </ActionIcon>
-              </Tooltip>
-            </Menu.Target>
-            <Menu.Dropdown>
-              <Menu.Label>{t("settings.appTheme")}</Menu.Label>
-              <Box px="xs" pb="xs">
-                <SegmentedControl
-                  fullWidth
-                  size="xs"
-                  value={appTheme}
-                  onChange={(value) => setAppTheme(value as AppThemeName)}
-                  data={[
-                    { value: "organic", label: t("settings.appTheme.organic") },
-                    { value: "white", label: t("settings.appTheme.white") },
-                  ]}
-                />
-              </Box>
-              <Divider />
-              <Menu.Label>{t("settings.colorScheme")}</Menu.Label>
-              <Box px="xs" pb="xs">
-                <SegmentedControl
-                  fullWidth
-                  size="xs"
-                  value={computedColorScheme}
-                  onChange={(value) => setColorScheme(value as "light" | "dark")}
-                  data={[
-                    { value: "light", label: <IconSun size={14} /> },
-                    { value: "dark", label: <IconMoon size={14} /> },
-                  ]}
-                />
-              </Box>
-              {appTheme === "white" && (
-                <>
-                  <Divider />
-                  <Menu.Label>{t("settings.accentColor")}</Menu.Label>
-                  <Box px="xs" pb="xs">
-                    <ThemeColorSwatches />
-                  </Box>
-                </>
-              )}
-            </Menu.Dropdown>
-          </Menu>
-          <Tooltip label={`${t("toolbar.language")}: ${otherLanguage.label}`}>
-            <ActionIcon
-              variant="subtle"
-              color="gray"
-              size="lg"
-              onClick={() => setLanguage(otherLanguage.value)}
-              aria-label={t("toolbar.language")}
-            >
-              <Text size="xs" fw={700}>
-                {currentLanguage.label}
-              </Text>
-            </ActionIcon>
-          </Tooltip>
-          <Tooltip label={t("analytics.title")}>
-            <ActionIcon variant="subtle" color="gray" size="lg" onClick={onOpenAnalytics} aria-label={t("analytics.title")}>
-              <IconChartBar size={17} />
-            </ActionIcon>
-          </Tooltip>
-          <Tooltip label={t("settings.title")}>
-            <ActionIcon
-              variant={settingsOpen ? "light" : "subtle"}
-              color="gray"
-              size="lg"
-              onClick={() => onOpenSettings()}
-              aria-label={t("settings.title")}
-            >
-              <IconSettings size={17} />
-            </ActionIcon>
-          </Tooltip>
+        <Group gap={4} align="center">
+          <LibrarySwitcher onLibraryChanged={onLibraryChanged} onManage={() => onOpenSettings("libraries")} />
         </Group>
       </Box>
     </Box>

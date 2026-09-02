@@ -178,50 +178,59 @@ public static class BookEndpoints
             return Results.Ok(dtos);
         });
 
-        // Backs the Home view - every book that has a ReadingProgress row (i.e. was opened in the
-        // reader at least once), most recently updated first. The frontend takes items[0] as "last
-        // read" and filters ReadingStatus == "Reading" for the "currently reading" list, rather
-        // than this endpoint exposing two separate shapes for what's really one ordered feed.
+        // Backs the Home view - every book whose ReadingStatus is "Reading", most recently touched
+        // first. Starts from Books rather than ReadingProgress (as it used to) because a book can be
+        // tagged "Reading" from BookDetailPanel's status dropdown without ever being opened in the
+        // reader, so it would never get a ReadingProgress row at all - such a book still belongs
+        // here (with 0% progress), it just sorts after ones that actually have progress. The
+        // frontend still applies its own ReadingStatus == "Reading" filter defensively, but every
+        // row from here now already satisfies it.
         group.MapGet("/continue-reading", async (
             MaktabaDbContext db, ILibraryPathProvider libraryPath, int? limit, bool? includeIssues) =>
         {
             var root = libraryPath.LibraryRootPath!;
 
-            var query = db.ReadingProgress
-                .Include(rp => rp.Book).ThenInclude(b => b.BookAuthors).ThenInclude(ba => ba.Author)
-                .Include(rp => rp.Book).ThenInclude(b => b.Files)
+            var query = db.Books
+                .Where(b => b.ReadingStatus == ReadingStatus.Reading)
+                .Include(b => b.BookAuthors).ThenInclude(ba => ba.Author)
+                .Include(b => b.Files)
                 .AsNoTracking()
                 .AsQueryable();
 
             if (includeIssues != true)
             {
-                query = query.Where(rp => rp.Book.PeriodicalId == null);
+                query = query.Where(b => b.PeriodicalId == null);
             }
 
-            var rows = await query
-                .OrderByDescending(rp => rp.UpdatedAt)
+            var books = await query.ToListAsync();
+            var bookIds = books.Select(b => b.Id).ToList();
+            var progressByBookId = await db.ReadingProgress
+                .Where(rp => bookIds.Contains(rp.BookId))
+                .ToDictionaryAsync(rp => rp.BookId);
+
+            var dtos = books
+                .Select(book =>
+                {
+                    var progress = progressByBookId.GetValueOrDefault(book.Id);
+                    // Same "prefer Epub" rule BookDetailPanel/openReader uses on the frontend - the
+                    // resume button opens whichever format this feed reports without a second round trip.
+                    var file = book.Files.FirstOrDefault(f => f.Format == BookFormat.Epub) ?? book.Files.FirstOrDefault();
+
+                    return new ContinueReadingBookDto(
+                        IdCodec.Encode(book.Id),
+                        book.Title,
+                        book.BookAuthors.OrderBy(ba => ba.Order).Select(ba => ba.Author.Name).ToArray(),
+                        BuildAuthorRefs(book.BookAuthors, root),
+                        CoverLocator.Find(root, book.FolderPath) is not null,
+                        book.ReadingStatus.ToString(),
+                        (file?.Format ?? BookFormat.Epub).ToString(),
+                        file is not null ? Path.Combine(root, file.FilePath) : "",
+                        progress?.Percentage ?? 0,
+                        progress?.UpdatedAt ?? book.DateAdded);
+                })
+                .OrderByDescending(dto => dto.UpdatedAt)
                 .Take(limit is > 0 ? limit.Value : 20)
-                .ToListAsync();
-
-            var dtos = rows.Select(rp =>
-            {
-                var book = rp.Book;
-                // Same "prefer Epub" rule BookDetailPanel/openReader uses on the frontend - the resume
-                // button opens whichever format this feed reports without a second round trip.
-                var file = book.Files.FirstOrDefault(f => f.Format == BookFormat.Epub) ?? book.Files.FirstOrDefault();
-
-                return new ContinueReadingBookDto(
-                    IdCodec.Encode(book.Id),
-                    book.Title,
-                    book.BookAuthors.OrderBy(ba => ba.Order).Select(ba => ba.Author.Name).ToArray(),
-                    BuildAuthorRefs(book.BookAuthors, root),
-                    CoverLocator.Find(root, book.FolderPath) is not null,
-                    book.ReadingStatus.ToString(),
-                    (file?.Format ?? BookFormat.Epub).ToString(),
-                    file is not null ? Path.Combine(root, file.FilePath) : "",
-                    rp.Percentage,
-                    rp.UpdatedAt);
-            }).ToList();
+                .ToList();
 
             return Results.Ok(dtos);
         });

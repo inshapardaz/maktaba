@@ -78,8 +78,6 @@ const en = {
   "sidebar.languages": "Languages",
   "sidebar.seeAll": "See all",
   "sidebar.readingStatus": "Reading status",
-  "sidebar.collapse": "Collapse sidebar",
-  "sidebar.expand": "Expand sidebar",
 
   "readingStatus.unread": "Unread",
   "readingStatus.reading": "Reading",
@@ -384,6 +382,7 @@ const en = {
 
   "home.continueReading": "Continue Reading",
   "home.currentlyReading": "Currently Reading",
+  "home.seeMore": "See more",
   "home.recentlyAdded": "Recently Added",
   "home.resume": "Resume",
   "home.markAsFinished": "Mark as finished",
@@ -508,8 +507,6 @@ const ur: TranslationDict = {
   "sidebar.languages": "زبانیں",
   "sidebar.seeAll": "سب دیکھیں",
   "sidebar.readingStatus": "مطالعے کی حیثیت",
-  "sidebar.collapse": "سائیڈبار سکیڑیں",
-  "sidebar.expand": "سائیڈبار پھیلائیں",
 
   "readingStatus.unread": "نامطالعہ شدہ",
   "readingStatus.reading": "زیرِ مطالعہ",
@@ -807,6 +804,7 @@ const ur: TranslationDict = {
 
   "home.continueReading": "مطالعہ جاری رکھیں",
   "home.currentlyReading": "زیرِ مطالعہ کتابیں",
+  "home.seeMore": "مزید دیکھیں",
   "home.recentlyAdded": "حال ہی میں شامل کی گئیں",
   "home.resume": "پڑھنا جاری رکھیں",
   "home.markAsFinished": "مکمل شدہ کے طور پر نشان زد کریں",

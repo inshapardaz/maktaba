@@ -8,30 +8,39 @@ import {
   Divider,
   Group,
   Kbd,
+  Menu,
+  SegmentedControl,
   Text,
   Tooltip,
   UnstyledButton,
   useComputedColorScheme,
+  useMantineColorScheme,
 } from "@mantine/core";
 import {
   IconBookmark,
   IconBooks,
+  IconChartBar,
   IconCircleCheck,
   IconCircleDashed,
   IconHelpCircle,
   IconHome2,
-  IconLayoutSidebarLeftCollapse,
-  IconLayoutSidebarLeftExpand,
   IconMenu2,
+  IconMoon,
+  IconPalette,
   IconPlus,
   IconSearch,
+  IconSettings,
+  IconSun,
 } from "../icons";
 import type { Icon } from "../icons";
 import { listReadingStatusCounts, type ReadingStatus } from "../api";
-import { useAppTheme } from "../AppThemeContext";
+import { useAppTheme, type AppThemeName } from "../AppThemeContext";
 import { useLanguage } from "../i18n/LanguageContext";
+import { LANGUAGES } from "../i18n/translations";
 import { READING_STATUS_COLOR } from "../readingStatus";
+import { ThemeColorSwatches } from "./ThemeColorSwatches";
 import type { GroupFilter, MainView } from "./Sidebar";
+import type { SettingsTab } from "./SettingsScreen";
 
 // Must match TITLEBAR_HEIGHT in apps/desktop/src/main.ts (both the win/linux titleBarOverlay
 // height and the mac trafficLightPosition.y are derived from that same constant). Exported so
@@ -162,13 +171,17 @@ function HelpButton() {
 interface TitleBarProps {
   hasLibrary: boolean;
   mainView: MainView;
-  collapsed: boolean;
-  onToggleCollapsed: () => void;
   onOpenHome: () => void;
   onImport: () => void;
   activeFilter: GroupFilter | null;
   onSelect: (filter: GroupFilter | null) => void;
   onShowAllBooks: () => void;
+  // Analytics/Settings/Theme/Language now live here rather than the sidebar's bottom bar (moved so
+  // they're reachable without a library open at all, and to let the sidebar's LibrarySwitcher grow
+  // to fill the freed-up space - see Sidebar.tsx).
+  settingsOpen: boolean;
+  onOpenSettings: (tab?: SettingsTab) => void;
+  onOpenAnalytics: () => void;
   // Set while the inline reader (App.tsx's inlineReader) is open - none of the sidebar/filter/
   // search/import actions are reachable behind it (InlineReader covers the rest of the window), so
   // they're hidden rather than left as dead clicks. The bar itself (branding + drag region) still
@@ -243,28 +256,32 @@ function ReadingStatusFilters({
 // Renders in place of the OS title bar (main.ts sets titleBarStyle: "hidden" on the main window)
 // so it's mounted unconditionally by App.tsx — even before a library is open — otherwise the
 // frameless window would have no drag region at all, just the native min/max/close controls.
-// Left: branding, sidebar collapse toggle, Home, then the All books/reading-status filter row.
-// Middle: Search, styled as a text box rather than a bare icon. Right: a labeled Add Books button.
-// Everything else (browse sections, library switcher, dark mode, language, Settings) stays in the
-// sidebar - see Sidebar.tsx.
+// Left: branding, Home, then the All books/reading-status filter row. Middle: Search, styled as a
+// text box rather than a bare icon. Right: a labeled Add Books button, then Theme/Language/
+// Analytics/Settings, then Help. The sidebar (see Sidebar.tsx) is left with just its own browse
+// sections and the library switcher.
 export function TitleBar({
   hasLibrary,
   mainView,
-  collapsed,
-  onToggleCollapsed,
   onOpenHome,
   onImport,
   activeFilter,
   onSelect,
   onShowAllBooks,
+  settingsOpen,
+  onOpenSettings,
+  onOpenAnalytics,
   actionsHidden,
 }: TitleBarProps) {
-  const { t } = useLanguage();
+  const { t, language, setLanguage } = useLanguage();
   const colorScheme = useComputedColorScheme("light");
-  const { appTheme } = useAppTheme();
+  const { setColorScheme } = useMantineColorScheme();
+  const { appTheme, setAppTheme } = useAppTheme();
   const libraryActive = mainView === "library" && !activeFilter;
   const showActions = hasLibrary && !actionsHidden;
   const { paddingLeft, paddingRight } = useTitleBarOverlayPadding();
+  const otherLanguage = LANGUAGES.find((option) => option.value !== language)!;
+  const currentLanguage = LANGUAGES.find((option) => option.value === language)!;
 
   // Keeps the native win/linux caption-button strip's colors matching the app's own currently
   // active theme (organic/white) and light/dark setting rather than a hardcoded/mismatched color -
@@ -299,18 +316,6 @@ export function TitleBar({
 
         {showActions && (
           <>
-            <Tooltip label={t(collapsed ? "sidebar.expand" : "sidebar.collapse")}>
-              <ActionIcon
-                className="maktaba-titlebar-no-drag"
-                variant="subtle"
-                color="gray"
-                onClick={onToggleCollapsed}
-                aria-label={t(collapsed ? "sidebar.expand" : "sidebar.collapse")}
-              >
-                {collapsed ? <IconLayoutSidebarLeftExpand size={16} /> : <IconLayoutSidebarLeftCollapse size={16} />}
-              </ActionIcon>
-            </Tooltip>
-
             <Tooltip label={t("toolbar.home")}>
               <ActionIcon
                 className="maktaba-titlebar-no-drag"
@@ -375,6 +380,85 @@ export function TitleBar({
         >
           {t("toolbar.addBooks")}
         </Button>
+      )}
+
+      {showActions && (
+        <Group gap={4} wrap="nowrap" className="maktaba-titlebar-no-drag" style={{ flexShrink: 0 }}>
+          <Menu position="bottom-end" shadow="md" width={220}>
+            <Menu.Target>
+              <Tooltip label={t("toolbar.theme")}>
+                <ActionIcon variant="subtle" color="gray" aria-label={t("toolbar.theme")}>
+                  <IconPalette size={16} />
+                </ActionIcon>
+              </Tooltip>
+            </Menu.Target>
+            <Menu.Dropdown>
+              <Menu.Label>{t("settings.appTheme")}</Menu.Label>
+              <Box px="xs" pb="xs">
+                <SegmentedControl
+                  fullWidth
+                  size="xs"
+                  value={appTheme}
+                  onChange={(value) => setAppTheme(value as AppThemeName)}
+                  data={[
+                    { value: "organic", label: t("settings.appTheme.organic") },
+                    { value: "white", label: t("settings.appTheme.white") },
+                  ]}
+                />
+              </Box>
+              <Divider />
+              <Menu.Label>{t("settings.colorScheme")}</Menu.Label>
+              <Box px="xs" pb="xs">
+                <SegmentedControl
+                  fullWidth
+                  size="xs"
+                  value={colorScheme}
+                  onChange={(value) => setColorScheme(value as "light" | "dark")}
+                  data={[
+                    { value: "light", label: <IconSun size={14} /> },
+                    { value: "dark", label: <IconMoon size={14} /> },
+                  ]}
+                />
+              </Box>
+              {appTheme === "white" && (
+                <>
+                  <Divider />
+                  <Menu.Label>{t("settings.accentColor")}</Menu.Label>
+                  <Box px="xs" pb="xs">
+                    <ThemeColorSwatches />
+                  </Box>
+                </>
+              )}
+            </Menu.Dropdown>
+          </Menu>
+
+          <Tooltip label={`${t("toolbar.language")}: ${otherLanguage.label}`}>
+            <ActionIcon variant="subtle" color="gray" onClick={() => setLanguage(otherLanguage.value)} aria-label={t("toolbar.language")}>
+              <Text size="xs" fw={700}>
+                {currentLanguage.label}
+              </Text>
+            </ActionIcon>
+          </Tooltip>
+
+          <Tooltip label={t("analytics.title")}>
+            <ActionIcon variant="subtle" color="gray" onClick={onOpenAnalytics} aria-label={t("analytics.title")}>
+              <IconChartBar size={16} />
+            </ActionIcon>
+          </Tooltip>
+
+          <Tooltip label={t("settings.title")}>
+            <ActionIcon
+              variant={settingsOpen ? "light" : "subtle"}
+              color="gray"
+              onClick={() => onOpenSettings()}
+              aria-label={t("settings.title")}
+            >
+              <IconSettings size={16} />
+            </ActionIcon>
+          </Tooltip>
+
+          <Divider orientation="vertical" h={20} />
+        </Group>
       )}
 
       <HelpButton />

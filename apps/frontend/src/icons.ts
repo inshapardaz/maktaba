@@ -42,8 +42,6 @@ import {
   Moon,
   Newspaper,
   PanelBottomOpen,
-  PanelLeftClose,
-  PanelLeftOpen,
   Palette,
   PenLine,
   Play,
@@ -109,8 +107,6 @@ export const IconInfoCircle = withStrokeWidth(Info);
 export const IconLanguage = withStrokeWidth(Languages);
 export const IconLayoutBottombarExpand = withStrokeWidth(PanelBottomOpen);
 export const IconLayoutGrid = withStrokeWidth(LayoutGrid);
-export const IconLayoutSidebarLeftCollapse = withStrokeWidth(PanelLeftClose);
-export const IconLayoutSidebarLeftExpand = withStrokeWidth(PanelLeftOpen);
 export const IconList = withStrokeWidth(List);
 export const IconMenu2 = withStrokeWidth(Menu);
 export const IconMinus = withStrokeWidth(Minus);

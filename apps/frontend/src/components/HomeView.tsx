@@ -16,6 +16,7 @@ import { getStoredShowIssuesInGrid } from "../periodicalSettings";
 import { useReaderLauncher } from "../ReaderLauncherContext";
 import { invalidateLibraryQueries } from "../queries";
 import { BookRow } from "./BookList";
+import type { GroupFilter } from "./Sidebar";
 import { SpineCover } from "./SpineCover";
 
 // No-op stand-ins for BookList's selection/merge machinery - the Recently Added shelf reuses
@@ -23,6 +24,11 @@ import { SpineCover } from "./SpineCover";
 // which don't make sense in this compact Home-page context.
 const NO_SELECTION = new Set<string>();
 function noopMergeRequest() {}
+
+// Issue: Home used to show only the hero book plus whatever else happened to be in progress, with
+// no cap and no way to jump to the rest - now shown together (hero + list) up to this many, with a
+// "see more" link to the full Reading-status filtered list once there are more than that.
+const MAX_CONTINUE_READING = 5;
 
 function SectionLabel({ children }: { children: string }) {
   return (
@@ -45,6 +51,9 @@ function AuthorAvatar({ authorRefs, size }: { authorRefs: AuthorRef[]; size: num
 
 interface HomeViewProps {
   onSelectBook: (id: string) => void;
+  // Powers the "see more" link below Currently Reading - hands off to the same reading-status
+  // filter App.tsx's handleSelectFilter already wires up for the sidebar/title-bar chips.
+  onSelectFilter: (filter: GroupFilter) => void;
 }
 
 // The Home view: a "continue reading" hero for the most recently read book, a compact list of
@@ -52,7 +61,7 @@ interface HomeViewProps {
 // one ordered feed (see listContinueReading / backend BookEndpoints.cs's /continue-reading)
 // rather than two separate requests; the shelf is a second, independent feed (listRecentlyAdded /
 // /recently-added) since a freshly imported library has nothing in the first feed at all.
-export function HomeView({ onSelectBook }: HomeViewProps) {
+export function HomeView({ onSelectBook, onSelectFilter }: HomeViewProps) {
   const { t } = useLanguage();
   const queryClient = useQueryClient();
   const launchReader = useReaderLauncher();
@@ -96,7 +105,10 @@ export function HomeView({ onSelectBook }: HomeViewProps) {
   // "Continue Reading" hero (issue #17) instead of being excluded from this feed entirely.
   const items = (continueReadingQuery.data ?? []).filter((book) => book.readingStatus === "Reading");
   const [lastRead, ...rest] = items;
-  const inProgress = rest;
+  // Hero (lastRead) counts toward the MAX_CONTINUE_READING total, so the list below it is capped
+  // one short of that.
+  const inProgress = rest.slice(0, MAX_CONTINUE_READING - 1);
+  const hasMoreContinueReading = items.length > MAX_CONTINUE_READING;
   const recentBooks = recentlyAddedQuery.data ?? [];
 
   // Only reachable when the whole library is empty (no books at all) - a library with books but
@@ -289,6 +301,16 @@ export function HomeView({ onSelectBook }: HomeViewProps) {
                 </Group>
               ))}
             </Stack>
+            {hasMoreContinueReading && (
+              <UnstyledButton
+                mt="xs"
+                onClick={() => onSelectFilter({ kind: "readingStatus", id: "Reading", name: t("readingStatus.reading") })}
+              >
+                <Text size="sm" c="var(--mantine-primary-color-6)" fw={600}>
+                  {t("home.seeMore")}
+                </Text>
+              </UnstyledButton>
+            )}
           </Box>
         )}
 

@@ -98,7 +98,6 @@ function App() {
   const [mainView, setMainView] = useState<MainView>("home");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab | undefined>(undefined);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT_WIDTH);
   const [sortKey, setSortKeyState] = useState<SortKey>("title");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
@@ -529,20 +528,24 @@ function App() {
             starting below it. */}
         <AppShell
           header={{ height: TITLEBAR_HEIGHT + extraHeaderHeight }}
-          navbar={hasLibrary ? { width: sidebarCollapsed ? 56 : sidebarWidth, breakpoint: 0 } : undefined}
+          navbar={hasLibrary ? { width: sidebarWidth, breakpoint: 0 } : undefined}
           padding={0}
         >
           <AppShell.Header style={{ backgroundColor: "var(--app-surface)" }}>
             <TitleBar
               hasLibrary={hasLibrary}
               mainView={mainView}
-              collapsed={sidebarCollapsed}
-              onToggleCollapsed={() => setSidebarCollapsed((c) => !c)}
               onOpenHome={() => setMainView("home")}
               onImport={handleImportClick}
               activeFilter={groupFilter}
               onSelect={handleSelectFilter}
               onShowAllBooks={handleShowAllBooks}
+              settingsOpen={settingsOpen}
+              onOpenSettings={(tab) => {
+                setSettingsTab(tab);
+                setSettingsOpen(true);
+              }}
+              onOpenAnalytics={() => setMainView("analytics")}
               actionsHidden={!!inlineReader}
             />
             {showImportBar && <ImportStatusBar />}
@@ -554,8 +557,6 @@ function App() {
               <Sidebar
                 activeFilter={groupFilter}
                 onSelect={handleSelectFilter}
-                settingsOpen={settingsOpen}
-                collapsed={sidebarCollapsed}
                 width={sidebarWidth}
                 onWidthChange={setSidebarWidth}
                 onOpenAuthors={() => setMainView("authors")}
@@ -573,7 +574,6 @@ function App() {
                   setSettingsTab(tab);
                   setSettingsOpen(true);
                 }}
-                onOpenAnalytics={() => setMainView("analytics")}
                 onLibraryChanged={handleLibraryChanged}
                 onDropBooks={handleDropBooksOnGroup}
               />
@@ -593,7 +593,7 @@ function App() {
                 }}
               />
             ) : mainView === "home" ? (
-              <HomeView onSelectBook={setSelectedBookId} />
+              <HomeView onSelectBook={setSelectedBookId} onSelectFilter={handleSelectFilter} />
             ) : mainView === "authors" ? (
               <AuthorsView onSelect={handleSelectFilter} onBack={() => setMainView("library")} />
             ) : mainView === "collections" ? (
