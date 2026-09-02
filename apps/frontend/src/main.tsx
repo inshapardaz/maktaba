@@ -55,10 +55,10 @@ function ReaderWindow({ bookId, format, title }: { bookId: string; format: "Epub
 // as part of its own design system.
 function ThemedMantineProvider({ children }: { children: ReactNode }) {
   const { appTheme } = useAppTheme();
-  const { themeColor } = useThemeColor();
+  const { themeColor, customColorHex } = useThemeColor();
   const theme = useMemo(
-    () => (appTheme === "white" ? createWhiteTheme(themeColor) : createOrganicTheme()),
-    [appTheme, themeColor],
+    () => (appTheme === "white" ? createWhiteTheme(themeColor, customColorHex) : createOrganicTheme()),
+    [appTheme, themeColor, customColorHex],
   );
   const cssVariablesResolver = appTheme === "white" ? undefined : organicCssVariablesResolver;
 

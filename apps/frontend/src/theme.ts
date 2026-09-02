@@ -6,21 +6,51 @@ import {
   type MantineColorsTuple,
   type MantineThemeOverride,
 } from "@mantine/core";
+import { generateColors } from "@mantine/colors-generator";
 
-// Selectable accent color for the "White" app theme (Settings -> Appearance, and the Sidebar's own
-// theme menu - see ThemeColorContext.tsx) - limited to Mantine's own built-in palettes so the app
-// stays visually stock Mantine. "Organic" doesn't use this - it hardcodes terracotta as part of its
-// own design system (see createOrganicTheme below).
-export type ThemeColorName = "blue" | "grape" | "green" | "orange" | "red";
+// Selectable accent color for the "Plain" app theme (Settings -> Appearance, and the Sidebar/title
+// bar's own theme menu - see ThemeColorContext.tsx) - the named options are Mantine's own built-in
+// palettes so the app stays visually stock Mantine; "custom" (below) additionally lets the user
+// pick an arbitrary hex, generated into a full shade ramp via @mantine/colors-generator. "Organic"
+// doesn't use any of this - it hardcodes terracotta as part of its own design system (see
+// createOrganicTheme below).
+export type ThemeColorName =
+  | "gray"
+  | "red"
+  | "pink"
+  | "grape"
+  | "violet"
+  | "indigo"
+  | "blue"
+  | "cyan"
+  | "teal"
+  | "green"
+  | "lime"
+  | "yellow"
+  | "orange";
 
 export const DEFAULT_THEME_COLOR: ThemeColorName = "blue";
 
+// The custom color family's registered name in the theme's `colors` map (see createWhiteTheme) -
+// distinct from any ThemeColorName so the two selection modes never collide.
+export const CUSTOM_THEME_COLOR = "custom";
+
+export const DEFAULT_CUSTOM_THEME_COLOR_HEX = "#844fba";
+
 export const THEME_COLOR_OPTIONS: { value: ThemeColorName; label: string; swatch: string }[] = [
-  { value: "blue", label: "Blue", swatch: DEFAULT_THEME.colors.blue[6] },
-  { value: "grape", label: "Grape", swatch: DEFAULT_THEME.colors.grape[6] },
-  { value: "green", label: "Green", swatch: DEFAULT_THEME.colors.green[6] },
-  { value: "orange", label: "Orange", swatch: DEFAULT_THEME.colors.orange[6] },
+  { value: "gray", label: "Gray", swatch: DEFAULT_THEME.colors.gray[6] },
   { value: "red", label: "Red", swatch: DEFAULT_THEME.colors.red[6] },
+  { value: "pink", label: "Pink", swatch: DEFAULT_THEME.colors.pink[6] },
+  { value: "grape", label: "Grape", swatch: DEFAULT_THEME.colors.grape[6] },
+  { value: "violet", label: "Violet", swatch: DEFAULT_THEME.colors.violet[6] },
+  { value: "indigo", label: "Indigo", swatch: DEFAULT_THEME.colors.indigo[6] },
+  { value: "blue", label: "Blue", swatch: DEFAULT_THEME.colors.blue[6] },
+  { value: "cyan", label: "Cyan", swatch: DEFAULT_THEME.colors.cyan[6] },
+  { value: "teal", label: "Teal", swatch: DEFAULT_THEME.colors.teal[6] },
+  { value: "green", label: "Green", swatch: DEFAULT_THEME.colors.green[6] },
+  { value: "lime", label: "Lime", swatch: DEFAULT_THEME.colors.lime[6] },
+  { value: "yellow", label: "Yellow", swatch: DEFAULT_THEME.colors.yellow[6] },
+  { value: "orange", label: "Orange", swatch: DEFAULT_THEME.colors.orange[6] },
 ];
 
 /**
@@ -92,12 +122,21 @@ const organicShadows = {
   xl: "0 20px 44px rgba(101, 66, 42, 0.16), 0 8px 16px rgba(101, 66, 42, 0.10)",
 };
 
-// Plain Mantine, no customization at all - added back alongside "Organic" (below) as a selectable
-// second option (Settings -> Appearance) for anyone who wants the app to look the way it did
-// before the Organic redesign. No cssVariablesResolver is applied when this theme is active either
-// (see main.tsx) - organicCssVariablesResolver's overrides would otherwise leak into this theme too
-// since MantineProvider's resolver isn't itself scoped per-theme.
-export function createWhiteTheme(primaryColor: ThemeColorName = DEFAULT_THEME_COLOR): MantineThemeOverride {
+// Plain Mantine, no customization at all beyond the selected accent color - added back alongside
+// "Organic" (below) as a selectable second option (Settings -> Appearance) for anyone who wants the
+// app to look the way it did before the Organic redesign. No cssVariablesResolver is applied when
+// this theme is active either (see main.tsx) - organicCssVariablesResolver's overrides would
+// otherwise leak into this theme too since MantineProvider's resolver isn't itself scoped per-theme.
+// `customColorHex` is only consulted when primaryColor is CUSTOM_THEME_COLOR (see
+// ThemeColorContext.tsx) - generateColors turns the single hex into the full 10-shade ramp Mantine
+// needs for a `colors` entry.
+export function createWhiteTheme(
+  primaryColor: ThemeColorName | typeof CUSTOM_THEME_COLOR = DEFAULT_THEME_COLOR,
+  customColorHex: string = DEFAULT_CUSTOM_THEME_COLOR_HEX,
+): MantineThemeOverride {
+  if (primaryColor === CUSTOM_THEME_COLOR) {
+    return createTheme({ primaryColor: CUSTOM_THEME_COLOR, colors: { [CUSTOM_THEME_COLOR]: generateColors(customColorHex) } });
+  }
   return createTheme({ primaryColor });
 }
 

@@ -49,6 +49,7 @@ import {
   RefreshCw,
   Search,
   Settings,
+  Square,
   SquarePen,
   SquareStack,
   Store,
@@ -119,6 +120,7 @@ export const IconPlus = withStrokeWidth(Plus);
 export const IconRefresh = withStrokeWidth(RefreshCw);
 export const IconSearch = withStrokeWidth(Search);
 export const IconSettings = withStrokeWidth(Settings);
+export const IconSquare = withStrokeWidth(Square);
 export const IconStack2 = withStrokeWidth(SquareStack);
 export const IconSun = withStrokeWidth(Sun);
 export const IconTag = withStrokeWidth(Tag);

@@ -3,18 +3,19 @@ import { Alert, Box, Button, Loader, Stack, Text } from "@mantine/core";
 import { IconAlertCircle, IconRefresh } from "../icons";
 import { useLanguage } from "../i18n/LanguageContext";
 import type { SidecarStatus } from "../maktaba";
-import { TITLEBAR_HEIGHT, TitleBarBrand, useTitleBarOverlayPadding } from "./TitleBar";
+import { TITLEBAR_HEIGHT, TitleBarBrand, useTitleBarOverlayPadding, WindowControls } from "./TitleBar";
 
 // A minimal stand-in for the real TitleBar (App.tsx's, mounted once a library has loaded) - just
-// the drag region and branding, no interactive pieces, since nothing behind it is wired up yet
-// (no mainView/sidebar/etc. exist before App.tsx itself mounts). Without this, the loading/error
-// states below would render with no drag region at all (the window is frameless -
-// titleBarStyle: "hidden" - so there's no native chrome to fall back on either), making the
+// the drag region, branding, and window controls, since nothing else behind it is wired up yet (no
+// mainView/sidebar/etc. exist before App.tsx itself mounts). Without this, the loading/error states
+// below would render with no drag region and no way to minimize/close the window at all (it's
+// fully frameless - see main.ts's createWindow - with no native chrome to fall back on), making the
 // window feel stuck/unresponsive before the backend finishes starting. Only rendered for the
 // frameless main window (see `showTitleBar` below) - reader pop-out windows already have their
 // own native OS title bar and would just get a redundant second bar stacked under it.
 function LoadingTitleBar() {
   const { paddingLeft, paddingRight } = useTitleBarOverlayPadding();
+  const isMac = window.maktaba.platform === "darwin";
   return (
     <Box
       className="maktaba-titlebar-drag"
@@ -30,7 +31,10 @@ function LoadingTitleBar() {
         paddingRight,
       }}
     >
-      <TitleBarBrand />
+      <Box style={{ flex: 1 }}>
+        <TitleBarBrand />
+      </Box>
+      {!isMac && <WindowControls />}
     </Box>
   );
 }

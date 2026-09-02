@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@inshapardaz/qari": "^0.2.23",
+    "@mantine/colors-generator": "^9.6.0",
     "@mantine/core": "^9.5.1",
     "@mantine/hooks": "^9.5.1",
     "@mantine/notifications": "^9.5.1",

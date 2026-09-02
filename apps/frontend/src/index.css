@@ -56,6 +56,22 @@ body.lang-ur .mantine-Drawer-title {
   -webkit-app-region: no-drag;
 }
 
+/* Custom minimize/maximize/close buttons (TitleBar.tsx's WindowControls, win/linux only - mac uses
+   native inset traffic lights instead) - plain Windows-11-style hover fills, not themed to the
+   accent color, since these mimic OS chrome rather than app content. */
+.maktaba-window-control {
+  color: var(--mantine-color-text);
+}
+
+.maktaba-window-control:hover {
+  background-color: var(--mantine-color-default-hover);
+}
+
+.maktaba-window-control-close:hover {
+  background-color: #e81123;
+  color: #fff;
+}
+
 /* "Organic" design system (see theme.ts) - every interactive element gets a themed focus ring
    instead of the browser's default blue one, and only when actually navigating by keyboard
    (:focus-visible, not plain :focus, so a mouse click doesn't leave a ring behind). */

@@ -78,12 +78,18 @@ contextBridge.exposeInMainWorld("maktaba", {
   // existing sidecar's health, or respawns it (and this window) entirely if it actually died.
   retrySidecar: (): Promise<void> => ipcRenderer.invoke("maktaba:retry-sidecar"),
 
-  // Keeps the native win/linux caption-button overlay in sync with the app's own active theme
-  // (organic/white) and light/dark setting - TitleBar.tsx computes these literal colors itself
-  // (via getComputedStyle, reading the same CSS variables the page is themed with) and calls this
-  // whenever the color scheme or app theme changes; no-op on mac.
-  setTitleBarOverlay: (colors: { color: string; symbolColor: string }): Promise<void> =>
-    ipcRenderer.invoke("maktaba:set-titlebar-overlay", colors),
+  // Back TitleBar.tsx's own custom minimize/maximize/close buttons (WindowControls) on win/linux,
+  // where the window is fully frameless - see main.ts's createWindow. Not called on mac, which
+  // keeps native traffic lights instead.
+  minimizeWindow: (): Promise<void> => ipcRenderer.invoke("maktaba:window-minimize"),
+  toggleMaximizeWindow: (): Promise<void> => ipcRenderer.invoke("maktaba:window-toggle-maximize"),
+  closeWindow: (): Promise<void> => ipcRenderer.invoke("maktaba:window-close"),
+  isWindowMaximized: (): Promise<boolean> => ipcRenderer.invoke("maktaba:window-is-maximized"),
+  onWindowMaximizedChange: (callback: (maximized: boolean) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, maximized: boolean) => callback(maximized);
+    ipcRenderer.on("maktaba:window-maximized-changed", listener);
+    return () => ipcRenderer.removeListener("maktaba:window-maximized-changed", listener);
+  },
 
   // Whether the standard File/Edit/View/Window/Help app menu (see main.ts/menu.ts) is on - a
   // persisted preference, not per-window state, toggled from Settings and reflected live in every

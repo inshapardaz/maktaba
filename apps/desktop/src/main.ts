@@ -190,23 +190,29 @@ function webPreferencesFor(handle: SidecarHandle) {
   };
 }
 
-// Default colors used only until the page has painted and TitleBar.tsx sends the real, theme-aware
-// colors via maktaba:set-titlebar-overlay (see below) - matches the "Organic" theme's light-mode
-// title bar surface/text (apps/frontend/src/theme.ts's `semantic.surface`/`semantic.text`), which
-// is the app's default theme. macOS has no titleBarOverlay concept — it gets inset traffic lights
-// instead.
+// mac gets inset native traffic lights (see trafficLightPosition below); win/linux get a fully
+// frameless window with no native chrome at all - TitleBar.tsx/BackendGate.tsx's WindowControls
+// draws its own minimize/maximize/close buttons instead of asking the OS to overlay native ones.
+// This (rather than titleBarStyle: "hidden" + titleBarOverlay, used previously) is what lets those
+// buttons be positioned RTL-aware like the rest of the page, which the OS-drawn overlay never was -
+// Windows always renders it top-right regardless of page direction.
 const TITLEBAR_HEIGHT = 40;
-const DEFAULT_TITLEBAR_OVERLAY = { color: "#ebddc5", symbolColor: "#201e1d", height: TITLEBAR_HEIGHT };
 
-// The native Windows/Linux caption-button strip needs literal color strings, not CSS variables, so
-// TitleBar.tsx reads the page's own currently-active theme colors (via getComputedStyle - whatever
-// app theme/color scheme is active, organic or white, light or dark) and forwards them here rather
-// than main.ts trying to duplicate/guess the renderer's theme logic.
-ipcMain.handle("maktaba:set-titlebar-overlay", (_event, colors: { color: string; symbolColor: string }) => {
-  if (!isMac && mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.setTitleBarOverlay({ ...colors, height: TITLEBAR_HEIGHT });
-  }
+// Backs WindowControls' custom minimize/maximize/close buttons (see TitleBar.tsx) on win/linux,
+// where the window is now fully frameless (see createWindow below) - mac keeps its native traffic
+// lights and never calls these. maximize toggles rather than always maximizing, matching what a
+// native caption button's single button does; the maximized/unmaximized state is broadcast (see
+// createWindow's "maximize"/"unmaximize" listeners) rather than polled, so the button's icon stays
+// in sync with e.g. a Windows snap-layout or double-click-titlebar maximize too, not just its own
+// clicks.
+ipcMain.handle("maktaba:window-minimize", () => mainWindow?.minimize());
+ipcMain.handle("maktaba:window-toggle-maximize", () => {
+  if (!mainWindow) return;
+  if (mainWindow.isMaximized()) mainWindow.unmaximize();
+  else mainWindow.maximize();
 });
+ipcMain.handle("maktaba:window-close", () => mainWindow?.close());
+ipcMain.handle("maktaba:window-is-maximized", () => mainWindow?.isMaximized() ?? false);
 
 async function createWindow(): Promise<void> {
   sidecar = await initSidecar();
@@ -216,17 +222,18 @@ async function createWindow(): Promise<void> {
     height: 800,
     icon: appIconPath,
     webPreferences: webPreferencesFor(sidecar),
-    // Hides the native title bar so the renderer can draw its own (TitleBar.tsx) while keeping
-    // the native minimize/maximize/close affordances — a plain `frame: false` would lose those.
-    titleBarStyle: "hidden",
     // Stays hidden until the page has actually painted something (see "ready-to-show" below) -
     // otherwise the window would show its own blank/white flash the instant it's created, before
     // the splash window (which is covering that gap) gets swapped out for it.
     show: false,
     ...(isMac
-      ? { trafficLightPosition: { x: 16, y: (TITLEBAR_HEIGHT - 12) / 2 } }
-      : { titleBarOverlay: DEFAULT_TITLEBAR_OVERLAY }),
+      ? { titleBarStyle: "hidden", trafficLightPosition: { x: 16, y: (TITLEBAR_HEIGHT - 12) / 2 } }
+      : { frame: false }),
   });
+
+  const win = mainWindow;
+  win.on("maximize", () => win.webContents.send("maktaba:window-maximized-changed", true));
+  win.on("unmaximize", () => win.webContents.send("maktaba:window-maximized-changed", false));
 
   mainWindow.once("ready-to-show", () => {
     closeSplashWindow();

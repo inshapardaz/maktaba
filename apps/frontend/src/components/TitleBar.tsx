@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { spotlight } from "@mantine/spotlight";
 import {
@@ -22,15 +22,19 @@ import {
   IconChartBar,
   IconCircleCheck,
   IconCircleDashed,
+  IconCopy,
   IconHelpCircle,
   IconHome2,
   IconMenu2,
+  IconMinus,
   IconMoon,
   IconPalette,
   IconPlus,
   IconSearch,
   IconSettings,
+  IconSquare,
   IconSun,
+  IconX,
 } from "../icons";
 import type { Icon } from "../icons";
 import { listReadingStatusCounts, type ReadingStatus } from "../api";
@@ -42,60 +46,81 @@ import { ThemeColorSwatches } from "./ThemeColorSwatches";
 import type { GroupFilter, MainView } from "./Sidebar";
 import type { SettingsTab } from "./SettingsScreen";
 
-// Must match TITLEBAR_HEIGHT in apps/desktop/src/main.ts (both the win/linux titleBarOverlay
-// height and the mac trafficLightPosition.y are derived from that same constant). Exported so
-// App.tsx can give AppShell's header slot the same height.
+// Must match TITLEBAR_HEIGHT in apps/desktop/src/main.ts (the mac trafficLightPosition.y is
+// derived from that same constant). Exported so App.tsx can give AppShell's header slot the same
+// height.
 export const TITLEBAR_HEIGHT = 40;
 
-// The WICG Window Controls Overlay API (https://github.com/WICG/window-controls-overlay) that
-// Electron's win/linux titleBarOverlay is built on - not yet in TS's lib.dom.d.ts, so declared
-// here. getTitlebarAreaRect() gives the actual safe-content rectangle (whichever physical side the
-// caption buttons are really on, at their real rendered width for the current theme/DPI/RTL
-// state), and geometrychange fires whenever that rectangle changes.
-interface WindowControlsOverlay extends EventTarget {
-  visible: boolean;
-  getTitlebarAreaRect: () => DOMRect;
-}
-
-declare global {
-  interface Navigator {
-    windowControlsOverlay?: WindowControlsOverlay;
-  }
-}
-
 // Shared by the real TitleBar below and by BackendGate.tsx's minimal loading/error bar (shown
-// before the real one ever mounts) - factored out so both compute the exact same native-control
-// safe area rather than duplicating (and risking drifting out of sync with) this measurement.
+// before the real one ever mounts) - factored out so both reserve the exact same space. mac's
+// native traffic lights are drawn by the OS on top of the page (inset from the top-left) with no
+// DOM reservation of their own, so that side still needs a hardcoded left padding; win/linux no
+// longer needs any reservation at all now that WindowControls (below) renders its own buttons as
+// normal flex content at the end of the bar, rather than reserving space for an OS-drawn overlay.
 export function useTitleBarOverlayPadding(): { paddingLeft: number; paddingRight: number } {
   const isMac = window.maktaba.platform === "darwin";
-  // The win/linux safe-content rectangle, measured live - see the WindowControlsOverlay
-  // declaration above. Previous attempts at this reserved a hardcoded pixel width via CSS
-  // (paddingRight: 138, and later env(titlebar-area-*)) and both were wrong in practice: the
-  // caption buttons' actual width/side varies by Windows theme/DPI/RTL in ways a guessed constant
-  // or an apparently-unpopulated env() value didn't track, clipping content under LTR and hiding
-  // most of the bar under RTL. This reads Chromium's own live overlay geometry instead.
-  const [overlayRect, setOverlayRect] = useState<DOMRect | null>(null);
+  return { paddingLeft: isMac ? 80 : 0, paddingRight: 0 };
+}
+
+// Custom-drawn minimize/maximize/close buttons for win/linux, where the window is now fully
+// frameless (see main.ts's createWindow) rather than using Electron's native titleBarOverlay -
+// that OS-drawn control strip always rendered top-right regardless of the page's own RTL/LTR
+// direction, which these buttons need to respect (rendered as the last child of the title bar's
+// flex row, so `dir="rtl"` naturally flips them to the visual left like everything else logical-
+// property-based in this app). Not rendered on mac, which keeps native inset traffic lights
+// instead (see trafficLightPosition in main.ts).
+export function WindowControls() {
+  const { t } = useLanguage();
+  const [maximized, setMaximized] = useState(false);
 
   useEffect(() => {
-    if (isMac) return;
-    const overlay = navigator.windowControlsOverlay;
-    if (!overlay) return;
+    let cancelled = false;
+    void window.maktaba.isWindowMaximized().then((value) => {
+      if (!cancelled) setMaximized(value);
+    });
+    const unsubscribe = window.maktaba.onWindowMaximizedChange((value) => setMaximized(value));
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, []);
 
-    const update = () => setOverlayRect(overlay.visible ? overlay.getTitlebarAreaRect() : null);
-    update();
-    overlay.addEventListener("geometrychange", update);
-    return () => overlay.removeEventListener("geometrychange", update);
-  }, [isMac]);
-
-  return {
-    // Reserves space for the native controls so our own content never sits under them. mac's
-    // traffic lights are a fixed native offset from the top-left regardless of app direction, so
-    // that side stays hardcoded. win/linux uses the live-measured overlayRect (see above); until
-    // the first geometrychange fires we fall back to the old best-guess constants rather than
-    // rendering with zero reservation.
-    paddingLeft: isMac ? 80 : (overlayRect?.x ?? 12),
-    paddingRight: isMac ? 12 : overlayRect ? window.innerWidth - overlayRect.x - overlayRect.width : 150,
+  const buttonStyle: CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 46,
+    alignSelf: "stretch",
   };
+
+  return (
+    <Group gap={0} wrap="nowrap" className="maktaba-titlebar-no-drag" style={{ flexShrink: 0, alignSelf: "stretch" }}>
+      <UnstyledButton
+        aria-label={t("toolbar.minimize")}
+        onClick={() => void window.maktaba.minimizeWindow()}
+        style={buttonStyle}
+        className="maktaba-window-control"
+      >
+        <IconMinus size={14} strokeWidth={1.5} />
+      </UnstyledButton>
+      <UnstyledButton
+        aria-label={t(maximized ? "toolbar.restore" : "toolbar.maximize")}
+        onClick={() => void window.maktaba.toggleMaximizeWindow()}
+        style={buttonStyle}
+        className="maktaba-window-control"
+      >
+        {maximized ? <IconCopy size={13} strokeWidth={1.5} /> : <IconSquare size={12} strokeWidth={1.5} />}
+      </UnstyledButton>
+      <UnstyledButton
+        aria-label={t("toolbar.closeWindow")}
+        onClick={() => void window.maktaba.closeWindow()}
+        style={buttonStyle}
+        className="maktaba-window-control maktaba-window-control-close"
+      >
+        <IconX size={15} strokeWidth={1.5} />
+      </UnstyledButton>
+    </Group>
+  );
 }
 
 // The app icon + name, used both as the real TitleBar's leftmost element and (standalone) as
@@ -282,17 +307,7 @@ export function TitleBar({
   const { paddingLeft, paddingRight } = useTitleBarOverlayPadding();
   const otherLanguage = LANGUAGES.find((option) => option.value !== language)!;
   const currentLanguage = LANGUAGES.find((option) => option.value === language)!;
-
-  // Keeps the native win/linux caption-button strip's colors matching the app's own currently
-  // active theme (organic/white) and light/dark setting rather than a hardcoded/mismatched color -
-  // reads the same CSS variables the page itself is themed with, so it stays correct across theme
-  // and accent-color changes without main.ts needing to know anything about the renderer's theme.
-  useEffect(() => {
-    const styles = getComputedStyle(document.body);
-    const color = styles.getPropertyValue("--mantine-color-body").trim() || (colorScheme === "dark" ? "#242019" : "#f5ead8");
-    const symbolColor = styles.getPropertyValue("--mantine-color-text").trim() || (colorScheme === "dark" ? "#f3ead9" : "#201e1d");
-    void window.maktaba.setTitleBarOverlay({ color, symbolColor });
-  }, [colorScheme, appTheme]);
+  const isMac = window.maktaba.platform === "darwin";
 
   return (
     <Box
@@ -462,6 +477,7 @@ export function TitleBar({
       )}
 
       <HelpButton />
+      {!isMac && <WindowControls />}
     </Box>
   );
 }
