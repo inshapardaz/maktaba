@@ -387,7 +387,7 @@ export function TitleBar({
         <Button
           className="maktaba-titlebar-no-drag"
           leftSection={<IconPlus size={15} />}
-          variant="outline"
+          variant="primary"
           size="xs"
           onClick={onImport}
           me={8}

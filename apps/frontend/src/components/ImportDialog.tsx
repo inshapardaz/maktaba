@@ -141,18 +141,29 @@ export function ImportDialog() {
         title={
           <Group justify="space-between" wrap="nowrap" gap={4} style={{ width: "100%" }}>
             <Text fw={600}>{t("importDialog.title")}</Text>
-            <Tooltip label={t("importDialog.minimize")}>
-              <ActionIcon variant="subtle" color="gray" onClick={minimize} aria-label={t("importDialog.minimize")}>
-                <IconMinus size={16} />
-              </ActionIcon>
-            </Tooltip>
+            <Group gap={4} wrap="nowrap">
+              {isProcessing && (
+                <Tooltip label={t("importDialog.minimize")}>
+                  <ActionIcon variant="subtle" color="gray" onClick={minimize} aria-label={t("importDialog.minimize")}>
+                    <IconMinus size={16} />
+                  </ActionIcon>
+                </Tooltip>
+              )}
+              <Tooltip label={t("importDialog.close")}>
+                <ActionIcon variant="subtle" color="gray" onClick={cancel} aria-label={t("importDialog.close")}>
+                  <IconX size={16} />
+                </ActionIcon>
+              </Tooltip>
+            </Group>
           </Group>
         }
-        fullScreen
+        withCloseButton={false}
+        size="100%"
         closeOnClickOutside={false}
         styles={{
-          content: { display: "flex", flexDirection: "column" },
-          body: { display: "flex", flexDirection: "column", flex: 1, minHeight: 0 },
+          title: { flex: 1 },
+          content: { display: "flex", flexDirection: "column", overflow: "hidden", height: "90vh" },
+          body: { display: "flex", flexDirection: "column", flex: 1, minHeight: 0, overflow: "hidden" },
         }}
       >
         <Stack gap="md" style={{ flex: 1, minHeight: 0 }}>
@@ -204,20 +215,22 @@ export function ImportDialog() {
             </Stack>
           </Box>
 
-          <Group justify="space-between">
-            <Text size="sm">{t("importDialog.convertTo")}</Text>
-            <Tooltip label={t("importDialog.calibreUnavailable")} disabled={calibreAvailable || capabilitiesQuery.isLoading}>
-              <SegmentedControl
-                size="xs"
-                data={convertOptions}
-                value={convertFormat}
-                onChange={(value) => setConvertFormat(value as typeof convertFormat)}
-                disabled={!capabilitiesQuery.isLoading && !calibreAvailable}
-              />
-            </Tooltip>
-          </Group>
+          <Group justify="space-between" wrap="wrap" gap="sm">
+            <Group gap={8} wrap="nowrap">
+              <Text size="sm" style={{ flexShrink: 0 }}>
+                {t("importDialog.convertTo")}
+              </Text>
+              <Tooltip label={t("importDialog.calibreUnavailable")} disabled={calibreAvailable || capabilitiesQuery.isLoading}>
+                <SegmentedControl
+                  size="xs"
+                  data={convertOptions}
+                  value={convertFormat}
+                  onChange={(value) => setConvertFormat(value as typeof convertFormat)}
+                  disabled={!capabilitiesQuery.isLoading && !calibreAvailable}
+                />
+              </Tooltip>
+            </Group>
 
-          <Group justify="space-between" wrap="nowrap">
             <Group gap={8} wrap="nowrap">
               <Text size="sm" style={{ flexShrink: 0 }}>
                 {t("importDialog.conflictPolicyLabel")}
@@ -228,19 +241,17 @@ export function ImportDialog() {
                 value={conflictPolicy}
                 onChange={(value) => setConflictPolicy((value as ConflictPolicy) ?? "ask")}
                 allowDeselect={false}
-                w={170}
+                w={150}
               />
+              {conflictPolicy !== "ask" && summary.conflicted > 0 && (
+                <Button size="xs" variant="light" onClick={applyPolicyToAllConflicts}>
+                  {t("importDialog.applyToAll", { count: summary.conflicted })}
+                </Button>
+              )}
             </Group>
-            {conflictPolicy !== "ask" && summary.conflicted > 0 && (
-              <Button size="xs" variant="light" onClick={applyPolicyToAllConflicts}>
-                {t("importDialog.applyToAll", { count: summary.conflicted })}
-              </Button>
-            )}
-          </Group>
 
-          {queue.length > 0 && (
-            <Stack gap={6}>
-              <Group gap={8}>
+            {queue.length > 0 && (
+              <Group gap={8} wrap="nowrap">
                 <Badge
                   component="button"
                   type="button"
@@ -282,6 +293,11 @@ export function ImportDialog() {
                   {t("importDialog.summaryFailed", { count: summary.failed })}
                 </Badge>
               </Group>
+            )}
+          </Group>
+
+          {queue.length > 0 && (
+            <Stack gap={6}>
               <Group justify="space-between">
                 <Text size="xs" c="dimmed">
                   {t("importDialog.importProgress", { done: completedCount, total: queue.length })}
@@ -410,7 +426,12 @@ export function ImportDialog() {
             )}
           </ScrollArea>
 
-          <Group justify="flex-end">
+          <Group justify="flex-end" gap="xs">
+            {isProcessing && (
+              <Button size="xs" variant="default" onClick={minimize}>
+                {t("importDialog.minimize")}
+              </Button>
+            )}
             <Button size="xs" onClick={cancel}>
               {t("importDialog.close")}
             </Button>
