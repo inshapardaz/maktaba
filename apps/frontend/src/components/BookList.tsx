@@ -67,6 +67,8 @@ export function BookRow({ book, index, selected, selectedIds, onSelect, onEdit, 
   const [loadingRead, setLoadingRead] = useState(false);
   const [hovered, setHovered] = useState(false);
   const [mergeDragOver, setMergeDragOver] = useState(false);
+  // Issue #61: same translucent-while-dragging treatment as BookGrid.tsx's BookCard.
+  const [isDragging, setIsDragging] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(book.title);
   const readableFormats = book.formats.filter(isReadableFormat);
@@ -156,7 +158,9 @@ export function BookRow({ book, index, selected, selectedIds, onSelect, onEdit, 
       onDragStart={(event) => {
         const ids = selected && selectedIds.size > 1 ? Array.from(selectedIds) : [book.id];
         setBookDragData(event, ids);
+        setIsDragging(true);
       }}
+      onDragEnd={() => setIsDragging(false)}
       onClick={(event) => onSelect(book.id, index, event)}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
@@ -187,6 +191,7 @@ export function BookRow({ book, index, selected, selectedIds, onSelect, onEdit, 
         gap: "var(--mantine-spacing-md)",
         padding: "var(--mantine-spacing-sm) var(--mantine-spacing-md)",
         borderRadius: "var(--mantine-radius-md)",
+        opacity: isDragging ? 0.4 : 1,
         outline: mergeDragOver ? "2px solid var(--mantine-color-orange-6)" : "2px solid transparent",
         outlineOffset: -2,
         // Hover uses the same terracotta-tinted --mantine-primary-color-light-hover the sidebar's

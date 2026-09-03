@@ -25,7 +25,11 @@ interface BookGridProps {
 const CARD_WIDTH = 160;
 const COVER_HEIGHT = 240; // 2:3 aspect ratio, per design/README.md §3
 const CARD_HEIGHT = 290;
-const GAP = 20;
+// Issue #61: wider than before (was 20) so there's enough empty space between cards to actually
+// start a marquee drag-select without the mousedown landing on a card (which starts a native book
+// drag instead - see dragSelect.ts's onMouseDown, which bails out of the marquee entirely in that
+// case).
+const GAP = 32;
 
 interface BookCardProps {
   book: BookSummary;
@@ -52,6 +56,10 @@ function BookCard({ book, index, selected, selectedIds, onSelect, onEdit, onMerg
   const [hovered, setHovered] = useState(false);
   const [loadingRead, setLoadingRead] = useState(false);
   const [mergeDragOver, setMergeDragOver] = useState(false);
+  // Issue #61: the dragged card(s) turn translucent for the duration of the drag - without this,
+  // a card being dragged onto a sidebar row/another card looks fully opaque and can visually
+  // obscure whatever's underneath the cursor at the drop target.
+  const [isDragging, setIsDragging] = useState(false);
   const readableFormats = book.formats.filter(isReadableFormat);
 
   const handleRead = async (format?: "Epub" | "Pdf") => {
@@ -85,7 +93,9 @@ function BookCard({ book, index, selected, selectedIds, onSelect, onEdit, onMerg
       onDragStart={(event) => {
         const ids = selected && selectedIds.size > 1 ? Array.from(selectedIds) : [book.id];
         setBookDragData(event, ids);
+        setIsDragging(true);
       }}
+      onDragEnd={() => setIsDragging(false)}
       onClick={(event) => onSelect(book.id, index, event)}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
@@ -110,6 +120,7 @@ function BookCard({ book, index, selected, selectedIds, onSelect, onEdit, onMerg
       }}
       style={{
         borderRadius: "var(--mantine-radius-sm)",
+        opacity: isDragging ? 0.4 : 1,
         outline: mergeDragOver
           ? "2px solid var(--mantine-color-orange-6)"
           : selected
