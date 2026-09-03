@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActionIcon,
   Avatar,
@@ -51,7 +51,13 @@ import {
 import { isBookDrag, readBookDragIds } from "../bookDrag";
 import { useLanguage } from "../i18n/LanguageContext";
 import type { TranslationKey } from "../i18n/translations";
-import { getStoredAuthorSort, setStoredAuthorSort, type SidebarSort, type SidebarSortKey } from "../sidebarSettings";
+import {
+  getStoredAuthorSort,
+  getStoredExpandMode,
+  setStoredAuthorSort,
+  type SidebarSort,
+  type SidebarSortKey,
+} from "../sidebarSettings";
 import { LibrarySwitcher } from "./LibrarySwitcher";
 import type { SettingsTab } from "./SettingsScreen";
 
@@ -240,12 +246,21 @@ function sectionRowStyles(isActive: boolean, dragOver = false) {
 }
 
 // A section's header: icon + title + optional action (see-all/add, shown regardless of expanded
-// state so those stay reachable at a glance) + expand/collapse chevron. Single-select accordion -
-// opening one closes whichever was open before it (see Sidebar's expandedSection state).
+// state so those stay reachable at a glance) + expand/collapse chevron.
+//
+// Issue #60: `fillHeight` distinguishes the two expand modes (Sidebar's expandMode) - true in
+// "single" mode, where the one expanded section stretches to fill whatever space is left (its own
+// ScrollArea below, rather than the whole sidebar scrolling); false in "multiple" mode, where any
+// number of sections can be expanded side by side, so each is instead capped to
+// MULTI_EXPAND_MAX_HEIGHT with its own scrollbar and the sidebar's outer nav container scrolls as
+// a whole if they add up to more than the available height.
+const MULTI_EXPAND_MAX_HEIGHT = 260;
+
 function CollapsibleSection({
   title,
   icon: SectionIcon,
   expanded,
+  fillHeight,
   onToggle,
   action,
   children,
@@ -253,6 +268,7 @@ function CollapsibleSection({
   title: string;
   icon: Icon;
   expanded: boolean;
+  fillHeight: boolean;
   onToggle: () => void;
   action?: React.ReactNode;
   children: React.ReactNode;
@@ -262,10 +278,9 @@ function CollapsibleSection({
       style={{
         borderBottom: "1px solid var(--mantine-color-default-border)",
         // Collapsed sections keep their natural (header-only) height and stack at the top/bottom
-        // of the sidebar; the one expanded section stretches to fill whatever space is left, with
-        // its own ScrollArea below rather than letting the whole sidebar scroll.
-        flex: expanded ? 1 : "0 0 auto",
-        minHeight: expanded ? 0 : undefined,
+        // of the sidebar.
+        flex: expanded && fillHeight ? 1 : "0 0 auto",
+        minHeight: expanded && fillHeight ? 0 : undefined,
         display: expanded ? "flex" : undefined,
         flexDirection: expanded ? "column" : undefined,
       }}
@@ -287,7 +302,9 @@ function CollapsibleSection({
         </ActionIcon>
       </Group>
       {expanded && (
-        <ScrollArea style={{ flex: 1, minHeight: 0 }}>
+        <ScrollArea
+          style={fillHeight ? { flex: 1, minHeight: 0 } : { maxHeight: MULTI_EXPAND_MAX_HEIGHT }}
+        >
           <Box pb="sm">{children}</Box>
         </ScrollArea>
       )}
@@ -574,13 +591,35 @@ export function Sidebar({
     </Popover>
   );
 
-  // Single-select accordion - opening a section closes whichever one was open before it. Authors
-  // starts open since it's usually the most-browsed section; null means every section collapsed.
-  const [expandedSection, setExpandedSection] = useState<BrowseSection | null>("authors");
+  // Issue #60: accordion expand behavior is user-configurable (Settings -> General -> "Sidebar
+  // sections"), shared with SettingsScreen.tsx via the ["sidebarExpandMode"] query cache (see that
+  // component's handleExpandModeChange) so toggling it there re-renders this already-mounted
+  // sidebar immediately. "single" (the original behavior) keeps exactly one section expanded at
+  // all times and disallows collapsing it - the user can only switch which one; "multiple" allows
+  // any number expanded (including none), each capped to a max height rather than filling space.
+  const expandMode = useQuery({ queryKey: ["sidebarExpandMode"], queryFn: () => getStoredExpandMode() }).data ?? "single";
+  const [expandedSections, setExpandedSections] = useState<Set<BrowseSection>>(() => new Set(["authors"]));
 
   const toggleSection = (key: BrowseSection) => {
-    setExpandedSection((prev) => (prev === key ? null : key));
+    setExpandedSections((prev) => {
+      if (expandMode === "single") {
+        // Clicking the already-expanded section is a no-op - at least one section must stay open.
+        return prev.has(key) ? prev : new Set([key]);
+      }
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
   };
+
+  // Switching from "multiple" to "single" mode (or starting with none expanded) needs to collapse
+  // back down to exactly one expanded section - keeps whichever was expanded first if there were
+  // several, or falls back to "authors" if there were none.
+  useEffect(() => {
+    if (expandMode !== "single") return;
+    setExpandedSections((prev) => (prev.size === 1 ? prev : new Set([[...prev][0] ?? "authors"])));
+  }, [expandMode]);
 
   const [authorSort, setAuthorSort] = useState<SidebarSort>(getStoredAuthorSort);
   const handleAuthorSortChange = (sort: SidebarSort) => {
@@ -612,11 +651,24 @@ export function Sidebar({
         }}
       />
 
-      <Box component="nav" style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      <Box
+        component="nav"
+        style={{
+          flex: 1,
+          minHeight: 0,
+          display: "flex",
+          flexDirection: "column",
+          // "single" mode: exactly one section fills this box, own scroll below - the box itself
+          // never needs to scroll. "multiple" mode: several capped-height sections can add up to
+          // more than the available space, so the whole nav area scrolls instead.
+          overflow: expandMode === "single" ? "hidden" : "auto",
+        }}
+      >
           <CollapsibleSection
             title={t("sidebar.authors")}
             icon={IconUser}
-            expanded={expandedSection === "authors"}
+            expanded={expandedSections.has("authors")}
+            fillHeight={expandMode === "single"}
             onToggle={() => toggleSection("authors")}
             action={
               <Group gap={6} wrap="nowrap">
@@ -663,7 +715,8 @@ export function Sidebar({
           <CollapsibleSection
             title={t("sidebar.collections")}
             icon={IconFolder}
-            expanded={expandedSection === "collections"}
+            expanded={expandedSections.has("collections")}
+            fillHeight={expandMode === "single"}
             onToggle={() => toggleSection("collections")}
             action={
               <Group gap={6} wrap="nowrap">
@@ -685,7 +738,8 @@ export function Sidebar({
           <CollapsibleSection
             title={t("sidebar.series")}
             icon={IconStack2}
-            expanded={expandedSection === "series"}
+            expanded={expandedSections.has("series")}
+            fillHeight={expandMode === "single"}
             onToggle={() => toggleSection("series")}
             action={seeAllAction(onOpenSeries)}
           >
@@ -702,7 +756,8 @@ export function Sidebar({
           <CollapsibleSection
             title={t("sidebar.tags")}
             icon={IconTag}
-            expanded={expandedSection === "tags"}
+            expanded={expandedSections.has("tags")}
+            fillHeight={expandMode === "single"}
             onToggle={() => toggleSection("tags")}
             action={seeAllAction(onOpenTags)}
           >
@@ -720,7 +775,8 @@ export function Sidebar({
             <CollapsibleSection
               title={t("sidebar.periodicals")}
               icon={IconNews}
-              expanded={expandedSection === "periodicals"}
+              expanded={expandedSections.has("periodicals")}
+              fillHeight={expandMode === "single"}
               onToggle={() => toggleSection("periodicals")}
               action={
                 <Group gap={6} wrap="nowrap">
@@ -745,7 +801,8 @@ export function Sidebar({
           <CollapsibleSection
             title={t("sidebar.publishers")}
             icon={IconBuildingStore}
-            expanded={expandedSection === "publishers"}
+            expanded={expandedSections.has("publishers")}
+            fillHeight={expandMode === "single"}
             onToggle={() => toggleSection("publishers")}
             action={seeAllAction(onOpenPublishers)}
           >
@@ -762,7 +819,8 @@ export function Sidebar({
           <CollapsibleSection
             title={t("sidebar.languages")}
             icon={IconLanguage}
-            expanded={expandedSection === "languages"}
+            expanded={expandedSections.has("languages")}
+            fillHeight={expandMode === "single"}
             onToggle={() => toggleSection("languages")}
             action={seeAllAction(onOpenLanguages)}
           >

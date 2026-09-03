@@ -15,6 +15,7 @@ import {
   type ReaderOpenMode,
 } from "../readerSettings";
 import { getStoredShowIssuesInGrid, setStoredShowIssuesInGrid } from "../periodicalSettings";
+import { getStoredExpandMode, setStoredExpandMode, type SidebarExpandMode } from "../sidebarSettings";
 import { useAppTheme, type AppThemeName } from "../AppThemeContext";
 import { URDU_FONT_OPTIONS, type UrduFontName } from "../urduFont";
 import { AboutSettings } from "./AboutSettings";
@@ -59,6 +60,16 @@ export function SettingsScreen({ opened, onClose, onLibraryChanged, initialTab }
   // Shared with TitleBar.tsx's MenuButton (same query key) so toggling here updates that button's
   // visibility immediately, without waiting for a refetch.
   const menuBarQuery = useQuery({ queryKey: ["menuBarEnabled"], queryFn: () => window.maktaba.getMenuBarEnabled() });
+
+  // Issue #60: shared with Sidebar.tsx (same query key) so toggling this here re-renders the
+  // already-mounted sidebar immediately, the same "settings write to localStorage + react-query
+  // cache as the cross-component live-update channel" shape as menuBarEnabled above.
+  const expandModeQuery = useQuery({ queryKey: ["sidebarExpandMode"], queryFn: () => getStoredExpandMode() });
+  const handleExpandModeChange = (value: string) => {
+    const mode = value as SidebarExpandMode;
+    setStoredExpandMode(mode);
+    queryClient.setQueryData(["sidebarExpandMode"], mode);
+  };
 
   const handleMenuBarChange = (enabled: boolean) => {
     queryClient.setQueryData(["menuBarEnabled"], enabled);
@@ -167,6 +178,23 @@ export function SettingsScreen({ opened, onClose, onLibraryChanged, initialTab }
               </Group>
               <Text size="xs" c="dimmed">
                 {t("settings.menuBarHint")}
+              </Text>
+            </Stack>
+            <Stack gap={2}>
+              <Group justify="space-between">
+                <FieldLabel>{t("settings.sidebarExpandMode")}</FieldLabel>
+                <SegmentedControl
+                  size="xs"
+                  value={expandModeQuery.data ?? "single"}
+                  onChange={handleExpandModeChange}
+                  data={[
+                    { value: "single", label: t("settings.sidebarExpandModeSingle") },
+                    { value: "multiple", label: t("settings.sidebarExpandModeMultiple") },
+                  ]}
+                />
+              </Group>
+              <Text size="xs" c="dimmed">
+                {t("settings.sidebarExpandModeHint")}
               </Text>
             </Stack>
             <Stack gap={2}>
