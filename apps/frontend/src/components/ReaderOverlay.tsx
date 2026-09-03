@@ -400,6 +400,11 @@ export function ReaderOverlay({ bookId, format, onClose, embedded }: ReaderOverl
 
   return (
     <Box
+      // Issue #62: index.css disables text selection app-wide (this is UI chrome, not a document) -
+      // the reader is the one place that's actually a document, and its own word-lookup feature
+      // (StarDict dictionaries, see CLAUDE.md) depends on the user being able to select text, so
+      // this opts back in for its whole subtree.
+      className="maktaba-reader-content"
       pos="fixed"
       top={embedded ? TITLEBAR_HEIGHT : 0}
       left={0}

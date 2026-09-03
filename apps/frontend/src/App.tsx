@@ -818,6 +818,7 @@ function App() {
                   setSelectedBookId(null);
                   invalidateLibraryQueries(queryClient);
                 }}
+                onSelectFilter={handleSelectFilter}
               />
             )}
 

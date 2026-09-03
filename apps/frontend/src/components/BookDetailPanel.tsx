@@ -22,6 +22,7 @@ import {
   TextInput,
   Title,
   Tooltip,
+  UnstyledButton,
 } from "@mantine/core";
 import {
   IconAlertCircle,
@@ -48,6 +49,7 @@ import {
   deleteBook,
   deleteBookFile,
   coverUrl,
+  listTags,
   renameBookFile,
   updateBook,
   updateBookStatus,
@@ -63,7 +65,7 @@ import { invalidateLibraryQueries } from "../queries";
 import { READING_STATUS_COLOR, READING_STATUS_LABEL_KEY } from "../readingStatus";
 import { useReaderLauncher } from "../ReaderLauncherContext";
 import { BookEditForm } from "./BookEditForm";
-import { languageDisplayName } from "./Sidebar";
+import { languageDisplayName, type GroupFilter } from "./Sidebar";
 import { SpineCover } from "./SpineCover";
 
 function isReadableFormat(format: string): format is "Epub" | "Pdf" {
@@ -95,12 +97,32 @@ interface BookDetailPanelProps {
   bookId: string;
   onClose: () => void;
   onRemoved: () => void;
+  // Issue #62: clicking an author/tag/collection pill below closes this panel and hands the
+  // corresponding filter up to App.tsx's handleSelectFilter, same as picking one from the sidebar.
+  onSelectFilter: (filter: GroupFilter) => void;
 }
 
-export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelProps) {
+export function BookDetailPanel({ bookId, onClose, onRemoved, onSelectFilter }: BookDetailPanelProps) {
   const { t } = useLanguage();
   const queryClient = useQueryClient();
   const launchReader = useReaderLauncher();
+  // Tags aren't given ids on BookDetailDto (just plain name strings) - resolved against the
+  // sidebar's already-cached ["tags"] list (BrowseGroup rows do have ids) by name instead of adding
+  // a backend field just for this. A tag renamed/removed since that list was last fetched simply
+  // won't be clickable (handleTagClick below no-ops), rather than risk sending a stale id.
+  const tagsQuery = useQuery({ queryKey: ["tags"], queryFn: listTags });
+
+  const handleSelectFilter = (filter: GroupFilter) => {
+    onClose();
+    onSelectFilter(filter);
+  };
+
+  const handleTagClick = (tagName: string) => {
+    const match = tagsQuery.data?.find((tag) => tag.name.toLowerCase() === tagName.toLowerCase());
+    if (match) {
+      handleSelectFilter({ kind: "tagId", id: match.id, name: match.name });
+    }
+  };
   const [isEditing, setEditing] = useState(false);
   const [isRemoving, setRemoving] = useState(false);
   const [removeError, setRemoveError] = useState<string | null>(null);
@@ -352,12 +374,17 @@ export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelP
               ) : book.authorRefs.length > 0 ? (
                 <Group gap="sm">
                   {book.authorRefs.map((author) => (
-                    <Group key={author.id} gap={6} wrap="nowrap">
-                      <Avatar src={author.hasImage ? authorImageUrl(author.id) : null} size={36} radius="xl">
-                        <IconUser size={18} />
-                      </Avatar>
-                      <Text fw={500}>{author.name}</Text>
-                    </Group>
+                    <UnstyledButton
+                      key={author.id}
+                      onClick={() => handleSelectFilter({ kind: "authorId", id: author.id, name: author.name })}
+                    >
+                      <Group gap={6} wrap="nowrap">
+                        <Avatar src={author.hasImage ? authorImageUrl(author.id) : null} size={36} radius="xl">
+                          <IconUser size={18} />
+                        </Avatar>
+                        <Text fw={500}>{author.name}</Text>
+                      </Group>
+                    </UnstyledButton>
                   ))}
                 </Group>
               ) : (
@@ -467,7 +494,13 @@ export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelP
           {book.tags.length > 0 && (
             <Group gap={6}>
               {book.tags.map((tag) => (
-                <Badge key={tag} variant="light">
+                <Badge
+                  key={tag}
+                  variant="light"
+                  component="button"
+                  onClick={() => handleTagClick(tag)}
+                  style={{ cursor: "pointer" }}
+                >
                   {tag}
                 </Badge>
               ))}
@@ -479,7 +512,13 @@ export function BookDetailPanel({ bookId, onClose, onRemoved }: BookDetailPanelP
               <FieldLabel>{t("bookDetail.collections")}</FieldLabel>
               <Group gap={6} mt={4}>
                 {book.collections.map((collection) => (
-                  <Badge key={collection.id} variant="outline">
+                  <Badge
+                    key={collection.id}
+                    variant="outline"
+                    component="button"
+                    onClick={() => handleSelectFilter({ kind: "collectionId", id: collection.id, name: collection.name })}
+                    style={{ cursor: "pointer" }}
+                  >
                     {collection.name}
                   </Badge>
                 ))}

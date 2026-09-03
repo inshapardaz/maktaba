@@ -79,3 +79,19 @@ body.lang-ur .mantine-Drawer-title {
   outline: 2px solid var(--mantine-primary-color-filled);
   outline-offset: 2px;
 }
+
+/* Issue #62: this is an app UI, not a document - a Shift+click multi-select, or a drag-select
+   marquee (see dragSelect.ts) dragged over a title/label, shouldn't leave a blue text-selection
+   highlight behind. Text inputs/textareas/contenteditable regions (the reader, rename fields,
+   etc.) explicitly opt back in, since selecting text there is the whole point. */
+body {
+  user-select: none;
+}
+
+input,
+textarea,
+[contenteditable="true"],
+.maktaba-reader-content,
+.maktaba-reader-content * {
+  user-select: text;
+}
