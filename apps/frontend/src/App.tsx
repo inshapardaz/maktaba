@@ -49,6 +49,14 @@ import { useImportQueue } from "./ImportContext";
 import { useRescan } from "./RescanContext";
 import { getStoredAutoTagMode, getStoredReaderEngine, getStoredReaderOpenMode } from "./readerSettings";
 import { getStoredShowIssuesInGrid } from "./periodicalSettings";
+import {
+  getStoredSortDirection,
+  getStoredSortKey,
+  getStoredViewMode,
+  setStoredSortDirection,
+  setStoredSortKey,
+  setStoredViewMode,
+} from "./viewSettings";
 import { hasCompletedOnboarding } from "./onboarding";
 
 function compareBooks(a: BookSummary, b: BookSummary, sortKey: SortKey): number {
@@ -99,9 +107,9 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab | undefined>(undefined);
   const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT_WIDTH);
-  const [sortKey, setSortKeyState] = useState<SortKey>("title");
-  const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
-  const [viewMode, setViewMode] = useState<ViewMode>("grid");
+  const [sortKey, setSortKeyState] = useState<SortKey>(getStoredSortKey);
+  const [sortDirection, setSortDirectionState] = useState<SortDirection>(getStoredSortDirection);
+  const [viewMode, setViewModeState] = useState<ViewMode>(getStoredViewMode);
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null);
   // Multi-select for issue #10's drag-onto-sidebar feature - Ctrl/Cmd+click toggles a book in/out,
   // Shift+click selects the range since lastClickedIndex, a plain click (no modifier) replaces the
@@ -219,7 +227,18 @@ function App() {
   // changed it from the sort popover or a group filter selection changed it for them below.
   const handleSortKeyChange = (key: SortKey) => {
     setSortKeyState(key);
-    setSortDirection(defaultDirectionFor(key));
+    setStoredSortKey(key);
+    handleSortDirectionChange(defaultDirectionFor(key));
+  };
+
+  const handleSortDirectionChange = (direction: SortDirection) => {
+    setSortDirectionState(direction);
+    setStoredSortDirection(direction);
+  };
+
+  const handleViewModeChange = (mode: ViewMode) => {
+    setViewModeState(mode);
+    setStoredViewMode(mode);
   };
 
   // Series and "currently reading"/"finished" are the two filters where the default title sort
@@ -628,9 +647,9 @@ function App() {
                   sortKey={sortKey}
                   sortDirection={sortDirection}
                   onSortKeyChange={handleSortKeyChange}
-                  onSortDirectionChange={setSortDirection}
+                  onSortDirectionChange={handleSortDirectionChange}
                   viewMode={viewMode}
-                  onViewModeChange={setViewMode}
+                  onViewModeChange={handleViewModeChange}
                   groupFilter={groupFilter}
                   onClearGroup={() => setGroupFilter(null)}
                   searchTerm={search}
