@@ -50,6 +50,8 @@ const en = {
   "backend.retry": "Retry",
 
   "toolbar.home": "Home",
+  "toolbar.goBack": "Back",
+  "toolbar.goForward": "Forward",
   "toolbar.menu": "Menu",
   "toolbar.help": "Help",
   "toolbar.minimize": "Minimize",
@@ -484,6 +486,8 @@ const ur: TranslationDict = {
   "backend.retry": "دوبارہ کوشش کریں",
 
   "toolbar.home": "ہوم",
+  "toolbar.goBack": "پیچھے",
+  "toolbar.goForward": "آگے",
   "toolbar.menu": "مینو",
   "toolbar.help": "مدد",
   "toolbar.minimize": "چھوٹا کریں",

@@ -17,6 +17,8 @@ import {
   useMantineColorScheme,
 } from "@mantine/core";
 import {
+  IconArrowLeft,
+  IconArrowRight,
   IconBookmark,
   IconBooks,
   IconChartBar,
@@ -207,6 +209,11 @@ interface TitleBarProps {
   settingsOpen: boolean;
   onOpenSettings: (tab?: SettingsTab) => void;
   onOpenAnalytics: () => void;
+  // Issue #57: back/forward navigation history buttons.
+  canGoBack: boolean;
+  canGoForward: boolean;
+  onGoBack: () => void;
+  onGoForward: () => void;
   // Set while the inline reader (App.tsx's inlineReader) is open - none of the sidebar/filter/
   // search/import actions are reachable behind it (InlineReader covers the rest of the window), so
   // they're hidden rather than left as dead clicks. The bar itself (branding + drag region) still
@@ -296,6 +303,10 @@ export function TitleBar({
   settingsOpen,
   onOpenSettings,
   onOpenAnalytics,
+  canGoBack,
+  canGoForward,
+  onGoBack,
+  onGoForward,
   actionsHidden,
 }: TitleBarProps) {
   const { t, language, setLanguage } = useLanguage();
@@ -331,6 +342,31 @@ export function TitleBar({
 
         {showActions && (
           <>
+            <Tooltip label={t("toolbar.goBack")}>
+              <ActionIcon
+                className="maktaba-titlebar-no-drag"
+                variant="subtle"
+                color="gray"
+                disabled={!canGoBack}
+                onClick={onGoBack}
+                aria-label={t("toolbar.goBack")}
+              >
+                <IconArrowLeft size={16} />
+              </ActionIcon>
+            </Tooltip>
+            <Tooltip label={t("toolbar.goForward")}>
+              <ActionIcon
+                className="maktaba-titlebar-no-drag"
+                variant="subtle"
+                color="gray"
+                disabled={!canGoForward}
+                onClick={onGoForward}
+                aria-label={t("toolbar.goForward")}
+              >
+                <IconArrowRight size={16} />
+              </ActionIcon>
+            </Tooltip>
+
             <Tooltip label={t("toolbar.home")}>
               <ActionIcon
                 className="maktaba-titlebar-no-drag"

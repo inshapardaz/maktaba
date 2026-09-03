@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppShell, Box, Center, Loader, Overlay, Text, Group } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
@@ -58,6 +58,26 @@ import {
   setStoredViewMode,
 } from "./viewSettings";
 import { hasCompletedOnboarding } from "./onboarding";
+
+// Issue #57: one navigation-history entry - the subset of App's state that represents "where the
+// user is looking", independent of transient things like search text/filters/sort/selection that
+// don't warrant their own back/forward stops.
+interface NavState {
+  mainView: MainView;
+  groupFilter: GroupFilter | null;
+  selectedPeriodicalId: string | null;
+  selectedBookId: string | null;
+}
+
+function navStateEqual(a: NavState, b: NavState): boolean {
+  return (
+    a.mainView === b.mainView &&
+    a.selectedPeriodicalId === b.selectedPeriodicalId &&
+    a.selectedBookId === b.selectedBookId &&
+    a.groupFilter?.kind === b.groupFilter?.kind &&
+    a.groupFilter?.id === b.groupFilter?.id
+  );
+}
 
 function compareBooks(a: BookSummary, b: BookSummary, sortKey: SortKey): number {
   switch (sortKey) {
@@ -160,6 +180,81 @@ function App() {
     setSelectedBookIds(new Set());
     setLastClickedIndex(null);
   }, [mainView, groupFilter]);
+
+  // Issue #57: back/forward navigation history. A NavState snapshot is captured every time
+  // mainView/groupFilter/selectedPeriodicalId/selectedBookId change, unless the change was itself
+  // caused by goBack/goForward (isNavigatingRef guards against re-recording the same move as a new
+  // entry). Navigating away from the tip of the stack truncates any forward entries, same as a
+  // browser's own history.
+  const [navHistory, setNavHistory] = useState<{ entries: NavState[]; index: number }>(() => ({
+    entries: [{ mainView: "home", groupFilter: null, selectedPeriodicalId: null, selectedBookId: null }],
+    index: 0,
+  }));
+  const isNavigatingRef = useRef(false);
+
+  useEffect(() => {
+    if (isNavigatingRef.current) {
+      isNavigatingRef.current = false;
+      return;
+    }
+    const current: NavState = { mainView, groupFilter, selectedPeriodicalId, selectedBookId };
+    setNavHistory((prev) => {
+      const last = prev.entries[prev.index];
+      if (navStateEqual(last, current)) return prev;
+      const truncated = prev.entries.slice(0, prev.index + 1);
+      return { entries: [...truncated, current], index: truncated.length };
+    });
+  }, [mainView, groupFilter, selectedPeriodicalId, selectedBookId]);
+
+  const canGoBack = navHistory.index > 0;
+  const canGoForward = navHistory.index < navHistory.entries.length - 1;
+
+  const applyNavState = (state: NavState) => {
+    isNavigatingRef.current = true;
+    setMainView(state.mainView);
+    setGroupFilter(state.groupFilter);
+    setSelectedPeriodicalId(state.selectedPeriodicalId);
+    setSelectedBookId(state.selectedBookId);
+  };
+
+  const goBack = () => {
+    if (!canGoBack) return;
+    const newIndex = navHistory.index - 1;
+    applyNavState(navHistory.entries[newIndex]);
+    setNavHistory((prev) => ({ ...prev, index: newIndex }));
+  };
+
+  const goForward = () => {
+    if (!canGoForward) return;
+    const newIndex = navHistory.index + 1;
+    applyNavState(navHistory.entries[newIndex]);
+    setNavHistory((prev) => ({ ...prev, index: newIndex }));
+  };
+
+  // Alt+Left/Right is the conventional cross-platform back/forward shortcut (also what browsers
+  // use); the mouse side/back-forward buttons fire as auxclick with button 3/4.
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!event.altKey) return;
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        goBack();
+      } else if (event.key === "ArrowRight") {
+        event.preventDefault();
+        goForward();
+      }
+    };
+    const handleAuxClick = (event: MouseEvent) => {
+      if (event.button === 3) goBack();
+      else if (event.button === 4) goForward();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("auxclick", handleAuxClick);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("auxclick", handleAuxClick);
+    };
+  }, [navHistory]);
 
   const filters: BookFilters = {
     search: debouncedSearch || undefined,
@@ -486,6 +581,7 @@ function App() {
 
   const handleLibraryChanged = () => {
     setSelectedBookId(null);
+    setSelectedPeriodicalId(null);
     setGroupFilter(null);
     setSearch("");
     setFormat("");
@@ -494,6 +590,10 @@ function App() {
     invalidateLibraryQueries(queryClient);
     setMainView("home");
     setSettingsOpen(false);
+    setNavHistory({
+      entries: [{ mainView: "home", groupFilter: null, selectedPeriodicalId: null, selectedBookId: null }],
+      index: 0,
+    });
   };
 
   const hasLibrary = !!libraryQuery.data;
@@ -565,6 +665,10 @@ function App() {
                 setSettingsOpen(true);
               }}
               onOpenAnalytics={() => setMainView("analytics")}
+              canGoBack={canGoBack}
+              canGoForward={canGoForward}
+              onGoBack={goBack}
+              onGoForward={goForward}
               actionsHidden={!!inlineReader}
             />
             {showImportBar && <ImportStatusBar />}

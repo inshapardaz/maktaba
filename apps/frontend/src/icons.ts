@@ -6,6 +6,7 @@
 // "lucide-react" directly - that's the one thing enforcing the stroke-width consistently.
 import {
   ArrowLeft,
+  ArrowRight,
   ArrowUpDown,
   Ban,
   Book,
@@ -77,6 +78,7 @@ function withStrokeWidth(Base: LucideIcon): LucideIcon {
 export const IconAlertCircle = withStrokeWidth(CircleAlert);
 export const IconAlertTriangle = withStrokeWidth(TriangleAlert);
 export const IconArrowLeft = withStrokeWidth(ArrowLeft);
+export const IconArrowRight = withStrokeWidth(ArrowRight);
 export const IconArrowsSort = withStrokeWidth(ArrowUpDown);
 export const IconBan = withStrokeWidth(Ban);
 export const IconBook = withStrokeWidth(Book);
