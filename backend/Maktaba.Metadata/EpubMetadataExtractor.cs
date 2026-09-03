@@ -61,7 +61,7 @@ public class EpubMetadataExtractor : IBookMetadataExtractor
             return DateOnly.FromDateTime(full.Date);
         }
 
-        if (rawDate.Length == 4 && int.TryParse(rawDate, out var year))
+        if (rawDate.Length == 4 && int.TryParse(rawDate, out var year) && year is >= 1 and <= 9999)
         {
             return new DateOnly(year, 1, 1);
         }

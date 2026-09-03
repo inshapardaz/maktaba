@@ -647,7 +647,8 @@ public static class BookEndpoints
             }
         });
 
-        group.MapPost("/import", async (ImportBookRequest request, IImportService importService, CancellationToken ct) =>
+        group.MapPost("/import", async (
+            ImportBookRequest request, IImportService importService, ILogger<Program> logger, CancellationToken ct) =>
         {
             if (string.IsNullOrWhiteSpace(request.FilePath) || !File.Exists(request.FilePath))
             {
@@ -680,6 +681,14 @@ public static class BookEndpoints
                     duplicate = new DuplicateBookDto(
                         IdCodec.Encode(ex.ExistingBookId), ex.ExistingTitle, [.. ex.ExistingAuthors], ex.SameContentHash),
                 });
+            }
+            catch (Exception ex)
+            {
+                // Issue #58: a malformed/unusual ebook file (bad metadata, corrupt zip, etc.) used to
+                // bubble up as an unhandled 500 with no actionable message - surfaced as a clear 400
+                // instead so the import dialog can show the user what actually went wrong.
+                logger.LogWarning(ex, "Failed to import {FilePath}", request.FilePath);
+                return Results.BadRequest(new { error = $"Could not import this file: {ex.Message}" });
             }
         });
     }
