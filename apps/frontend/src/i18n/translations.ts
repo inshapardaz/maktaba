@@ -76,6 +76,9 @@ const en = {
   "toolbar.allBooks": "All books",
 
   "sidebar.authors": "Authors",
+  "sidebar.sortBy": "Sort",
+  "sidebar.sortByCount": "By book count",
+  "sidebar.sortByName": "Alphabetical",
   "sidebar.series": "Series",
   "sidebar.tags": "Tags",
   "sidebar.collections": "Collections",
@@ -512,6 +515,9 @@ const ur: TranslationDict = {
   "toolbar.allBooks": "تمام کتابیں",
 
   "sidebar.authors": "مصنفین",
+  "sidebar.sortBy": "ترتیب",
+  "sidebar.sortByCount": "کتابوں کی تعداد کے مطابق",
+  "sidebar.sortByName": "حروف تہجی کے مطابق",
   "sidebar.series": "سیریز",
   "sidebar.tags": "ٹیگز",
   "sidebar.collections": "مجموعے",

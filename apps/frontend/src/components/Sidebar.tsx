@@ -9,6 +9,7 @@ import {
   NavLink,
   Popover,
   ScrollArea,
+  Select,
   Stack,
   Text,
   TextInput,
@@ -18,6 +19,7 @@ import {
 } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  IconArrowsSort,
   IconBuildingStore,
   IconCheck,
   IconChevronDown,
@@ -49,6 +51,7 @@ import {
 import { isBookDrag, readBookDragIds } from "../bookDrag";
 import { useLanguage } from "../i18n/LanguageContext";
 import type { TranslationKey } from "../i18n/translations";
+import { getStoredAuthorSort, setStoredAuthorSort, type SidebarSort, type SidebarSortKey } from "../sidebarSettings";
 import { LibrarySwitcher } from "./LibrarySwitcher";
 import type { SettingsTab } from "./SettingsScreen";
 
@@ -108,6 +111,73 @@ export function languageDisplayName(code: string, t: (key: TranslationKey) => st
 function byBookCount(groups: BrowseGroup[] | undefined): BrowseGroup[] {
   if (!groups) return [];
   return [...groups].sort((a, b) => b.bookCount - a.bookCount);
+}
+
+// Issue #59: same shape as byBookCount above, but honoring a user-chosen sort (book count or
+// alphabetical, either direction) - currently only wired up for the Authors section (see Sidebar's
+// authorSort state), the one this issue asked for.
+function sortGroups(groups: BrowseGroup[] | undefined, sort: SidebarSort): BrowseGroup[] {
+  if (!groups) return [];
+  const sorted = [...groups].sort((a, b) =>
+    sort.key === "name" ? a.name.localeCompare(b.name) : a.bookCount - b.bookCount,
+  );
+  return sort.direction === "asc" ? sorted : sorted.reverse();
+}
+
+// Compact sort-order picker shown in a section header's action row, next to "see all" - mirrors
+// FilterBar's own sort popover (field + direction Selects) rather than inventing a new pattern.
+function SortMenuButton({ sort, onChange }: { sort: SidebarSort; onChange: (sort: SidebarSort) => void }) {
+  const { t } = useLanguage();
+  const [opened, setOpened] = useState(false);
+
+  const keyOptions: { value: SidebarSortKey; label: string }[] = [
+    { value: "bookCount", label: t("sidebar.sortByCount") },
+    { value: "name", label: t("sidebar.sortByName") },
+  ];
+  const directionOptions = [
+    { value: "asc", label: t("filterBar.ascending") },
+    { value: "desc", label: t("filterBar.descending") },
+  ];
+
+  return (
+    <Popover opened={opened} onChange={setOpened} position="bottom-start" withArrow shadow="md">
+      <Popover.Target>
+        <Tooltip label={t("sidebar.sortBy")}>
+          <UnstyledButton
+            onClick={(e) => {
+              e.stopPropagation();
+              setOpened((o) => !o);
+            }}
+            c="dimmed"
+            style={{ display: "flex" }}
+            aria-label={t("sidebar.sortBy")}
+          >
+            <IconArrowsSort size={14} />
+          </UnstyledButton>
+        </Tooltip>
+      </Popover.Target>
+      <Popover.Dropdown miw={220} onClick={(e) => e.stopPropagation()}>
+        <Stack gap={4}>
+          <Select
+            size="xs"
+            data={keyOptions}
+            value={sort.key}
+            onChange={(value) => value && onChange({ ...sort, key: value as SidebarSortKey })}
+            allowDeselect={false}
+            comboboxProps={{ withinPortal: false }}
+          />
+          <Select
+            size="xs"
+            data={directionOptions}
+            value={sort.direction}
+            onChange={(value) => value && onChange({ ...sort, direction: value as SidebarSort["direction"] })}
+            allowDeselect={false}
+            comboboxProps={{ withinPortal: false }}
+          />
+        </Stack>
+      </Popover.Dropdown>
+    </Popover>
+  );
 }
 
 // /api/authors sends the "unknown author" sentinel row (id "unknown", see issue #41 and
@@ -512,6 +582,12 @@ export function Sidebar({
     setExpandedSection((prev) => (prev === key ? null : key));
   };
 
+  const [authorSort, setAuthorSort] = useState<SidebarSort>(getStoredAuthorSort);
+  const handleAuthorSortChange = (sort: SidebarSort) => {
+    setAuthorSort(sort);
+    setStoredAuthorSort(sort);
+  };
+
   return (
     <Box
       h="100%"
@@ -542,7 +618,12 @@ export function Sidebar({
             icon={IconUser}
             expanded={expandedSection === "authors"}
             onToggle={() => toggleSection("authors")}
-            action={seeAllAction(onOpenAuthors)}
+            action={
+              <Group gap={6} wrap="nowrap">
+                <SortMenuButton sort={authorSort} onChange={handleAuthorSortChange} />
+                {seeAllAction(onOpenAuthors)}
+              </Group>
+            }
           >
             <GroupSection
               kind="authorId"
@@ -574,7 +655,7 @@ export function Sidebar({
               )}
               activeFilter={activeFilter}
               onSelect={onSelect}
-              groups={byBookCount(withUnknownAuthorLabel(authorsQuery.data, t))}
+              groups={sortGroups(withUnknownAuthorLabel(authorsQuery.data, t), authorSort)}
               onDropBooks={(target, bookIds, shiftKey) => onDropBooks("authorId", target, bookIds, shiftKey)}
             />
           </CollapsibleSection>
