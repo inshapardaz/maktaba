@@ -48,7 +48,7 @@ function FieldLabel({ children }: { children: string }) {
 
 export function SettingsScreen({ opened, onClose, onLibraryChanged, initialTab }: SettingsScreenProps) {
   const { t, urduFont, setUrduFont } = useLanguage();
-  const { appTheme, setAppTheme } = useAppTheme();
+  const { appTheme, setAppTheme, darkChrome, setDarkChrome } = useAppTheme();
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab ?? "general");
   const [readerOpenMode, setReaderOpenMode] = useState<ReaderOpenMode>(getStoredReaderOpenMode());
   const [epubEngine, setEpubEngine] = useState<ReaderEngine>(getStoredReaderEngine("Epub"));
@@ -155,6 +155,12 @@ export function SettingsScreen({ opened, onClose, onLibraryChanged, initialTab }
               <Group justify="space-between">
                 <FieldLabel>{t("settings.accentColor")}</FieldLabel>
                 <ThemeColorSwatches />
+              </Group>
+            )}
+            {appTheme === "white" && (
+              <Group justify="space-between">
+                <FieldLabel>{t("settings.darkChrome")}</FieldLabel>
+                <Switch checked={darkChrome} onChange={(e) => setDarkChrome(e.currentTarget.checked)} />
               </Group>
             )}
             <Group justify="space-between">

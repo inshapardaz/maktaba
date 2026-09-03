@@ -44,6 +44,7 @@ import { UpdateNotifier } from "./components/UpdateNotifier";
 import { invalidateLibraryQueries } from "./queries";
 import { useDebounced } from "./useDebounced";
 import { useLanguage } from "./i18n/LanguageContext";
+import { useAppTheme } from "./AppThemeContext";
 import { ReaderLauncherProvider, type ReaderRequest } from "./ReaderLauncherContext";
 import { useImportQueue } from "./ImportContext";
 import { useRescan } from "./RescanContext";
@@ -114,6 +115,11 @@ function App() {
   const queryClient = useQueryClient();
   const importQueue = useImportQueue();
   const rescan = useRescan();
+  const { appTheme, darkChrome } = useAppTheme();
+  // Issue #63: only meaningful under the White theme (Organic already has its own fixed --app-
+  // surface treatment for these two elements) - see AppThemeContext.tsx's darkChrome comment for
+  // how the actual dark-scoping works.
+  const useDarkChrome = appTheme === "white" && darkChrome;
 
   // Keeps the OS-level window title (taskbar/Alt-Tab) in sync with the in-app language too -
   // scoped to App.tsx (the main window only) rather than LanguageContext.tsx, since reader windows
@@ -650,7 +656,10 @@ function App() {
           navbar={hasLibrary ? { width: sidebarWidth, breakpoint: 0 } : undefined}
           padding={0}
         >
-          <AppShell.Header style={{ backgroundColor: "var(--app-surface)" }}>
+          <AppShell.Header
+            data-mantine-color-scheme={useDarkChrome ? "dark" : undefined}
+            style={{ backgroundColor: useDarkChrome ? "var(--mantine-color-dark-7)" : "var(--app-surface)" }}
+          >
             <TitleBar
               hasLibrary={hasLibrary}
               mainView={mainView}
@@ -676,7 +685,10 @@ function App() {
           </AppShell.Header>
 
           {hasLibrary && (
-            <AppShell.Navbar style={{ backgroundColor: "var(--app-surface)" }}>
+            <AppShell.Navbar
+              data-mantine-color-scheme={useDarkChrome ? "dark" : undefined}
+              style={{ backgroundColor: useDarkChrome ? "var(--mantine-color-dark-7)" : "var(--app-surface)" }}
+            >
               <Sidebar
                 activeFilter={groupFilter}
                 onSelect={handleSelectFilter}

@@ -16,15 +16,34 @@ export function getStoredAppTheme(): AppThemeName {
   return stored === "organic" || stored === "white" ? stored : DEFAULT_APP_THEME;
 }
 
+// Issue #63: "White" theme only (see SettingsScreen.tsx, gated the same way as ThemeColorSwatches
+// there) - forces the title bar and sidebar to a dark VS-Code-style chrome regardless of the app's
+// overall light/dark color scheme. Implemented in App.tsx by stamping
+// data-mantine-color-scheme="dark" on those two elements - a real Mantine feature (color scheme
+// can be scoped to any subtree, not just the document root), so every Mantine component nested
+// inside (NavLink, ActionIcon, Text, ...) picks up dark tokens automatically without needing a
+// second MantineProvider or hand-maintained dark color overrides.
+const DARK_CHROME_KEY = "maktaba-dark-chrome";
+
+export function getStoredDarkChrome(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  return window.localStorage.getItem(DARK_CHROME_KEY) === "true";
+}
+
 interface AppThemeContextValue {
   appTheme: AppThemeName;
   setAppTheme: (theme: AppThemeName) => void;
+  darkChrome: boolean;
+  setDarkChrome: (enabled: boolean) => void;
 }
 
 const AppThemeContext = createContext<AppThemeContextValue | null>(null);
 
 export function AppThemeProvider({ children }: { children: ReactNode }) {
   const [appTheme, setAppThemeState] = useState<AppThemeName>(getStoredAppTheme);
+  const [darkChrome, setDarkChromeState] = useState<boolean>(getStoredDarkChrome);
 
   const value = useMemo<AppThemeContextValue>(
     () => ({
@@ -33,8 +52,13 @@ export function AppThemeProvider({ children }: { children: ReactNode }) {
         window.localStorage.setItem(STORAGE_KEY, theme);
         setAppThemeState(theme);
       },
+      darkChrome,
+      setDarkChrome: (enabled) => {
+        window.localStorage.setItem(DARK_CHROME_KEY, String(enabled));
+        setDarkChromeState(enabled);
+      },
     }),
-    [appTheme],
+    [appTheme, darkChrome],
   );
 
   return <AppThemeContext.Provider value={value}>{children}</AppThemeContext.Provider>;
