@@ -27,10 +27,12 @@ import {
   Copy,
   ExternalLink,
   Eye,
+  FileText,
   FileUp,
   Folder,
   FolderOpen,
   Globe,
+  Hash,
   House,
   Info,
   Languages,
@@ -100,10 +102,12 @@ export const IconCopy = withStrokeWidth(Copy);
 export const IconEdit = withStrokeWidth(SquarePen);
 export const IconExternalLink = withStrokeWidth(ExternalLink);
 export const IconEye = withStrokeWidth(Eye);
+export const IconFileText = withStrokeWidth(FileText);
 export const IconFileUpload = withStrokeWidth(FileUp);
 export const IconFilter = withStrokeWidth(ListFilter);
 export const IconFolder = withStrokeWidth(Folder);
 export const IconFolderOpen = withStrokeWidth(FolderOpen);
+export const IconHash = withStrokeWidth(Hash);
 export const IconHelpCircle = withStrokeWidth(CircleQuestionMark);
 export const IconHome2 = withStrokeWidth(House);
 export const IconInfoCircle = withStrokeWidth(Info);

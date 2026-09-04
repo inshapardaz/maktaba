@@ -7,6 +7,7 @@ import {
   Anchor,
   Avatar,
   Badge,
+  Box,
   Button,
   Center,
   Divider,
@@ -35,8 +36,10 @@ import {
   IconCamera,
   IconCheck,
   IconChevronDown,
+  IconFileText,
   IconFolder,
   IconExternalLink,
+  IconHash,
   IconLanguage,
   IconPencil,
   IconPlus,
@@ -73,6 +76,11 @@ import { SpineCover } from "./SpineCover";
 
 function isReadableFormat(format: string): format is "Epub" | "Pdf" {
   return format === "Epub" || format === "Pdf";
+}
+
+// Issue #66 (follow-up): a small at-a-glance icon per file's format in the files list below.
+function FileFormatIcon({ format }: { format: string }) {
+  return format === "Epub" ? <IconBook2 size={16} /> : <IconFileText size={16} />;
 }
 
 function FieldLabel({ children }: { children: string }) {
@@ -588,23 +596,33 @@ export function BookDetailPanel({ bookId, onClose, onRemoved, onSelectFilter }: 
                 </List.Item>
               ) : (
                 <List.Item key={f.id}>
-                  <Group justify="space-between" wrap="nowrap">
-                    <Stack gap={0} style={{ minWidth: 0, flex: 1 }}>
-                      <Group gap={6} wrap="nowrap">
-                        <Text size="sm" truncate="end">
-                          {fileName(f.absolutePath)}
-                        </Text>
-                        {isDuplicate && (
-                          <Tooltip label={t("bookDetail.duplicateFile")}>
-                            <IconAlertCircle size={14} color="var(--mantine-color-orange-6)" style={{ flexShrink: 0 }} />
+                  <Group justify="space-between" wrap="nowrap" gap="sm">
+                    <Group gap={8} wrap="nowrap" style={{ minWidth: 0, flex: 1 }}>
+                      <Box c="dimmed" style={{ flexShrink: 0, display: "flex" }}>
+                        <FileFormatIcon format={f.format} />
+                      </Box>
+                      <Stack gap={0} style={{ minWidth: 0, flex: 1 }}>
+                        <Group gap={6} wrap="nowrap">
+                          <Text size="sm" truncate="end">
+                            {fileName(f.absolutePath)}
+                          </Text>
+                          {isDuplicate && (
+                            <Tooltip label={t("bookDetail.duplicateFile")}>
+                              <IconAlertCircle size={14} color="var(--mantine-color-orange-6)" style={{ flexShrink: 0 }} />
+                            </Tooltip>
+                          )}
+                        </Group>
+                        <Group gap={4} wrap="nowrap">
+                          <Text size="xs" c="dimmed" truncate="end">
+                            {f.format} — {(f.fileSizeBytes / 1024).toFixed(0)} KB
+                          </Text>
+                          <Tooltip label={`${t("bookDetail.checksum")}: ${f.contentHash}`}>
+                            <IconHash size={12} style={{ flexShrink: 0, opacity: 0.6 }} />
                           </Tooltip>
-                        )}
-                      </Group>
-                      <Text size="xs" c="dimmed" truncate="end">
-                        {f.format} — {(f.fileSizeBytes / 1024).toFixed(0)} KB — {t("bookDetail.checksum")}: {f.contentHash.slice(0, 12)}
-                      </Text>
-                    </Stack>
-                    <Group gap={4}>
+                        </Group>
+                      </Stack>
+                    </Group>
+                    <Group gap={4} style={{ flexShrink: 0 }}>
                       <Tooltip label={t("bookDetail.renameFile")}>
                         <ActionIcon
                           size="sm"
