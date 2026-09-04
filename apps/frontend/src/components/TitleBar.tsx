@@ -319,6 +319,12 @@ export function TitleBar({
   const otherLanguage = LANGUAGES.find((option) => option.value !== language)!;
   const currentLanguage = LANGUAGES.find((option) => option.value === language)!;
   const isMac = window.maktaba.platform === "darwin";
+  // Issue #64: in RTL (Urdu) the visual "back" direction is to the right and "forward" is to the
+  // left, opposite of LTR - swap which arrow icon renders for each action rather than mirroring
+  // via CSS, so the icon shape always matches the direction it visually points.
+  const isRtl = language === "ur";
+  const GoBackIcon = isRtl ? IconArrowRight : IconArrowLeft;
+  const GoForwardIcon = isRtl ? IconArrowLeft : IconArrowRight;
 
   return (
     <Box
@@ -351,7 +357,7 @@ export function TitleBar({
                 onClick={onGoBack}
                 aria-label={t("toolbar.goBack")}
               >
-                <IconArrowLeft size={16} />
+                <GoBackIcon size={16} />
               </ActionIcon>
             </Tooltip>
             <Tooltip label={t("toolbar.goForward")}>
@@ -363,7 +369,7 @@ export function TitleBar({
                 onClick={onGoForward}
                 aria-label={t("toolbar.goForward")}
               >
-                <IconArrowRight size={16} />
+                <GoForwardIcon size={16} />
               </ActionIcon>
             </Tooltip>
 
