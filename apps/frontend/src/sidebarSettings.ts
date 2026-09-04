@@ -6,24 +6,33 @@ export interface SidebarSort {
   direction: SidebarSortDirection;
 }
 
-// Issue #59: remembers how the Authors sidebar section is sorted (by book count or
-// alphabetically, ascending or descending) across restarts - same localStorage-backed pattern as
-// readerSettings.ts/viewSettings.ts.
-const AUTHOR_SORT_KEY = "maktaba-sidebar-author-sort-key";
-const AUTHOR_SORT_DIRECTION_KEY = "maktaba-sidebar-author-sort-direction";
+// Issue #59 (extended to every sortable section, not just Authors): remembers how each of these
+// sidebar sections is sorted (by book count or alphabetically, ascending or descending) across
+// restarts - same localStorage-backed pattern as readerSettings.ts/viewSettings.ts. Periodicals/
+// Languages aren't included - the former already sorts oldest-issue-first semantics elsewhere and
+// the latter wasn't asked for.
+export type SortableSidebarSection = "authors" | "collections" | "series" | "tags" | "publishers";
 
-export function getStoredAuthorSort(): SidebarSort {
+function sortKeyStorageKey(section: SortableSidebarSection): string {
+  return `maktaba-sidebar-${section}-sort-key`;
+}
+
+function sortDirectionStorageKey(section: SortableSidebarSection): string {
+  return `maktaba-sidebar-${section}-sort-direction`;
+}
+
+export function getStoredSectionSort(section: SortableSidebarSection): SidebarSort {
   if (typeof window === "undefined") {
     return { key: "bookCount", direction: "desc" };
   }
-  const key = window.localStorage.getItem(AUTHOR_SORT_KEY) === "name" ? "name" : "bookCount";
-  const direction = window.localStorage.getItem(AUTHOR_SORT_DIRECTION_KEY) === "asc" ? "asc" : "desc";
+  const key = window.localStorage.getItem(sortKeyStorageKey(section)) === "name" ? "name" : "bookCount";
+  const direction = window.localStorage.getItem(sortDirectionStorageKey(section)) === "asc" ? "asc" : "desc";
   return { key, direction };
 }
 
-export function setStoredAuthorSort(sort: SidebarSort): void {
-  window.localStorage.setItem(AUTHOR_SORT_KEY, sort.key);
-  window.localStorage.setItem(AUTHOR_SORT_DIRECTION_KEY, sort.direction);
+export function setStoredSectionSort(section: SortableSidebarSection, sort: SidebarSort): void {
+  window.localStorage.setItem(sortKeyStorageKey(section), sort.key);
+  window.localStorage.setItem(sortDirectionStorageKey(section), sort.direction);
 }
 
 // Issue #60: "single" (the original behavior) keeps exactly one sidebar section expanded at all

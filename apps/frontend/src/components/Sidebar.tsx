@@ -52,11 +52,12 @@ import { isBookDrag, readBookDragIds } from "../bookDrag";
 import { useLanguage } from "../i18n/LanguageContext";
 import type { TranslationKey } from "../i18n/translations";
 import {
-  getStoredAuthorSort,
   getStoredExpandMode,
-  setStoredAuthorSort,
+  getStoredSectionSort,
+  setStoredSectionSort,
   type SidebarSort,
   type SidebarSortKey,
+  type SortableSidebarSection,
 } from "../sidebarSettings";
 import { LibrarySwitcher } from "./LibrarySwitcher";
 import type { SettingsTab } from "./SettingsScreen";
@@ -120,8 +121,8 @@ function byBookCount(groups: BrowseGroup[] | undefined): BrowseGroup[] {
 }
 
 // Issue #59: same shape as byBookCount above, but honoring a user-chosen sort (book count or
-// alphabetical, either direction) - currently only wired up for the Authors section (see Sidebar's
-// authorSort state), the one this issue asked for.
+// alphabetical, either direction) - wired up for Authors/Collections/Series/Tags/Publishers (see
+// Sidebar's sectionSorts state); Periodicals/Languages still use the plain byBookCount default.
 function sortGroups(groups: BrowseGroup[] | undefined, sort: SidebarSort): BrowseGroup[] {
   if (!groups) return [];
   const sorted = [...groups].sort((a, b) =>
@@ -621,10 +622,19 @@ export function Sidebar({
     setExpandedSections((prev) => (prev.size === 1 ? prev : new Set([[...prev][0] ?? "authors"])));
   }, [expandMode]);
 
-  const [authorSort, setAuthorSort] = useState<SidebarSort>(getStoredAuthorSort);
-  const handleAuthorSortChange = (sort: SidebarSort) => {
-    setAuthorSort(sort);
-    setStoredAuthorSort(sort);
+  // Issue #59 (extended to Collections/Series/Tags/Publishers too): one remembered sort per
+  // section, keyed by section name - see sidebarSettings.ts's getStoredSectionSort/
+  // setStoredSectionSort.
+  const SORTABLE_SECTIONS: SortableSidebarSection[] = ["authors", "collections", "series", "tags", "publishers"];
+  const [sectionSorts, setSectionSorts] = useState<Record<SortableSidebarSection, SidebarSort>>(() =>
+    Object.fromEntries(SORTABLE_SECTIONS.map((section) => [section, getStoredSectionSort(section)])) as Record<
+      SortableSidebarSection,
+      SidebarSort
+    >,
+  );
+  const handleSectionSortChange = (section: SortableSidebarSection, sort: SidebarSort) => {
+    setSectionSorts((prev) => ({ ...prev, [section]: sort }));
+    setStoredSectionSort(section, sort);
   };
 
   return (
@@ -672,7 +682,10 @@ export function Sidebar({
             onToggle={() => toggleSection("authors")}
             action={
               <Group gap={6} wrap="nowrap">
-                <SortMenuButton sort={authorSort} onChange={handleAuthorSortChange} />
+                <SortMenuButton
+                  sort={sectionSorts.authors}
+                  onChange={(sort) => handleSectionSortChange("authors", sort)}
+                />
                 {seeAllAction(onOpenAuthors)}
               </Group>
             }
@@ -707,7 +720,7 @@ export function Sidebar({
               )}
               activeFilter={activeFilter}
               onSelect={onSelect}
-              groups={sortGroups(withUnknownAuthorLabel(authorsQuery.data, t), authorSort)}
+              groups={sortGroups(withUnknownAuthorLabel(authorsQuery.data, t), sectionSorts.authors)}
               onDropBooks={(target, bookIds, shiftKey) => onDropBooks("authorId", target, bookIds, shiftKey)}
             />
           </CollapsibleSection>
@@ -720,6 +733,10 @@ export function Sidebar({
             onToggle={() => toggleSection("collections")}
             action={
               <Group gap={6} wrap="nowrap">
+                <SortMenuButton
+                  sort={sectionSorts.collections}
+                  onChange={(sort) => handleSectionSortChange("collections", sort)}
+                />
                 {addCollectionAction}
                 {seeAllAction(onOpenCollections)}
               </Group>
@@ -730,7 +747,7 @@ export function Sidebar({
               icon={IconFolder}
               activeFilter={activeFilter}
               onSelect={onSelect}
-              groups={byBookCount(collectionsQuery.data)}
+              groups={sortGroups(collectionsQuery.data, sectionSorts.collections)}
               onDropBooks={(target, bookIds, shiftKey) => onDropBooks("collectionId", target, bookIds, shiftKey)}
             />
           </CollapsibleSection>
@@ -741,14 +758,19 @@ export function Sidebar({
             expanded={expandedSections.has("series")}
             fillHeight={expandMode === "single"}
             onToggle={() => toggleSection("series")}
-            action={seeAllAction(onOpenSeries)}
+            action={
+              <Group gap={6} wrap="nowrap">
+                <SortMenuButton sort={sectionSorts.series} onChange={(sort) => handleSectionSortChange("series", sort)} />
+                {seeAllAction(onOpenSeries)}
+              </Group>
+            }
           >
             <GroupSection
               kind="seriesId"
               icon={IconStack2}
               activeFilter={activeFilter}
               onSelect={onSelect}
-              groups={byBookCount(seriesQuery.data)}
+              groups={sortGroups(seriesQuery.data, sectionSorts.series)}
               onDropBooks={(target, bookIds, shiftKey) => onDropBooks("seriesId", target, bookIds, shiftKey)}
             />
           </CollapsibleSection>
@@ -759,14 +781,19 @@ export function Sidebar({
             expanded={expandedSections.has("tags")}
             fillHeight={expandMode === "single"}
             onToggle={() => toggleSection("tags")}
-            action={seeAllAction(onOpenTags)}
+            action={
+              <Group gap={6} wrap="nowrap">
+                <SortMenuButton sort={sectionSorts.tags} onChange={(sort) => handleSectionSortChange("tags", sort)} />
+                {seeAllAction(onOpenTags)}
+              </Group>
+            }
           >
             <GroupSection
               kind="tagId"
               icon={IconTag}
               activeFilter={activeFilter}
               onSelect={onSelect}
-              groups={byBookCount(tagsQuery.data)}
+              groups={sortGroups(tagsQuery.data, sectionSorts.tags)}
               onDropBooks={(target, bookIds, shiftKey) => onDropBooks("tagId", target, bookIds, shiftKey)}
             />
           </CollapsibleSection>
@@ -804,14 +831,22 @@ export function Sidebar({
             expanded={expandedSections.has("publishers")}
             fillHeight={expandMode === "single"}
             onToggle={() => toggleSection("publishers")}
-            action={seeAllAction(onOpenPublishers)}
+            action={
+              <Group gap={6} wrap="nowrap">
+                <SortMenuButton
+                  sort={sectionSorts.publishers}
+                  onChange={(sort) => handleSectionSortChange("publishers", sort)}
+                />
+                {seeAllAction(onOpenPublishers)}
+              </Group>
+            }
           >
             <GroupSection
               kind="publisher"
               icon={IconBuildingStore}
               activeFilter={activeFilter}
               onSelect={onSelect}
-              groups={byBookCount(publishersQuery.data)}
+              groups={sortGroups(publishersQuery.data, sectionSorts.publishers)}
               onDropBooks={(target, bookIds, shiftKey) => onDropBooks("publisher", target, bookIds, shiftKey)}
             />
           </CollapsibleSection>
