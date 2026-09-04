@@ -249,6 +249,8 @@ const en = {
   "analytics.mostActiveTime": "Most active time",
   "bookDetail.renameFile": "Rename file",
   "bookDetail.deleteFile": "Delete file",
+  "bookDetail.checksum": "Checksum",
+  "bookDetail.duplicateFile": "Duplicate file — identical content to another file of this book",
   "bookDetail.deleteFileError": "Couldn't delete this file.",
 
   "bookEdit.title": "Edit book",
@@ -689,6 +691,8 @@ const ur: TranslationDict = {
   "analytics.mostActiveTime": "سب سے زیادہ فعال وقت",
   "bookDetail.renameFile": "فائل کا نام تبدیل کریں",
   "bookDetail.deleteFile": "فائل حذف کریں",
+  "bookDetail.checksum": "چیک سم",
+  "bookDetail.duplicateFile": "نقل فائل — اس کتاب کی دوسری فائل جیسا مواد",
   "bookDetail.deleteFileError": "یہ فائل حذف نہیں ہو سکی۔",
 
   "bookEdit.title": "کتاب میں ترمیم کریں",

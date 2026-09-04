@@ -343,7 +343,7 @@ public static class BookEndpoints
                 book.BookTags.Select(bt => bt.Tag.Name).ToArray(),
                 book.Identifiers.Select(i => new IdentifierDto(i.Scheme, i.Value)).ToArray(),
                 book.Files.Select(f => new BookFileDto(
-                    IdCodec.Encode(f.Id), f.Format.ToString(), f.FileSizeBytes, Path.Combine(root, f.FilePath))).ToArray(),
+                    IdCodec.Encode(f.Id), f.Format.ToString(), f.FileSizeBytes, Path.Combine(root, f.FilePath), f.ContentHash)).ToArray(),
                 CoverLocator.Find(root, book.FolderPath) is not null,
                 book.ReadingStatus.ToString(),
                 book.BookCollections
@@ -516,7 +516,7 @@ public static class BookEndpoints
             return result.Outcome switch
             {
                 BookConversionOutcome.Converted => Results.Ok(new BookFileDto(
-                    IdCodec.Encode(result.File!.Id), result.File.Format.ToString(), result.File.FileSizeBytes, Path.Combine(root, result.File.FilePath))),
+                    IdCodec.Encode(result.File!.Id), result.File.Format.ToString(), result.File.FileSizeBytes, Path.Combine(root, result.File.FilePath), result.File.ContentHash)),
                 BookConversionOutcome.BookNotFound => Results.NotFound(),
                 BookConversionOutcome.AlreadyHasFormat => Results.Conflict(
                     new { error = $"This book already has a {targetFormat} file." }),
@@ -566,7 +566,7 @@ public static class BookEndpoints
                 var addedFile = book.Files[^1];
                 var root = libraryPath.LibraryRootPath!;
                 return Results.Ok(new BookFileDto(
-                    IdCodec.Encode(addedFile.Id), addedFile.Format.ToString(), addedFile.FileSizeBytes, Path.Combine(root, addedFile.FilePath)));
+                    IdCodec.Encode(addedFile.Id), addedFile.Format.ToString(), addedFile.FileSizeBytes, Path.Combine(root, addedFile.FilePath), addedFile.ContentHash));
             }
             catch (NotSupportedException ex)
             {

@@ -76,7 +76,7 @@ public record IdentifierDto(string Scheme, string Value);
 // BookSummaryDto/every list view that only needs plain names is untouched.
 public record AuthorRefDto(string Id, string Name, bool HasImage);
 
-public record BookFileDto(string Id, string Format, long FileSizeBytes, string AbsolutePath);
+public record BookFileDto(string Id, string Format, long FileSizeBytes, string AbsolutePath, string ContentHash);
 
 public record RenameBookFileRequestDto(string FileName);
 

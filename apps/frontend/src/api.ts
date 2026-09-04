@@ -46,6 +46,7 @@ export interface BookFileInfo {
   format: string;
   fileSizeBytes: number;
   absolutePath: string;
+  contentHash: string;
 }
 
 export interface Identifier {

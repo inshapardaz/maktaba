@@ -529,8 +529,9 @@ export function BookDetailPanel({ bookId, onClose, onRemoved, onSelectFilter }: 
           <Divider label={t("bookDetail.files")} labelPosition="left" />
 
           <List spacing="xs" listStyleType="none">
-            {book.files.map((f) =>
-              renamingFileId === f.id ? (
+            {book.files.map((f) => {
+              const isDuplicate = book.files.some((other) => other.id !== f.id && other.contentHash === f.contentHash);
+              return renamingFileId === f.id ? (
                 <List.Item key={f.id}>
                   <Group gap={4} wrap="nowrap">
                     <TextInput
@@ -564,11 +565,18 @@ export function BookDetailPanel({ bookId, onClose, onRemoved, onSelectFilter }: 
                 <List.Item key={f.id}>
                   <Group justify="space-between" wrap="nowrap">
                     <Stack gap={0} style={{ minWidth: 0, flex: 1 }}>
-                      <Text size="sm" truncate="end">
-                        {fileName(f.absolutePath)}
-                      </Text>
-                      <Text size="xs" c="dimmed">
-                        {f.format} — {(f.fileSizeBytes / 1024).toFixed(0)} KB
+                      <Group gap={6} wrap="nowrap">
+                        <Text size="sm" truncate="end">
+                          {fileName(f.absolutePath)}
+                        </Text>
+                        {isDuplicate && (
+                          <Tooltip label={t("bookDetail.duplicateFile")}>
+                            <IconAlertCircle size={14} color="var(--mantine-color-orange-6)" style={{ flexShrink: 0 }} />
+                          </Tooltip>
+                        )}
+                      </Group>
+                      <Text size="xs" c="dimmed" truncate="end">
+                        {f.format} — {(f.fileSizeBytes / 1024).toFixed(0)} KB — {t("bookDetail.checksum")}: {f.contentHash.slice(0, 12)}
                       </Text>
                     </Stack>
                     <Group gap={4}>
@@ -623,8 +631,8 @@ export function BookDetailPanel({ bookId, onClose, onRemoved, onSelectFilter }: 
                     </Group>
                   </Group>
                 </List.Item>
-              ),
-            )}
+              );
+            })}
           </List>
 
           <Anchor
