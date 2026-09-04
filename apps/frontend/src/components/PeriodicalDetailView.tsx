@@ -170,7 +170,7 @@ function IssueCard({ issue, onClick }: { issue: BookSummary; onClick: () => void
   return (
     <UnstyledButton onClick={onClick} style={{ display: "flex", flexDirection: "column" }}>
       {issue.hasCover ? (
-        <Image src={coverUrl(issue.id)} w={140} h={200} radius="sm" fit="cover" />
+        <Image src={coverUrl(issue.id, issue.coverVersion)} w={140} h={200} radius="sm" fit="cover" />
       ) : (
         <SpineCover id={issue.id} title={dateLabel || issue.title} width={140} height={200} />
       )}
@@ -223,7 +223,7 @@ function IssueRow({
       <Table.Tr onClick={() => onSelectIssue(issue.id)} style={{ cursor: "pointer" }}>
         <Table.Td w={44}>
           {issue.hasCover ? (
-            <Image src={coverUrl(issue.id)} w={30} h={42} radius="sm" fit="cover" />
+            <Image src={coverUrl(issue.id, issue.coverVersion)} w={30} h={42} radius="sm" fit="cover" />
           ) : (
             <SpineCover id={issue.id} title={dateLabel || issue.title} width={30} height={42} />
           )}

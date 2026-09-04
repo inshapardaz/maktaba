@@ -11,6 +11,10 @@ export interface BookSummary {
   rating: number;
   dateAdded: string;
   hasCover: boolean;
+  // Issue #66: the cover file's last-write time (Unix ms), null if hasCover is false - pass to
+  // coverUrl() so the browser's HTTP cache is busted only when the cover actually changed (e.g.
+  // after extracting a new one from an attached file), not on every render.
+  coverVersion: number | null;
   readingStatus: ReadingStatus;
   // Null unless the book belongs to a series / has ever had reading progress saved - see
   // FilterBar.tsx's SortKey ("seriesIndex"/"lastRead").
@@ -328,6 +332,7 @@ export interface ContinueReadingBook {
   // reading hero/currently-reading rows show an author avatar without a separate request per book.
   authorRefs: AuthorRef[];
   hasCover: boolean;
+  coverVersion: number | null;
   readingStatus: ReadingStatus;
   format: "Epub" | "Pdf";
   absolutePath: string;
@@ -747,9 +752,14 @@ export function getReadingTimeReport(): Promise<ReadingTimeReport> {
   return request<ReadingTimeReport>("/api/analytics/reading-time");
 }
 
-export function coverUrl(id: string): string {
+// Issue #66: `version` (a BookSummary/BookDetail's coverVersion) should always be passed when
+// available - it's part of the URL specifically so the browser treats a newly extracted/replaced
+// cover as a different resource instead of continuing to serve the previous one it cached under
+// this same book id.
+export function coverUrl(id: string, version?: number | null): string {
   const { apiBaseUrl, token } = window.maktaba;
-  return `${apiBaseUrl}/api/books/${id}/cover?access_token=${encodeURIComponent(token)}`;
+  const base = `${apiBaseUrl}/api/books/${id}/cover?access_token=${encodeURIComponent(token)}`;
+  return version != null ? `${base}&v=${version}` : base;
 }
 
 export type PeriodicalFrequency = "Daily" | "Weekly" | "BiWeekly" | "Monthly" | "Quarterly" | "Yearly" | "Occasional";

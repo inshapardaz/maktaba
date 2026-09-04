@@ -132,7 +132,7 @@ function BookCard({ book, index, selected, selectedIds, onSelect, onEdit, onMerg
       <Box pos="relative">
         {book.hasCover ? (
           <Image
-            src={coverUrl(book.id)}
+            src={coverUrl(book.id, book.coverVersion)}
             alt=""
             loading="lazy"
             w={CARD_WIDTH}

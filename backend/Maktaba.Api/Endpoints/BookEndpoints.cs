@@ -160,6 +160,7 @@ public static class BookEndpoints
                     b.Rating,
                     b.DateAdded,
                     CoverLocator.Find(root, b.FolderPath) is not null,
+                    CoverLocator.GetVersion(root, b.FolderPath),
                     b.ReadingStatus.ToString(),
                     b.BookSeries.FirstOrDefault()?.SeriesIndex,
                     b.BookSeries.FirstOrDefault()?.Series.Name,
@@ -222,6 +223,7 @@ public static class BookEndpoints
                         book.BookAuthors.OrderBy(ba => ba.Order).Select(ba => ba.Author.Name).ToArray(),
                         BuildAuthorRefs(book.BookAuthors, root),
                         CoverLocator.Find(root, book.FolderPath) is not null,
+                        CoverLocator.GetVersion(root, book.FolderPath),
                         book.ReadingStatus.ToString(),
                         (file?.Format ?? BookFormat.Epub).ToString(),
                         file is not null ? Path.Combine(root, file.FilePath) : "",
@@ -274,6 +276,7 @@ public static class BookEndpoints
                     b.Rating,
                     b.DateAdded,
                     CoverLocator.Find(root, b.FolderPath) is not null,
+                    CoverLocator.GetVersion(root, b.FolderPath),
                     b.ReadingStatus.ToString(),
                     b.BookSeries.FirstOrDefault()?.SeriesIndex,
                     b.BookSeries.FirstOrDefault()?.Series.Name,
@@ -345,6 +348,7 @@ public static class BookEndpoints
                 book.Files.Select(f => new BookFileDto(
                     IdCodec.Encode(f.Id), f.Format.ToString(), f.FileSizeBytes, Path.Combine(root, f.FilePath), f.ContentHash)).ToArray(),
                 CoverLocator.Find(root, book.FolderPath) is not null,
+                CoverLocator.GetVersion(root, book.FolderPath),
                 book.ReadingStatus.ToString(),
                 book.BookCollections
                     .Select(bc => new BookCollectionDto(IdCodec.Encode(bc.CollectionId), bc.Collection.Name))

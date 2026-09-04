@@ -152,7 +152,7 @@ export function HomeView({ onSelectBook, onSelectFilter }: HomeViewProps) {
               >
                 {lastRead.hasCover ? (
                   <Image
-                    src={coverUrl(lastRead.id)}
+                    src={coverUrl(lastRead.id, lastRead.coverVersion)}
                     alt=""
                     w={150}
                     h={225}
@@ -257,7 +257,7 @@ export function HomeView({ onSelectBook, onSelectFilter }: HomeViewProps) {
                     <Group gap="sm" wrap="nowrap">
                       {book.hasCover ? (
                         <Image
-                          src={coverUrl(book.id)}
+                          src={coverUrl(book.id, book.coverVersion)}
                           alt=""
                           w={36}
                           h={54}

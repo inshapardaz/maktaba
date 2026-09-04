@@ -26,4 +26,17 @@ public static class CoverLocator
 
         return null;
     }
+
+    /// <summary>
+    /// Issue #66: the cover file's last-write time as Unix milliseconds, or null if there's no
+    /// cover - lets the frontend put a value that only changes when the actual cover bytes change
+    /// into the image URL's query string, so the browser's HTTP cache (and BookGrid/BookList/
+    /// BookDetailPanel's plain &lt;img&gt; elements) reliably pick up a newly extracted/replaced
+    /// cover instead of continuing to show whatever was cached under the same URL.
+    /// </summary>
+    public static long? GetVersion(string libraryRoot, string bookFolderRelativePath)
+    {
+        var found = Find(libraryRoot, bookFolderRelativePath);
+        return found is { } cover ? new DateTimeOffset(File.GetLastWriteTimeUtc(cover.FilePath)).ToUnixTimeMilliseconds() : null;
+    }
 }

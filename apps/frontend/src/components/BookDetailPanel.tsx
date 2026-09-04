@@ -131,9 +131,6 @@ export function BookDetailPanel({ bookId, onClose, onRemoved, onSelectFilter }: 
   const [removeError, setRemoveError] = useState<string | null>(null);
   const [confirmingRemove, setConfirmingRemove] = useState(false);
   const [addFileError, setAddFileError] = useState<string | null>(null);
-  // Bumped after a successful cover extraction so the <Image> below re-fetches instead of showing
-  // the browser's cached copy of the old cover at the same URL.
-  const [coverCacheBust, setCoverCacheBust] = useState(0);
 
   const {
     data: book,
@@ -233,9 +230,8 @@ export function BookDetailPanel({ bookId, onClose, onRemoved, onSelectFilter }: 
     mutationFn: (fileId: string) => extractBookCover(bookId, fileId),
     onSuccess: () => {
       setExtractCoverConfirmId(null);
-      setCoverCacheBust((v) => v + 1);
       void queryClient.invalidateQueries({ queryKey: ["book", bookId] });
-      void queryClient.invalidateQueries({ queryKey: ["books"] });
+      invalidateLibraryQueries(queryClient);
     },
     onError: (err) => {
       setExtractCoverConfirmId(null);
@@ -357,7 +353,7 @@ export function BookDetailPanel({ bookId, onClose, onRemoved, onSelectFilter }: 
           <Group align="flex-start" gap="md">
             {book.hasCover ? (
               <Image
-                src={coverCacheBust > 0 ? `${coverUrl(book.id)}&v=${coverCacheBust}` : coverUrl(book.id)}
+                src={coverUrl(book.id, book.coverVersion)}
                 alt=""
                 w={110}
                 h={165}

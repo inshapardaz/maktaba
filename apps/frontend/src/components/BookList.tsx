@@ -214,7 +214,7 @@ export function BookRow({ book, index, selected, selectedIds, onSelect, onEdit, 
             <Box style={{ flexShrink: 0 }}>
               {book.hasCover ? (
                 <Image
-                  src={coverUrl(book.id)}
+                  src={coverUrl(book.id, book.coverVersion)}
                   alt=""
                   loading="lazy"
                   w={THUMB_SIZE}
@@ -229,7 +229,7 @@ export function BookRow({ book, index, selected, selectedIds, onSelect, onEdit, 
             </Box>
           </HoverCard.Target>
           <HoverCard.Dropdown p={4}>
-            <Image src={coverUrl(book.id)} alt="" w={PREVIEW_SIZE} fit="contain" radius="sm" />
+            <Image src={coverUrl(book.id, book.coverVersion)} alt="" w={PREVIEW_SIZE} fit="contain" radius="sm" />
           </HoverCard.Dropdown>
         </HoverCard>
 

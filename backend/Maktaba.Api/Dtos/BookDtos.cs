@@ -15,6 +15,10 @@ public record BookSummaryDto(
     int Rating,
     DateTime DateAdded,
     bool HasCover,
+    // Issue #66: null if HasCover is false, else the cover file's last-write time (Unix ms) - see
+    // CoverLocator.GetVersion. Lets the frontend's coverUrl() bust the browser's HTTP cache only
+    // when the actual cover bytes have changed.
+    long? CoverVersion,
     string ReadingStatus,
     // Null unless the book belongs to a series / has ever had reading progress saved - lets the
     // frontend offer "series order" and "last read" as sort keys without a second request per book
@@ -59,6 +63,7 @@ public record ContinueReadingBookDto(
     // currently-reading rows show an author avatar without a separate request per book.
     AuthorRefDto[] AuthorRefs,
     bool HasCover,
+    long? CoverVersion,
     string ReadingStatus,
     string Format,
     // Lets the frontend's "open with external app" reader-engine setting bypass the in-app reader
@@ -104,6 +109,7 @@ public record BookDetailDto(
     IdentifierDto[] Identifiers,
     BookFileDto[] Files,
     bool HasCover,
+    long? CoverVersion,
     string ReadingStatus,
     BookCollectionDto[] Collections,
     string? PeriodicalId,

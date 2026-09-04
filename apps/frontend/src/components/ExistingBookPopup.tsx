@@ -38,7 +38,7 @@ export function ExistingBookPopup({ bookId, onClose }: ExistingBookPopupProps) {
           <Group align="flex-start" gap="md" wrap="nowrap">
             {book.hasCover ? (
               <Image
-                src={coverUrl(book.id)}
+                src={coverUrl(book.id, book.coverVersion)}
                 alt=""
                 w={90}
                 h={135}
