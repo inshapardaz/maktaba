@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AppShell, Box, Center, Loader, Overlay, Text, Group } from "@mantine/core";
+import { AppShell, Box, Center, Loader, MantineProvider, Overlay, Text, Group, type MantineThemeOverride } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconUpload } from "./icons";
 import {
@@ -45,6 +45,8 @@ import { invalidateLibraryQueries } from "./queries";
 import { useDebounced } from "./useDebounced";
 import { useLanguage } from "./i18n/LanguageContext";
 import { useAppTheme } from "./AppThemeContext";
+import { useThemeColor } from "./ThemeColorContext";
+import { createWhiteTheme } from "./theme";
 import { ReaderLauncherProvider, type ReaderRequest } from "./ReaderLauncherContext";
 import { useImportQueue } from "./ImportContext";
 import { useRescan } from "./RescanContext";
@@ -77,6 +79,47 @@ function navStateEqual(a: NavState, b: NavState): boolean {
     a.selectedBookId === b.selectedBookId &&
     a.groupFilter?.kind === b.groupFilter?.kind &&
     a.groupFilter?.id === b.groupFilter?.id
+  );
+}
+
+// Issue #63: forces everything rendered inside it (any Mantine component - Text, NavLink, Badge,
+// ActionIcon, ...) to render with dark-scheme colors, regardless of the app's actual color scheme.
+// A plain `data-mantine-color-scheme="dark"` attribute + a handful of hand-picked CSS variable
+// overrides (the first attempt at this) only affects component-specific dark/light variant rules
+// (those match any descendant of an element with the attribute) - it does NOT touch the dozens of
+// other per-color-family variables (e.g. --mantine-color-gray-light-color, used by every
+// color="gray" variant="subtle" icon in the title bar/sidebar), which would all need overriding by
+// hand and still wouldn't cover every accent color the user can pick. Nesting a second
+// MantineProvider with forceColorScheme="dark" is the mechanism Mantine actually provides for
+// this - cssVariablesSelector scopes its *entire* generated variable set (every color family,
+// exactly like the real :root would get in dark mode) to rootRef's element instead of :root, and
+// getRootElement tells it to stamp the data-mantine-color-scheme="dark" attribute there too rather
+// than on <html>. `theme` must be the same White theme (colors/primaryColor) the outer provider
+// uses, or the accent color would look different once forced dark.
+function DarkChromeScope({
+  active,
+  theme,
+  rootRef,
+  children,
+}: {
+  active: boolean;
+  theme: MantineThemeOverride;
+  rootRef: React.RefObject<HTMLElement | null>;
+  children: ReactNode;
+}) {
+  if (!active) {
+    return <>{children}</>;
+  }
+  return (
+    <MantineProvider
+      theme={theme}
+      forceColorScheme="dark"
+      cssVariablesSelector=".maktaba-dark-chrome"
+      getRootElement={() => rootRef.current ?? undefined}
+      withGlobalClasses={false}
+    >
+      {children}
+    </MantineProvider>
   );
 }
 
@@ -116,44 +159,19 @@ function App() {
   const importQueue = useImportQueue();
   const rescan = useRescan();
   const { appTheme, darkChrome } = useAppTheme();
+  const { themeColor, customColorHex } = useThemeColor();
   // Issue #63: only meaningful under the White theme (Organic already has its own fixed --app-
-  // surface treatment for these two elements) - see AppThemeContext.tsx's darkChrome comment for
-  // how the actual dark-scoping works.
+  // surface treatment for these two elements) - see AppThemeContext.tsx's darkChrome comment.
   const useDarkChrome = appTheme === "white" && darkChrome;
-  // data-mantine-color-scheme="dark" alone re-styles every *component-specific* dark/light
-  // variant (those are defined with a `:where([data-mantine-color-scheme='dark']) .foo` selector,
-  // which does match any descendant of an element carrying the attribute) - but Mantine's base
-  // semantic vars (--mantine-color-text/dimmed/etc, what plain Text/NavLink labels actually read)
-  // are only redefined at `:root[data-mantine-color-scheme='dark']`, which never matches a nested
-  // element even if it has the same attribute. Redefining the variables here - same values
-  // Mantine's own :root[dark] block uses - isn't enough by itself either: `color` is an inherited
-  // CSS property, and Mantine's global stylesheet only ever writes `color: var(--mantine-color-
-  // text)` once, on <body> - every descendant just inherits body's already-*computed* color value
-  // (black), never re-reading the variable. Redefining the variable deep in the tree doesn't
-  // change anything already inherited from above it. Explicitly setting `color` again here (not
-  // just the variable) forces it to recompute using our override at this element, and *that*
-  // resolved color is what correctly cascades down to every label inside.
-  const darkChromeVars = (
-    useDarkChrome
-      ? {
-          backgroundColor: "var(--mantine-color-dark-7)",
-          color: "var(--mantine-color-dark-0)",
-          "--mantine-color-body": "var(--mantine-color-dark-7)",
-          "--mantine-color-bright": "var(--mantine-color-white)",
-          "--mantine-color-text": "var(--mantine-color-dark-0)",
-          "--mantine-color-placeholder": "var(--mantine-color-dark-3)",
-          "--mantine-color-anchor": "var(--mantine-color-blue-4)",
-          "--mantine-color-default": "var(--mantine-color-dark-6)",
-          "--mantine-color-default-hover": "var(--mantine-color-dark-5)",
-          "--mantine-color-default-color": "var(--mantine-color-white)",
-          "--mantine-color-default-border": "var(--mantine-color-dark-4)",
-          "--mantine-color-dimmed": "var(--mantine-color-dark-2)",
-          "--mantine-color-disabled": "var(--mantine-color-dark-6)",
-          "--mantine-color-disabled-color": "var(--mantine-color-dark-3)",
-          "--mantine-color-disabled-border": "var(--mantine-color-dark-4)",
-        }
-      : { backgroundColor: "var(--app-surface)" }
-  ) as React.CSSProperties;
+  // Same theme object main.tsx's ThemedMantineProvider builds for the outer MantineProvider -
+  // needed again here so DarkChromeScope's nested provider keeps the same accent color instead of
+  // resetting to Mantine's own default blue once forced dark.
+  const whiteTheme = useMemo(() => createWhiteTheme(themeColor, customColorHex), [themeColor, customColorHex]);
+  const headerRef = useRef<HTMLElement>(null);
+  const navbarRef = useRef<HTMLElement>(null);
+  const darkChromeStyle: React.CSSProperties = useDarkChrome
+    ? { backgroundColor: "var(--mantine-color-body)", color: "var(--mantine-color-text)" }
+    : { backgroundColor: "var(--app-surface)" };
 
   // Keeps the OS-level window title (taskbar/Alt-Tab) in sync with the in-app language too -
   // scoped to App.tsx (the main window only) rather than LanguageContext.tsx, since reader windows
@@ -690,56 +708,68 @@ function App() {
           navbar={hasLibrary ? { width: sidebarWidth, breakpoint: 0 } : undefined}
           padding={0}
         >
-          <AppShell.Header data-mantine-color-scheme={useDarkChrome ? "dark" : undefined} style={darkChromeVars}>
-            <TitleBar
-              hasLibrary={hasLibrary}
-              mainView={mainView}
-              onOpenHome={() => setMainView("home")}
-              onImport={handleImportClick}
-              activeFilter={groupFilter}
-              onSelect={handleSelectFilter}
-              onShowAllBooks={handleShowAllBooks}
-              settingsOpen={settingsOpen}
-              onOpenSettings={(tab) => {
-                setSettingsTab(tab);
-                setSettingsOpen(true);
-              }}
-              onOpenAnalytics={() => setMainView("analytics")}
-              canGoBack={canGoBack}
-              canGoForward={canGoForward}
-              onGoBack={goBack}
-              onGoForward={goForward}
-              actionsHidden={!!inlineReader}
-            />
-            {showImportBar && <ImportStatusBar />}
-            {showRescanBar && <RescanStatusBar />}
-          </AppShell.Header>
-
-          {hasLibrary && (
-            <AppShell.Navbar data-mantine-color-scheme={useDarkChrome ? "dark" : undefined} style={darkChromeVars}>
-              <Sidebar
+          <AppShell.Header
+            ref={headerRef as React.Ref<HTMLHeadElement>}
+            className={useDarkChrome ? "maktaba-dark-chrome" : undefined}
+            style={darkChromeStyle}
+          >
+            <DarkChromeScope active={useDarkChrome} theme={whiteTheme} rootRef={headerRef}>
+              <TitleBar
+                hasLibrary={hasLibrary}
+                mainView={mainView}
+                onOpenHome={() => setMainView("home")}
+                onImport={handleImportClick}
                 activeFilter={groupFilter}
                 onSelect={handleSelectFilter}
-                width={sidebarWidth}
-                onWidthChange={setSidebarWidth}
-                onOpenAuthors={() => setMainView("authors")}
-                onOpenCollections={() => setMainView("collections")}
-                onOpenTags={() => setMainView("tags")}
-                onOpenSeries={() => setMainView("series")}
-                onOpenPeriodicals={() => {
-                  setMainView("periodicals");
-                  setSelectedPeriodicalId(null);
-                  setGroupFilter(null);
-                }}
-                onOpenPublishers={() => setMainView("publishers")}
-                onOpenLanguages={() => setMainView("languages")}
+                onShowAllBooks={handleShowAllBooks}
+                settingsOpen={settingsOpen}
                 onOpenSettings={(tab) => {
                   setSettingsTab(tab);
                   setSettingsOpen(true);
                 }}
-                onLibraryChanged={handleLibraryChanged}
-                onDropBooks={handleDropBooksOnGroup}
+                onOpenAnalytics={() => setMainView("analytics")}
+                canGoBack={canGoBack}
+                canGoForward={canGoForward}
+                onGoBack={goBack}
+                onGoForward={goForward}
+                actionsHidden={!!inlineReader}
               />
+              {showImportBar && <ImportStatusBar />}
+              {showRescanBar && <RescanStatusBar />}
+            </DarkChromeScope>
+          </AppShell.Header>
+
+          {hasLibrary && (
+            <AppShell.Navbar
+              ref={navbarRef as React.Ref<HTMLDivElement>}
+              className={useDarkChrome ? "maktaba-dark-chrome" : undefined}
+              style={darkChromeStyle}
+            >
+              <DarkChromeScope active={useDarkChrome} theme={whiteTheme} rootRef={navbarRef}>
+                <Sidebar
+                  activeFilter={groupFilter}
+                  onSelect={handleSelectFilter}
+                  width={sidebarWidth}
+                  onWidthChange={setSidebarWidth}
+                  onOpenAuthors={() => setMainView("authors")}
+                  onOpenCollections={() => setMainView("collections")}
+                  onOpenTags={() => setMainView("tags")}
+                  onOpenSeries={() => setMainView("series")}
+                  onOpenPeriodicals={() => {
+                    setMainView("periodicals");
+                    setSelectedPeriodicalId(null);
+                    setGroupFilter(null);
+                  }}
+                  onOpenPublishers={() => setMainView("publishers")}
+                  onOpenLanguages={() => setMainView("languages")}
+                  onOpenSettings={(tab) => {
+                    setSettingsTab(tab);
+                    setSettingsOpen(true);
+                  }}
+                  onLibraryChanged={handleLibraryChanged}
+                  onDropBooks={handleDropBooksOnGroup}
+                />
+              </DarkChromeScope>
             </AppShell.Navbar>
           )}
 
