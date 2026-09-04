@@ -125,13 +125,19 @@ function App() {
   // which does match any descendant of an element carrying the attribute) - but Mantine's base
   // semantic vars (--mantine-color-text/dimmed/etc, what plain Text/NavLink labels actually read)
   // are only redefined at `:root[data-mantine-color-scheme='dark']`, which never matches a nested
-  // element even if it has the same attribute. Left unset, that left every label under the dark
-  // chrome still black (the light scheme's text color, inherited from the real :root). Redefining
-  // them here - same values Mantine's own :root[dark] block uses - fixes that for this subtree.
+  // element even if it has the same attribute. Redefining the variables here - same values
+  // Mantine's own :root[dark] block uses - isn't enough by itself either: `color` is an inherited
+  // CSS property, and Mantine's global stylesheet only ever writes `color: var(--mantine-color-
+  // text)` once, on <body> - every descendant just inherits body's already-*computed* color value
+  // (black), never re-reading the variable. Redefining the variable deep in the tree doesn't
+  // change anything already inherited from above it. Explicitly setting `color` again here (not
+  // just the variable) forces it to recompute using our override at this element, and *that*
+  // resolved color is what correctly cascades down to every label inside.
   const darkChromeVars = (
     useDarkChrome
       ? {
           backgroundColor: "var(--mantine-color-dark-7)",
+          color: "var(--mantine-color-dark-0)",
           "--mantine-color-body": "var(--mantine-color-dark-7)",
           "--mantine-color-bright": "var(--mantine-color-white)",
           "--mantine-color-text": "var(--mantine-color-dark-0)",
