@@ -251,6 +251,8 @@ const en = {
   "bookDetail.deleteFile": "Delete file",
   "bookDetail.checksum": "Checksum",
   "bookDetail.duplicateFile": "Duplicate file — identical content to another file of this book",
+  "bookDetail.extractCover": "Set as cover",
+  "bookDetail.confirmExtractCover": "Extract this file's cover image and use it as the book's cover?",
   "bookDetail.deleteFileError": "Couldn't delete this file.",
 
   "bookEdit.title": "Edit book",
@@ -693,6 +695,8 @@ const ur: TranslationDict = {
   "bookDetail.deleteFile": "فائل حذف کریں",
   "bookDetail.checksum": "چیک سم",
   "bookDetail.duplicateFile": "نقل فائل — اس کتاب کی دوسری فائل جیسا مواد",
+  "bookDetail.extractCover": "سرورق کے طور پر مقرر کریں",
+  "bookDetail.confirmExtractCover": "کیا اس فائل کی سرورق کی تصویر نکال کر کتاب کے سرورق کے طور پر استعمال کی جائے؟",
   "bookDetail.deleteFileError": "یہ فائل حذف نہیں ہو سکی۔",
 
   "bookEdit.title": "کتاب میں ترمیم کریں",

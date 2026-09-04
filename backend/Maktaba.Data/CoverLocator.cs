@@ -9,6 +9,8 @@ public static class CoverLocator
         ("cover.png", "image/png"),
     ];
 
+    public static readonly IReadOnlyList<string> CoverFileNames = CoverCandidates.Select(c => c.FileName).ToArray();
+
     /// <param name="bookFolderRelativePath">A <c>Book.FolderPath</c> value, relative to the library root.</param>
     public static (string FilePath, string ContentType)? Find(string libraryRoot, string bookFolderRelativePath)
     {

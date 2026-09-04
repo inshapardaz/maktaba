@@ -16,6 +16,7 @@ import {
   Loader,
   Menu,
   Modal,
+  Popover,
   Rating,
   Stack,
   Text,
@@ -31,6 +32,7 @@ import {
   IconBookmark,
   IconBuildingStore,
   IconCalendar,
+  IconCamera,
   IconCheck,
   IconChevronDown,
   IconFolder,
@@ -49,6 +51,7 @@ import {
   deleteBook,
   deleteBookFile,
   coverUrl,
+  extractBookCover,
   listTags,
   renameBookFile,
   updateBook,
@@ -128,6 +131,9 @@ export function BookDetailPanel({ bookId, onClose, onRemoved, onSelectFilter }: 
   const [removeError, setRemoveError] = useState<string | null>(null);
   const [confirmingRemove, setConfirmingRemove] = useState(false);
   const [addFileError, setAddFileError] = useState<string | null>(null);
+  // Bumped after a successful cover extraction so the <Image> below re-fetches instead of showing
+  // the browser's cached copy of the old cover at the same URL.
+  const [coverCacheBust, setCoverCacheBust] = useState(0);
 
   const {
     data: book,
@@ -213,6 +219,29 @@ export function BookDetailPanel({ bookId, onClose, onRemoved, onSelectFilter }: 
       notifications.show({
         color: "red",
         title: t("bookDetail.deleteFile"),
+        message: err instanceof Error ? err.message : String(err),
+      });
+    },
+  });
+
+  // Issue #66: re-extract the cover embedded in an attached file and set it as the book's cover -
+  // confirmed via a small popover (see extractCoverConfirmId) rather than acting immediately, since
+  // it overwrites whatever cover the book currently has.
+  const [extractCoverConfirmId, setExtractCoverConfirmId] = useState<string | null>(null);
+
+  const extractCoverMutation = useMutation({
+    mutationFn: (fileId: string) => extractBookCover(bookId, fileId),
+    onSuccess: () => {
+      setExtractCoverConfirmId(null);
+      setCoverCacheBust((v) => v + 1);
+      void queryClient.invalidateQueries({ queryKey: ["book", bookId] });
+      void queryClient.invalidateQueries({ queryKey: ["books"] });
+    },
+    onError: (err) => {
+      setExtractCoverConfirmId(null);
+      notifications.show({
+        color: "red",
+        title: t("bookDetail.extractCover"),
         message: err instanceof Error ? err.message : String(err),
       });
     },
@@ -328,7 +357,7 @@ export function BookDetailPanel({ bookId, onClose, onRemoved, onSelectFilter }: 
           <Group align="flex-start" gap="md">
             {book.hasCover ? (
               <Image
-                src={coverUrl(book.id)}
+                src={coverCacheBust > 0 ? `${coverUrl(book.id)}&v=${coverCacheBust}` : coverUrl(book.id)}
                 alt=""
                 w={110}
                 h={165}
@@ -613,6 +642,44 @@ export function BookDetailPanel({ bookId, onClose, onRemoved, onSelectFilter }: 
                           <IconFolder size={14} />
                         </ActionIcon>
                       </Tooltip>
+                      <Popover
+                        opened={extractCoverConfirmId === f.id}
+                        onClose={() => setExtractCoverConfirmId(null)}
+                        position="bottom-end"
+                        withArrow
+                        shadow="md"
+                      >
+                        <Popover.Target>
+                          <Tooltip label={t("bookDetail.extractCover")}>
+                            <ActionIcon
+                              size="sm"
+                              variant="subtle"
+                              color="gray"
+                              aria-label={t("bookDetail.extractCover")}
+                              onClick={() => setExtractCoverConfirmId(f.id)}
+                            >
+                              <IconCamera size={14} />
+                            </ActionIcon>
+                          </Tooltip>
+                        </Popover.Target>
+                        <Popover.Dropdown>
+                          <Stack gap={8} maw={220}>
+                            <Text size="xs">{t("bookDetail.confirmExtractCover")}</Text>
+                            <Group gap={6} justify="flex-end">
+                              <Button size="xs" variant="subtle" onClick={() => setExtractCoverConfirmId(null)}>
+                                {t("common.cancel")}
+                              </Button>
+                              <Button
+                                size="xs"
+                                loading={extractCoverMutation.isPending && extractCoverMutation.variables === f.id}
+                                onClick={() => extractCoverMutation.mutate(f.id)}
+                              >
+                                {t("common.confirm")}
+                              </Button>
+                            </Group>
+                          </Stack>
+                        </Popover.Dropdown>
+                      </Popover>
                       {book.files.length > 1 && (
                         <Tooltip label={t("bookDetail.deleteFile")}>
                           <ActionIcon

@@ -600,7 +600,27 @@ public static class BookEndpoints
             }
 
             var root = libraryPath.LibraryRootPath!;
-            return Results.Ok(new BookFileDto(fileId, file.Format.ToString(), file.FileSizeBytes, Path.Combine(root, file.FilePath)));
+            return Results.Ok(new BookFileDto(fileId, file.Format.ToString(), file.FileSizeBytes, Path.Combine(root, file.FilePath), file.ContentHash));
+        });
+
+        // Issue #66: re-extracts the cover image embedded in one of the book's own attached files and
+        // sets it as the book's cover, overwriting whatever cover is there now.
+        group.MapPost("/{id}/files/{fileId}/extract-cover", async (
+            string id, string fileId, IBookEditService editService, CancellationToken ct) =>
+        {
+            if (!IdCodec.TryDecode(id, out var bookId) || !IdCodec.TryDecode(fileId, out var bookFileId))
+            {
+                return Results.NotFound();
+            }
+
+            var outcome = await editService.ExtractCoverAsync(bookId, bookFileId, ct);
+            return outcome switch
+            {
+                CoverExtractionOutcome.Extracted => Results.NoContent(),
+                CoverExtractionOutcome.NoCoverInFile => Results.Conflict(
+                    new { error = "This file has no embedded cover image." }),
+                _ => Results.NotFound(),
+            };
         });
 
         group.MapDelete("/{id}/files/{fileId}", async (

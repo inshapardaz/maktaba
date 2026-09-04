@@ -5,7 +5,10 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Maktaba.Data.Services;
 
-public class BookEditService(MaktabaDbContext db, ILibraryPathProvider libraryPath) : IBookEditService
+public class BookEditService(
+    MaktabaDbContext db,
+    ILibraryPathProvider libraryPath,
+    IEnumerable<IBookMetadataExtractor> extractors) : IBookEditService
 {
     public async Task<Book?> UpdateAsync(int bookId, BookEditRequest request, CancellationToken ct = default)
     {
@@ -219,5 +222,45 @@ public class BookEditService(MaktabaDbContext db, ILibraryPathProvider libraryPa
 
         await db.SaveChangesAsync(ct);
         return target;
+    }
+
+    public async Task<CoverExtractionOutcome> ExtractCoverAsync(int bookId, int fileId, CancellationToken ct = default)
+    {
+        var book = await db.Books.Include(b => b.Files).FirstOrDefaultAsync(b => b.Id == bookId, ct);
+        if (book is null)
+        {
+            return CoverExtractionOutcome.BookNotFound;
+        }
+
+        var file = book.Files.FirstOrDefault(f => f.Id == fileId);
+        if (file is null)
+        {
+            return CoverExtractionOutcome.FileNotFound;
+        }
+
+        var root = libraryPath.LibraryRootPath!;
+        var absolutePath = Path.Combine(root, file.FilePath);
+        var extractor = extractors.FirstOrDefault(e => e.CanHandle(absolutePath));
+        var metadata = extractor is not null ? await extractor.ExtractAsync(absolutePath, ct) : null;
+
+        if (metadata?.CoverImageBytes is not { Length: > 0 })
+        {
+            return CoverExtractionOutcome.NoCoverInFile;
+        }
+
+        var folderAbsolute = Path.Combine(root, book.FolderPath);
+        foreach (var existing in CoverLocator.CoverFileNames)
+        {
+            var existingPath = Path.Combine(folderAbsolute, existing);
+            if (File.Exists(existingPath))
+            {
+                File.Delete(existingPath);
+            }
+        }
+
+        var coverExtension = EbookFileHelpers.CoverExtensionFor(metadata.CoverContentType);
+        await File.WriteAllBytesAsync(Path.Combine(folderAbsolute, $"cover.{coverExtension}"), metadata.CoverImageBytes, ct);
+
+        return CoverExtractionOutcome.Extracted;
     }
 }

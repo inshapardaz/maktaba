@@ -20,6 +20,16 @@ public record BookEditRequest(
     DateOnly? IssueDate = null
 );
 
+// Issue #66: extracting the cover embedded in one of a book's attached files and setting it as the
+// book's cover.
+public enum CoverExtractionOutcome
+{
+    Extracted,
+    BookNotFound,
+    FileNotFound,
+    NoCoverInFile,
+}
+
 /// <summary>
 /// Updates a book's editable metadata (v1: DB only - does not rename/move the on-disk folder, which
 /// is tracked as an M3 feature since it needs to interact with duplicate-detection and file moves).
@@ -45,4 +55,9 @@ public interface IBookEditService
     /// Returns null if either book doesn't exist, or throws <see cref="InvalidOperationException"/> if
     /// both ids refer to the same book.</summary>
     Task<Book?> MergeAsync(int targetBookId, int sourceBookId, CancellationToken ct = default);
+
+    /// <summary>Issue #66: re-extracts the cover image embedded in one of the book's attached files
+    /// (scoped to that book) and writes it over the book's current cover.jpg/jpeg/png, replacing
+    /// whatever cover is there now (including one from a different file, or none at all).</summary>
+    Task<CoverExtractionOutcome> ExtractCoverAsync(int bookId, int fileId, CancellationToken ct = default);
 }

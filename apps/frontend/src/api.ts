@@ -385,6 +385,15 @@ export function mergeBooks(targetId: string, sourceBookId: string): Promise<void
   });
 }
 
+// Issue #66: re-extracts the cover image embedded in one of the book's own attached files and sets
+// it as the book's cover (overwriting whatever cover is there now). Throws ApiError(409) if that
+// file has no embedded cover.
+export function extractBookCover(bookId: string, fileId: string): Promise<void> {
+  return request<void>(`/api/books/${bookId}/files/${fileId}/extract-cover`, {
+    method: "POST",
+  });
+}
+
 // Issue #27: renames the actual on-disk file (not just a display label) so it's identifiable when
 // browsing the folder or via "Show in folder" - see backend BookFolderRelocator's IsCustomNamed.
 export function renameBookFile(bookId: string, fileId: string, fileName: string): Promise<BookFileInfo> {
