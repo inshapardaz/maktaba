@@ -120,6 +120,34 @@ function App() {
   // surface treatment for these two elements) - see AppThemeContext.tsx's darkChrome comment for
   // how the actual dark-scoping works.
   const useDarkChrome = appTheme === "white" && darkChrome;
+  // data-mantine-color-scheme="dark" alone re-styles every *component-specific* dark/light
+  // variant (those are defined with a `:where([data-mantine-color-scheme='dark']) .foo` selector,
+  // which does match any descendant of an element carrying the attribute) - but Mantine's base
+  // semantic vars (--mantine-color-text/dimmed/etc, what plain Text/NavLink labels actually read)
+  // are only redefined at `:root[data-mantine-color-scheme='dark']`, which never matches a nested
+  // element even if it has the same attribute. Left unset, that left every label under the dark
+  // chrome still black (the light scheme's text color, inherited from the real :root). Redefining
+  // them here - same values Mantine's own :root[dark] block uses - fixes that for this subtree.
+  const darkChromeVars = (
+    useDarkChrome
+      ? {
+          backgroundColor: "var(--mantine-color-dark-7)",
+          "--mantine-color-body": "var(--mantine-color-dark-7)",
+          "--mantine-color-bright": "var(--mantine-color-white)",
+          "--mantine-color-text": "var(--mantine-color-dark-0)",
+          "--mantine-color-placeholder": "var(--mantine-color-dark-3)",
+          "--mantine-color-anchor": "var(--mantine-color-blue-4)",
+          "--mantine-color-default": "var(--mantine-color-dark-6)",
+          "--mantine-color-default-hover": "var(--mantine-color-dark-5)",
+          "--mantine-color-default-color": "var(--mantine-color-white)",
+          "--mantine-color-default-border": "var(--mantine-color-dark-4)",
+          "--mantine-color-dimmed": "var(--mantine-color-dark-2)",
+          "--mantine-color-disabled": "var(--mantine-color-dark-6)",
+          "--mantine-color-disabled-color": "var(--mantine-color-dark-3)",
+          "--mantine-color-disabled-border": "var(--mantine-color-dark-4)",
+        }
+      : { backgroundColor: "var(--app-surface)" }
+  ) as React.CSSProperties;
 
   // Keeps the OS-level window title (taskbar/Alt-Tab) in sync with the in-app language too -
   // scoped to App.tsx (the main window only) rather than LanguageContext.tsx, since reader windows
@@ -656,10 +684,7 @@ function App() {
           navbar={hasLibrary ? { width: sidebarWidth, breakpoint: 0 } : undefined}
           padding={0}
         >
-          <AppShell.Header
-            data-mantine-color-scheme={useDarkChrome ? "dark" : undefined}
-            style={{ backgroundColor: useDarkChrome ? "var(--mantine-color-dark-7)" : "var(--app-surface)" }}
-          >
+          <AppShell.Header data-mantine-color-scheme={useDarkChrome ? "dark" : undefined} style={darkChromeVars}>
             <TitleBar
               hasLibrary={hasLibrary}
               mainView={mainView}
@@ -685,10 +710,7 @@ function App() {
           </AppShell.Header>
 
           {hasLibrary && (
-            <AppShell.Navbar
-              data-mantine-color-scheme={useDarkChrome ? "dark" : undefined}
-              style={{ backgroundColor: useDarkChrome ? "var(--mantine-color-dark-7)" : "var(--app-surface)" }}
-            >
+            <AppShell.Navbar data-mantine-color-scheme={useDarkChrome ? "dark" : undefined} style={darkChromeVars}>
               <Sidebar
                 activeFilter={groupFilter}
                 onSelect={handleSelectFilter}
