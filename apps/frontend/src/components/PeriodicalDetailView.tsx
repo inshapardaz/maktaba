@@ -341,7 +341,7 @@ export function PeriodicalDetailView({ periodicalId, onBack, onSelectBook }: Per
   const periodicalQuery = useQuery({ queryKey: ["periodical", periodicalId], queryFn: () => getPeriodical(periodicalId) });
   const issuesQuery = useQuery({
     queryKey: ["books", { periodicalId }],
-    queryFn: () => listBooks({ periodicalId }),
+    queryFn: async () => (await listBooks({ periodicalId })).items,
   });
   const publishersQuery = useQuery({ queryKey: ["publishers"], queryFn: listPublishers });
   const tagsQuery = useQuery({ queryKey: ["tags"], queryFn: listTags });

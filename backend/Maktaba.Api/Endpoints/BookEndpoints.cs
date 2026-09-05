@@ -24,6 +24,34 @@ public static class BookEndpoints
     private static bool HasDuplicateFiles(IEnumerable<BookFile> files) =>
         files.GroupBy(f => f.ContentHash).Any(g => g.Count() > 1);
 
+    // Pagination: mirrors what the frontend's own sortBooks/compareBooks (App.tsx) used to do
+    // client-side over the *entire* matching set before this - moved server-side so a page can be
+    // sliced out correctly (the in-memory result here still has to be sorted before Skip/Take, since
+    // SQL-side ORDER BY can't easily express "author's own display name" or "series index, treating
+    // null as last" without pulling every row's related author/series anyway). Default matches
+    // FilterBar's own SortKey/SortDirection defaults for "title"/asc if the frontend ever omits them.
+    private const int DefaultPageSize = 60;
+
+    private static int CompareBooksForSort(Book a, Book b, string? sortKey, IReadOnlyDictionary<int, DateTime> lastReadByBookId)
+    {
+        var result = sortKey switch
+        {
+            "author" => string.Compare(
+                a.BookAuthors.OrderBy(ba => ba.Order).FirstOrDefault()?.Author.Name ?? "",
+                b.BookAuthors.OrderBy(ba => ba.Order).FirstOrDefault()?.Author.Name ?? "",
+                StringComparison.OrdinalIgnoreCase),
+            "dateAdded" => a.DateAdded.CompareTo(b.DateAdded),
+            "rating" => a.Rating.CompareTo(b.Rating),
+            "seriesIndex" => (a.BookSeries.FirstOrDefault()?.SeriesIndex ?? double.PositiveInfinity)
+                .CompareTo(b.BookSeries.FirstOrDefault()?.SeriesIndex ?? double.PositiveInfinity),
+            "lastRead" => Nullable.Compare<DateTime>(
+                lastReadByBookId.TryGetValue(a.Id, out var aLastRead) ? aLastRead : null,
+                lastReadByBookId.TryGetValue(b.Id, out var bLastRead) ? bLastRead : null),
+            _ => string.Compare(a.SortTitle, b.SortTitle, StringComparison.OrdinalIgnoreCase),
+        };
+        return result;
+    }
+
     public static void MapBookEndpoints(this WebApplication app)
     {
         var group = app.MapGroup("/api/books");
@@ -42,7 +70,11 @@ public static class BookEndpoints
             string? format,
             int? minRating,
             string? publisher,
-            string? language) =>
+            string? language,
+            string? sortKey,
+            string? sortDirection,
+            int? page,
+            int? pageSize) =>
         {
             var root = libraryPath.LibraryRootPath!;
 
@@ -154,8 +186,23 @@ public static class BookEndpoints
                 .Where(rp => bookIds.Contains(rp.BookId))
                 .ToDictionaryAsync(rp => rp.BookId, rp => rp.UpdatedAt);
 
-            var dtos = books
-                .OrderBy(b => b.SortTitle, StringComparer.OrdinalIgnoreCase)
+            var totalCount = books.Count;
+
+            var direction = string.Equals(sortDirection, "desc", StringComparison.OrdinalIgnoreCase) ? -1 : 1;
+            books.Sort((a, b) => direction * CompareBooksForSort(a, b, sortKey, lastReadByBookId));
+
+            // Pagination is opt-in via `page` - callers that don't pass it (LibrarySpotlight's search,
+            // PeriodicalDetailView's "every issue of this periodical") get the full sorted set, same as
+            // before this endpoint supported paging at all. Only the main library view (App.tsx) sends
+            // `page` today.
+            IEnumerable<Book> paged = books;
+            if (page is > 0)
+            {
+                var effectivePageSize = pageSize is > 0 ? pageSize.Value : DefaultPageSize;
+                paged = books.Skip((page.Value - 1) * effectivePageSize).Take(effectivePageSize);
+            }
+
+            var dtos = paged
                 .Select(b => new BookSummaryDto(
                     IdCodec.Encode(b.Id),
                     b.Title,
@@ -181,9 +228,9 @@ public static class BookEndpoints
                     b.IssueNumber,
                     b.VolumeNumber,
                     b.IssueDate))
-                .ToList();
+                .ToArray();
 
-            return Results.Ok(dtos);
+            return Results.Ok(new PagedBooksDto(dtos, totalCount));
         });
 
         // Backs the Home view - every book whose ReadingStatus is "Reading", most recently touched

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AppShell, Box, Center, Loader, MantineProvider, Overlay, Text, Group, type MantineThemeOverride } from "@mantine/core";
+import { AppShell, Box, Center, Loader, MantineProvider, Overlay, Pagination, Text, Group, type MantineThemeOverride } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconUpload } from "./icons";
 import {
@@ -11,7 +11,6 @@ import {
   updateBookStatus,
   type BookEditRequest,
   type BookFilters,
-  type BookSummary,
 } from "./api";
 import { isBookDrag } from "./bookDrag";
 import type { TranslationKey } from "./i18n/translations";
@@ -123,35 +122,17 @@ function DarkChromeScope({
   );
 }
 
-function compareBooks(a: BookSummary, b: BookSummary, sortKey: SortKey): number {
-  switch (sortKey) {
-    case "title":
-      return a.sortTitle.localeCompare(b.sortTitle);
-    case "author":
-      return (a.authors[0] ?? "").localeCompare(b.authors[0] ?? "");
-    case "dateAdded":
-      return a.dateAdded.localeCompare(b.dateAdded);
-    case "rating":
-      return a.rating - b.rating;
-    case "seriesIndex":
-      return (a.seriesIndex ?? Infinity) - (b.seriesIndex ?? Infinity);
-    case "lastRead":
-      return (a.lastReadAt ?? "").localeCompare(b.lastReadAt ?? "");
-  }
-}
-
-function sortBooks(books: BookSummary[], sortKey: SortKey, direction: SortDirection): BookSummary[] {
-  const sorted = [...books];
-  sorted.sort((a, b) => (direction === "asc" ? compareBooks(a, b, sortKey) : -compareBooks(a, b, sortKey)));
-  return sorted;
-}
-
 // dateAdded/rating/lastRead read most-recent/highest-first by default; title/author/seriesIndex
 // read alphabetically/in-order - used both by the sort popover (when the field itself changes) and
 // by applyDefaultSort below (when the active group filter changes).
 function defaultDirectionFor(sortKey: SortKey): SortDirection {
   return sortKey === "dateAdded" || sortKey === "rating" || sortKey === "lastRead" ? "desc" : "asc";
 }
+
+// Server-side pagination page size for the main library view (BookGrid/BookList) - matches
+// backend BookEndpoints.cs's own DefaultPageSize, though it's always sent explicitly so that
+// constant only matters if this one is ever omitted from a request by mistake.
+const LIBRARY_PAGE_SIZE = 60;
 
 function App() {
   const { t } = useLanguage();
@@ -218,6 +199,9 @@ function App() {
   const [format, setFormat] = useState("");
   const [minRating, setMinRating] = useState(0);
   const [groupFilter, setGroupFilter] = useState<GroupFilter | null>(null);
+  // 1-based, server-side (see backend BookEndpoints.cs) - reset to 1 whenever anything that changes
+  // which books match (or their order) changes, below.
+  const [page, setPage] = useState(1);
   // Which periodical's detail view (cover/description/issues grouped by date) to show within
   // mainView === "periodicals" - null shows the plain list (PeriodicalsView) instead, same
   // "toggle between list and detail within one mainView" shape as selectedBookId/BookDetailPanel.
@@ -327,6 +311,10 @@ function App() {
     publisher: groupFilter?.kind === "publisher" ? groupFilter.id : undefined,
     language: groupFilter?.kind === "language" ? groupFilter.id : undefined,
     readingStatus: groupFilter?.kind === "readingStatus" ? (groupFilter.id as BookFilters["readingStatus"]) : undefined,
+    sortKey,
+    sortDirection,
+    page,
+    pageSize: LIBRARY_PAGE_SIZE,
   };
 
   const libraryQuery = useQuery({
@@ -348,12 +336,29 @@ function App() {
     queryKey: ["books", filters],
     queryFn: () => listBooks(filters),
     enabled: !!libraryQuery.data,
+    placeholderData: (previousData) => previousData,
   });
 
-  const sortedBooks = useMemo(
-    () => sortBooks(booksQuery.data ?? [], sortKey, sortDirection),
-    [booksQuery.data, sortKey, sortDirection],
-  );
+  // Already sorted and sliced to this page server-side - see BookEndpoints.cs's CompareBooksForSort.
+  const pageBooks = booksQuery.data?.items ?? [];
+  const totalPages = Math.max(1, Math.ceil((booksQuery.data?.totalCount ?? 0) / LIBRARY_PAGE_SIZE));
+
+  // Whenever the matching set (or its order) could change, jump back to page 1 - a page number that
+  // made sense for the old filter/sort combination is meaningless for a new one. mainView/groupFilter
+  // changes already reset the multi-selection in the effect above; this covers every other input
+  // that reshapes the result set search/format/minRating/sort don't touch groupFilter or mainView.
+  useEffect(() => {
+    setPage(1);
+  }, [mainView, groupFilter, debouncedSearch, format, minRating, sortKey, sortDirection]);
+
+  // If a filter change (e.g. from another window/tab, or the count simply shrinking after a delete)
+  // leaves the current page beyond what now exists, snap back to the last real page rather than
+  // showing an empty grid/list with working-looking pagination controls above it.
+  useEffect(() => {
+    if (booksQuery.data && page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [booksQuery.data, page, totalPages]);
 
   // Issue #46: Ctrl/Cmd+A selects every currently-visible book, same scope as the multi-select
   // above - only wired up while the library's book grid/list is actually on screen, and ignored
@@ -369,12 +374,12 @@ function App() {
         return;
       }
       event.preventDefault();
-      setSelectedBookIds(new Set(sortedBooks.map((book) => book.id)));
+      setSelectedBookIds(new Set(pageBooks.map((book) => book.id)));
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [mainView, sortedBooks]);
+  }, [mainView, pageBooks]);
 
   // Picking a new sort field resets direction to that field's sensible default, whether the user
   // changed it from the sort popover or a group filter selection changed it for them below.
@@ -443,7 +448,7 @@ function App() {
   const handleBookClick = (id: string, index: number, event: React.MouseEvent) => {
     if (event.shiftKey && lastClickedIndex !== null) {
       const [start, end] = [lastClickedIndex, index].sort((a, b) => a - b);
-      const rangeIds = sortedBooks.slice(start, end + 1).map((b) => b.id);
+      const rangeIds = pageBooks.slice(start, end + 1).map((b) => b.id);
       setSelectedBookIds((prev) => new Set([...prev, ...rangeIds]));
       return;
     }
@@ -850,7 +855,7 @@ function App() {
                   </Center>
                 )}
 
-                {booksQuery.data && sortedBooks.length === 0 && (
+                {booksQuery.data && pageBooks.length === 0 && (
                   <Center style={{ flex: 1 }} p="xl">
                     <Text c="dimmed" ta="center">
                       {search || format || minRating || groupFilter ? t("app.noResults") : t("app.emptyLibrary")}
@@ -858,23 +863,33 @@ function App() {
                   </Center>
                 )}
 
-                {sortedBooks.length > 0 &&
+                {pageBooks.length > 0 &&
                   (viewMode === "grid" ? (
                     <BookGrid
-                      books={sortedBooks}
+                      books={pageBooks}
                       selectedIds={selectedBookIds}
                       onSelect={handleBookClick}
                       onDragSelect={handleDragSelect}
                     />
                   ) : (
                     <BookList
-                      books={sortedBooks}
+                      books={pageBooks}
                       selectedIds={selectedBookIds}
                       onSelect={handleBookClick}
                       onDragSelect={handleDragSelect}
                       onDeleted={handleBooksDeleted}
                     />
                   ))}
+
+                {totalPages > 1 && (
+                  <Group
+                    justify="center"
+                    py="sm"
+                    style={{ flexShrink: 0, borderTop: "1px solid var(--mantine-color-default-border)" }}
+                  >
+                    <Pagination total={totalPages} value={page} onChange={setPage} size="sm" />
+                  </Group>
+                )}
               </>
             )}
           </AppShell.Main>

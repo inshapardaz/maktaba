@@ -147,6 +147,21 @@ export interface BookFilters {
   readingStatus?: ReadingStatus;
   format?: string;
   minRating?: number;
+  // Server-side sort + pagination for the main library view - see backend BookEndpoints.cs's
+  // CompareBooksForSort (mirrors what App.tsx's own sortBooks/compareBooks used to do client-side
+  // over the *entire* matching set before this).
+  sortKey?: string;
+  sortDirection?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+// GET /api/books' response shape now that it's paginated - totalCount is the count across every
+// page matching the current filters (not items.length), so App.tsx can compute how many pages
+// exist without fetching them all.
+export interface PagedBooks {
+  items: BookSummary[];
+  totalCount: number;
 }
 
 export interface ReadingStatusCount {
@@ -276,7 +291,7 @@ export function resyncLibrary(id: string): Promise<{ bookCount: number }> {
   return request<{ bookCount: number }>(`/api/libraries/${id}/resync`, { method: "POST" });
 }
 
-export function listBooks(filters: BookFilters = {}): Promise<BookSummary[]> {
+export function listBooks(filters: BookFilters = {}): Promise<PagedBooks> {
   const params = new URLSearchParams();
   if (filters.search) params.set("search", filters.search);
   if (filters.authorId) params.set("authorId", filters.authorId);
@@ -290,9 +305,13 @@ export function listBooks(filters: BookFilters = {}): Promise<BookSummary[]> {
   if (filters.readingStatus) params.set("readingStatus", filters.readingStatus);
   if (filters.format) params.set("format", filters.format);
   if (filters.minRating) params.set("minRating", String(filters.minRating));
+  if (filters.sortKey) params.set("sortKey", filters.sortKey);
+  if (filters.sortDirection) params.set("sortDirection", filters.sortDirection);
+  if (filters.page) params.set("page", String(filters.page));
+  if (filters.pageSize) params.set("pageSize", String(filters.pageSize));
 
   const query = params.toString();
-  return request<BookSummary[]>(`/api/books${query ? `?${query}` : ""}`);
+  return request<PagedBooks>(`/api/books${query ? `?${query}` : ""}`);
 }
 
 // Newest books by DateAdded, independent of reading progress - see backend BookEndpoints.cs's

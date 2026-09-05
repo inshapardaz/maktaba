@@ -4,6 +4,11 @@ namespace Maktaba.Api.Dtos;
 // internal integer primary key - encoding/decoding at this API boundary is what all the "sqid"-named
 // helper params in Endpoints/ are for.
 
+// Server-side pagination for the main library view (GET /api/books) - TotalCount is the count
+// across every page matching the current filters, not just Items.Length, so the frontend can
+// compute how many pages exist without fetching them all.
+public record PagedBooksDto(BookSummaryDto[] Items, int TotalCount);
+
 public record BookSummaryDto(
     string Id,
     string Title,

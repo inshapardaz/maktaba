@@ -29,7 +29,7 @@ export function LibrarySpotlight({ onSelectBook, onSelectFilter, onSearch }: Lib
   // already-cached data rather than firing new requests.
   const booksQuery = useQuery({
     queryKey: ["spotlightBooks", trimmed],
-    queryFn: () => listBooks({ search: trimmed }),
+    queryFn: async () => (await listBooks({ search: trimmed })).items,
     enabled: trimmed.length > 0,
   });
   const authorsQuery = useQuery({ queryKey: ["authors"], queryFn: listAuthors });
