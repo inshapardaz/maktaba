@@ -472,6 +472,20 @@ function App() {
     setLastClickedIndex(null);
   };
 
+  // Issue #68: BookList's own DeleteBooksConfirmDialog does the actual deleteBook + trashPath work
+  // and query invalidation - this just drops whichever ids it reports as actually deleted from the
+  // multi-selection (and closes the detail panel if the book showing there was one of them).
+  const handleBooksDeleted = (ids: string[]) => {
+    setSelectedBookIds((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) next.delete(id);
+      return next;
+    });
+    if (selectedBookId && ids.includes(selectedBookId)) {
+      setSelectedBookId(null);
+    }
+  };
+
   const dragDropMessageKey: Record<
     "authorId" | "authorIdAppend" | "seriesId" | "tagId" | "collectionId" | "periodicalId" | "publisher" | "language",
     { one: TranslationKey; other: TranslationKey }
@@ -858,6 +872,7 @@ function App() {
                       selectedIds={selectedBookIds}
                       onSelect={handleBookClick}
                       onDragSelect={handleDragSelect}
+                      onDeleted={handleBooksDeleted}
                     />
                   ))}
               </>

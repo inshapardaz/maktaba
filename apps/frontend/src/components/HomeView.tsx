@@ -24,6 +24,7 @@ import { SpineCover } from "./SpineCover";
 // which don't make sense in this compact Home-page context.
 const NO_SELECTION = new Set<string>();
 function noopMergeRequest() {}
+function noopDeleteRequest() {}
 
 // Issue: Home used to show only the hero book plus whatever else happened to be in progress, with
 // no cap and no way to jump to the rest - now shown together (hero + list) up to this many, with a
@@ -328,6 +329,7 @@ export function HomeView({ onSelectBook, onSelectFilter }: HomeViewProps) {
                   onSelect={() => onSelectBook(book.id)}
                   onEdit={() => onSelectBook(book.id)}
                   onMergeRequest={noopMergeRequest}
+                  onDeleteRequest={noopDeleteRequest}
                 />
               ))}
             </Stack>

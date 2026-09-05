@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { notifications } from "@mantine/notifications";
 import { ActionIcon, Badge, Box, Group, HoverCard, Image, Loader, Menu, Stack, Text, TextInput, Tooltip, UnstyledButton } from "@mantine/core";
-import { IconBook2, IconChevronDown, IconEdit, IconFolder, IconPencil, IconStack2, IconTag } from "../icons";
+import { IconBook2, IconChevronDown, IconEdit, IconFolder, IconPencil, IconStack2, IconTag, IconTrash } from "../icons";
 import {
   coverUrl,
   getBook,
@@ -20,6 +20,7 @@ import { invalidateLibraryQueries } from "../queries";
 import { useReaderLauncher } from "../ReaderLauncherContext";
 import { READING_STATUS_COLOR, READING_STATUS_LABEL_KEY } from "../readingStatus";
 import { BookEditForm } from "./BookEditForm";
+import { DeleteBooksConfirmDialog } from "./DeleteBooksConfirmDialog";
 import { MergeConfirmDialog } from "./MergeConfirmDialog";
 import { SpineCover } from "./SpineCover";
 
@@ -34,6 +35,10 @@ interface BookListProps {
   // Issue #46: replaces the selection with whatever the marquee drag (or a plain click on empty
   // space, which reports an empty array) covers - see dragSelect.ts's useDragSelect.
   onDragSelect: (ids: string[]) => void;
+  // Issue #68: called with whichever ids actually got deleted, so the parent can drop them from
+  // its own selectedIds state (harmless to skip - a stale id just never matches a rendered row -
+  // but keeps selection state honest the same way view/filter changes already reset it).
+  onDeleted: (ids: string[]) => void;
 }
 
 export interface BookRowProps {
@@ -48,6 +53,10 @@ export interface BookRowProps {
   // Issue #49: dropping a book (or the active multi-selection) onto this row offers to merge the
   // dropped book(s) into this one - see BookGrid.tsx's BookCard for the same behavior in grid view.
   onMergeRequest: (targetId: string, sourceIds: string[]) => void;
+  // Issue #68: triggered by the row's own delete icon, by right-clicking a row that's part of the
+  // active selection, and by long-pressing one (touch equivalent of right-click) - always the whole
+  // multi-selection when this row is part of it, otherwise just this one book.
+  onDeleteRequest: (ids: string[]) => void;
 }
 
 function isReadableFormat(format: string): format is "Epub" | "Pdf" {
@@ -60,12 +69,15 @@ function isReadableFormat(format: string): format is "Epub" | "Pdf" {
 // Exported for reuse by HomeView's "Recently Added" shelf (issue #52) so it shows the same rating/
 // status/format/series/tags/collection details as the main library list view instead of a
 // stripped-down cover+title+author row.
-export function BookRow({ book, index, selected, selectedIds, onSelect, onEdit, onMergeRequest }: BookRowProps) {
+export function BookRow({ book, index, selected, selectedIds, onSelect, onEdit, onMergeRequest, onDeleteRequest }: BookRowProps) {
   const { t } = useLanguage();
   const launchReader = useReaderLauncher();
   const queryClient = useQueryClient();
   const [loadingRead, setLoadingRead] = useState(false);
   const [hovered, setHovered] = useState(false);
+  // Issue #68: touch equivalent of right-click - only armed while this row is already part of the
+  // active selection (see the onContextMenu handler below for the same "selected rows only" rule).
+  const longPressTimer = useRef<number | null>(null);
   const [mergeDragOver, setMergeDragOver] = useState(false);
   // Issue #61: same translucent-while-dragging treatment as BookGrid.tsx's BookCard.
   const [isDragging, setIsDragging] = useState(false);
@@ -128,6 +140,25 @@ export function BookRow({ book, index, selected, selectedIds, onSelect, onEdit, 
     setEditingTitle(false);
   };
 
+  // Issue #68: same "whole selection if this row is part of one, otherwise just this book" rule
+  // the row's own onDragStart above already uses for what gets dragged.
+  const deleteTargetIds = () => (selected && selectedIds.size > 1 ? Array.from(selectedIds) : [book.id]);
+
+  const clearLongPress = () => {
+    if (longPressTimer.current !== null) {
+      window.clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  };
+
+  const handleTouchStart = () => {
+    // Long-press only acts as a delete shortcut when this row is already part of a selection - an
+    // unselected row's long-press does nothing special, matching the equivalent right-click rule.
+    if (!selected) return;
+    clearLongPress();
+    longPressTimer.current = window.setTimeout(() => onDeleteRequest(deleteTargetIds()), 600);
+  };
+
   const handleRead = async (format?: "Epub" | "Pdf") => {
     if (loadingRead) return;
     setLoadingRead(true);
@@ -156,14 +187,25 @@ export function BookRow({ book, index, selected, selectedIds, onSelect, onEdit, 
       data-book-id={book.id}
       draggable
       onDragStart={(event) => {
-        const ids = selected && selectedIds.size > 1 ? Array.from(selectedIds) : [book.id];
-        setBookDragData(event, ids);
+        setBookDragData(event, deleteTargetIds());
         setIsDragging(true);
       }}
       onDragEnd={() => setIsDragging(false)}
       onClick={(event) => onSelect(book.id, index, event)}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      // Issue #68: right-click on an already-selected row deletes the whole selection (or just this
+      // book if it's the only one selected) - same "selected rows only" scoping long-press below
+      // uses. An unselected row's right-click falls through to the OS/Electron default context menu.
+      onContextMenu={(event) => {
+        if (!selected) return;
+        event.preventDefault();
+        onDeleteRequest(deleteTargetIds());
+      }}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={clearLongPress}
+      onTouchMove={clearLongPress}
+      onTouchCancel={clearLongPress}
       // Issue #49: dropping a book (or the active multi-selection) onto this row offers to merge
       // it into this one - same book-drag payload this row's own onDragStart above produces, just
       // dropped on another row instead of a sidebar group.
@@ -377,6 +419,20 @@ export function BookRow({ book, index, selected, selectedIds, onSelect, onEdit, 
                 <IconEdit size={14} />
               </ActionIcon>
             </Tooltip>
+            <Tooltip label={t("bookList.delete")}>
+              <ActionIcon
+                size="sm"
+                variant="subtle"
+                color="red"
+                aria-label={t("bookList.delete")}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onDeleteRequest(deleteTargetIds());
+                }}
+              >
+                <IconTrash size={14} />
+              </ActionIcon>
+            </Tooltip>
           </Group>
         )}
         <Text component="span" style={{ letterSpacing: 1 }}>
@@ -396,12 +452,14 @@ export function BookRow({ book, index, selected, selectedIds, onSelect, onEdit, 
   );
 }
 
-export function BookList({ books, selectedIds, onSelect, onDragSelect }: BookListProps) {
+export function BookList({ books, selectedIds, onSelect, onDragSelect, onDeleted }: BookListProps) {
   const { t } = useLanguage();
   const [editingBookId, setEditingBookId] = useState<string | null>(null);
   // Issue #49: target/source ids only - resolved to titles at render time from `books` below, so
   // the dialog always reflects the current title even if it changed since the drop.
   const [mergeRequest, setMergeRequest] = useState<{ targetId: string; sourceIds: string[] } | null>(null);
+  // Issue #68: ids only, same "resolve titles at render time" reasoning as mergeRequest above.
+  const [deleteRequestIds, setDeleteRequestIds] = useState<string[] | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const { marqueeRect, onMouseDown } = useDragSelect({ containerRef, onSelect: onDragSelect });
 
@@ -418,6 +476,7 @@ export function BookList({ books, selectedIds, onSelect, onDragSelect }: BookLis
             onSelect={onSelect}
             onEdit={setEditingBookId}
             onMergeRequest={(targetId, sourceIds) => setMergeRequest({ targetId, sourceIds })}
+            onDeleteRequest={setDeleteRequestIds}
           />
         ))}
       </Stack>
@@ -462,6 +521,17 @@ export function BookList({ books, selectedIds, onSelect, onDragSelect }: BookLis
             />
           );
         })()}
+
+      {deleteRequestIds && (
+        <DeleteBooksConfirmDialog
+          books={deleteRequestIds.map((id) => {
+            const book = books.find((b) => b.id === id);
+            return { id, title: book ? displayTitle(book, t) : id };
+          })}
+          onClose={() => setDeleteRequestIds(null)}
+          onDeleted={onDeleted}
+        />
+      )}
     </Box>
   );
 }
