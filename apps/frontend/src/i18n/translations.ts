@@ -14,6 +14,7 @@ const en = {
   "common.confirm": "Confirm",
   "common.unknownAuthor": "Unknown author",
   "common.back": "Back",
+  "common.copied": "Copied!",
 
   "libraryPicker.subtitle": "Choose a folder to use as your library, or create a new one.",
   "libraryPicker.choose": "Choose Library Folder",
@@ -469,6 +470,7 @@ const ur: TranslationDict = {
   "common.confirm": "تصدیق کریں",
   "common.unknownAuthor": "نامعلوم مصنف",
   "common.back": "واپس",
+  "common.copied": "کاپی ہو گیا!",
 
   "libraryPicker.subtitle": "لائبریری کے لیے ایک فولڈر منتخب کریں، یا نئی لائبریری بنائیں۔",
   "libraryPicker.choose": "لائبریری فولڈر منتخب کریں",

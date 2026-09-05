@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useClipboard } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import {
   ActionIcon,
@@ -229,6 +230,11 @@ export function BookDetailPanel({ bookId, onClose, onRemoved, onSelectFilter }: 
       });
     },
   });
+
+  // Click-to-copy for each file's checksum icon below - copiedFileId tracks *which* row's icon was
+  // last clicked, since clipboard.copied is a single shared flag for this one hook instance.
+  const clipboard = useClipboard({ timeout: 1500 });
+  const [copiedFileId, setCopiedFileId] = useState<string | null>(null);
 
   // Issue #66: re-extract the cover embedded in an attached file and set it as the book's cover -
   // confirmed via a small popover (see extractCoverConfirmId) rather than acting immediately, since
@@ -623,8 +629,24 @@ export function BookDetailPanel({ bookId, onClose, onRemoved, onSelectFilter }: 
                           <Text size="xs" c="dimmed" truncate="end">
                             {f.format} — {(f.fileSizeBytes / 1024).toFixed(0)} KB
                           </Text>
-                          <Tooltip label={`${t("bookDetail.checksum")}: ${f.contentHash}`}>
-                            <IconHash size={12} style={{ flexShrink: 0, opacity: 0.6 }} />
+                          <Tooltip
+                            label={clipboard.copied && copiedFileId === f.id ? t("common.copied") : `${t("bookDetail.checksum")}: ${f.contentHash}`}
+                            color="var(--mantine-primary-color-filled)"
+                          >
+                            <ActionIcon
+                              size="xs"
+                              variant="transparent"
+                              color="gray"
+                              aria-label={t("bookDetail.checksum")}
+                              style={{ flexShrink: 0, opacity: 0.6 }}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                clipboard.copy(f.contentHash);
+                                setCopiedFileId(f.id);
+                              }}
+                            >
+                              <IconHash size={12} />
+                            </ActionIcon>
                           </Tooltip>
                         </Group>
                       </Stack>
