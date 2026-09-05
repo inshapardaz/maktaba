@@ -277,16 +277,9 @@ export function BookRow({ book, index, selected, selectedIds, onSelect, onEdit, 
 
         <Stack gap={0} style={{ minWidth: 0, flex: 1 }}>
           {isIssue ? (
-            <Group gap={4} wrap="nowrap">
-              <Text fw={600} truncate="end" style={{ maxWidth: "100%" }}>
-                {displayTitle(book, t)}
-              </Text>
-              {book.hasDuplicateFiles && (
-                <Tooltip label={t("bookList.duplicateFiles")}>
-                  <IconAlertCircle size={14} color="var(--mantine-color-orange-6)" style={{ flexShrink: 0 }} />
-                </Tooltip>
-              )}
-            </Group>
+            <Text fw={600} truncate="end" style={{ maxWidth: "100%" }}>
+              {displayTitle(book, t)}
+            </Text>
           ) : editingTitle ? (
             <TextInput
               size="xs"
@@ -313,11 +306,6 @@ export function BookRow({ book, index, selected, selectedIds, onSelect, onEdit, 
                   {book.title}
                 </Text>
               </UnstyledButton>
-              {book.hasDuplicateFiles && (
-                <Tooltip label={t("bookList.duplicateFiles")}>
-                  <IconAlertCircle size={14} color="var(--mantine-color-orange-6)" style={{ flexShrink: 0 }} />
-                </Tooltip>
-              )}
               {hovered && (
                 <ActionIcon
                   size="xs"
@@ -359,115 +347,124 @@ export function BookRow({ book, index, selected, selectedIds, onSelect, onEdit, 
         </Stack>
       </Group>
 
-      <Group gap="sm" wrap="nowrap" style={{ flexShrink: 0 }}>
-        {hovered && (
-          <Group gap={4} wrap="nowrap" style={{ flexShrink: 0 }}>
-            {readableFormats.length > 1 ? (
-              <Menu position="bottom-end" withinPortal>
-                <ActionIcon.Group>
-                  <Tooltip label={t("bookGrid.read")}>
-                    <ActionIcon
-                      size="sm"
-                      variant="subtle"
-                      color="gray"
-                      aria-label={t("bookGrid.read")}
-                      disabled={loadingRead}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void handleRead();
-                      }}
-                    >
-                      {loadingRead ? <Loader size={14} /> : <IconBook2 size={14} />}
-                    </ActionIcon>
-                  </Tooltip>
-                  <Menu.Target>
-                    <ActionIcon
-                      size="sm"
-                      variant="subtle"
-                      color="gray"
-                      aria-label={t("bookDetail.chooseFormat")}
-                      onClick={(event) => event.stopPropagation()}
-                    >
-                      <IconChevronDown size={12} />
-                    </ActionIcon>
-                  </Menu.Target>
-                </ActionIcon.Group>
-                <Menu.Dropdown onClick={(event) => event.stopPropagation()}>
-                  {readableFormats.map((format) => (
-                    <Menu.Item key={format} onClick={() => void handleRead(format)}>
-                      {format}
-                    </Menu.Item>
-                  ))}
-                </Menu.Dropdown>
-              </Menu>
-            ) : (
-              <Tooltip label={t("bookGrid.read")}>
-                <ActionIcon
-                  size="sm"
-                  variant="subtle"
-                  color="gray"
-                  aria-label={t("bookGrid.read")}
-                  disabled={loadingRead}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    void handleRead();
-                  }}
-                >
-                  {loadingRead ? <Loader size={14} /> : <IconBook2 size={14} />}
-                </ActionIcon>
-              </Tooltip>
-            )}
-            <Tooltip label={t("bookDetail.edit")}>
+      <Stack gap={4} align="flex-end" style={{ flexShrink: 0 }}>
+        <Group gap="sm" wrap="nowrap" style={{ flexShrink: 0 }}>
+          {book.pageCount != null && (
+            <Group gap={4} wrap="nowrap">
+              <IconPages size={14} color="var(--mantine-color-dimmed)" />
+              <Text size="sm" c="dimmed">
+                {book.pageCount}
+              </Text>
+            </Group>
+          )}
+          <Text component="span" style={{ letterSpacing: 1 }}>
+            {"★".repeat(book.rating)}
+            {"☆".repeat(5 - book.rating)}
+          </Text>
+          <Badge color={READING_STATUS_COLOR[book.readingStatus]} variant="light">
+            {t(READING_STATUS_LABEL_KEY[book.readingStatus])}
+          </Badge>
+        </Group>
+
+        {/* Issue: edit actions were hover-only and file-type badges lived on the row above - both
+            now live together on this permanently-visible second row, with the duplicate-files
+            warning moved here too so it sits right next to the format badges it's about. */}
+        <Group gap={4} wrap="nowrap" style={{ flexShrink: 0 }}>
+          {readableFormats.length > 1 ? (
+            <Menu position="bottom-end" withinPortal>
+              <ActionIcon.Group>
+                <Tooltip label={t("bookGrid.read")}>
+                  <ActionIcon
+                    size="sm"
+                    variant="subtle"
+                    color="gray"
+                    aria-label={t("bookGrid.read")}
+                    disabled={loadingRead}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void handleRead();
+                    }}
+                  >
+                    {loadingRead ? <Loader size={14} /> : <IconBook2 size={14} />}
+                  </ActionIcon>
+                </Tooltip>
+                <Menu.Target>
+                  <ActionIcon
+                    size="sm"
+                    variant="subtle"
+                    color="gray"
+                    aria-label={t("bookDetail.chooseFormat")}
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <IconChevronDown size={12} />
+                  </ActionIcon>
+                </Menu.Target>
+              </ActionIcon.Group>
+              <Menu.Dropdown onClick={(event) => event.stopPropagation()}>
+                {readableFormats.map((format) => (
+                  <Menu.Item key={format} onClick={() => void handleRead(format)}>
+                    {format}
+                  </Menu.Item>
+                ))}
+              </Menu.Dropdown>
+            </Menu>
+          ) : (
+            <Tooltip label={t("bookGrid.read")}>
               <ActionIcon
                 size="sm"
                 variant="subtle"
                 color="gray"
-                aria-label={t("bookDetail.edit")}
+                aria-label={t("bookGrid.read")}
+                disabled={loadingRead}
                 onClick={(event) => {
                   event.stopPropagation();
-                  onEdit(book.id);
+                  void handleRead();
                 }}
               >
-                <IconEdit size={14} />
+                {loadingRead ? <Loader size={14} /> : <IconBook2 size={14} />}
               </ActionIcon>
             </Tooltip>
-            <Tooltip label={t("bookList.delete")}>
-              <ActionIcon
-                size="sm"
-                variant="subtle"
-                color="red"
-                aria-label={t("bookList.delete")}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onDeleteRequest(deleteTargetIds());
-                }}
-              >
-                <IconTrash size={14} />
-              </ActionIcon>
+          )}
+          <Tooltip label={t("bookDetail.edit")}>
+            <ActionIcon
+              size="sm"
+              variant="subtle"
+              color="gray"
+              aria-label={t("bookDetail.edit")}
+              onClick={(event) => {
+                event.stopPropagation();
+                onEdit(book.id);
+              }}
+            >
+              <IconEdit size={14} />
+            </ActionIcon>
+          </Tooltip>
+          <Tooltip label={t("bookList.delete")}>
+            <ActionIcon
+              size="sm"
+              variant="subtle"
+              color="red"
+              aria-label={t("bookList.delete")}
+              onClick={(event) => {
+                event.stopPropagation();
+                onDeleteRequest(deleteTargetIds());
+              }}
+            >
+              <IconTrash size={14} />
+            </ActionIcon>
+          </Tooltip>
+          {book.hasDuplicateFiles && (
+            <Tooltip label={t("bookList.duplicateFiles")}>
+              <IconAlertCircle size={14} color="var(--mantine-color-orange-6)" style={{ flexShrink: 0 }} />
             </Tooltip>
-          </Group>
-        )}
-        {book.pageCount != null && (
-          <Group gap={4} wrap="nowrap" style={{ flexShrink: 0 }}>
-            <IconPages size={14} color="var(--mantine-color-dimmed)" />
-            <Text size="sm" c="dimmed">
-              {book.pageCount}
-            </Text>
-          </Group>
-        )}
-        <Text component="span" style={{ letterSpacing: 1 }}>
-          {"★".repeat(book.rating)}
-          {"☆".repeat(5 - book.rating)}
-        </Text>
-        <Badge color={READING_STATUS_COLOR[book.readingStatus]} variant="light">
-          {t(READING_STATUS_LABEL_KEY[book.readingStatus])}
-        </Badge>
-        {book.formats.map((format) => (
-          <Badge key={format} size="xs" variant="outline" color="gray">
-            {format}
-          </Badge>
-        ))}
-      </Group>
+          )}
+          {book.formats.map((format) => (
+            <Badge key={format} size="xs" variant="outline" color="gray">
+              {format}
+            </Badge>
+          ))}
+        </Group>
+      </Stack>
     </Box>
   );
 }
