@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { notifications } from "@mantine/notifications";
 import { ActionIcon, Badge, Box, Group, HoverCard, Image, Loader, Menu, Stack, Text, TextInput, Tooltip, UnstyledButton } from "@mantine/core";
-import { IconBook2, IconChevronDown, IconEdit, IconFolder, IconPencil, IconStack2, IconTag, IconTrash } from "../icons";
+import { IconAlertCircle, IconBook2, IconChevronDown, IconEdit, IconFolder, IconPages, IconPencil, IconStack2, IconTag, IconTrash } from "../icons";
 import {
   coverUrl,
   getBook,
@@ -277,9 +277,16 @@ export function BookRow({ book, index, selected, selectedIds, onSelect, onEdit, 
 
         <Stack gap={0} style={{ minWidth: 0, flex: 1 }}>
           {isIssue ? (
-            <Text fw={600} truncate="end" style={{ maxWidth: "100%" }}>
-              {displayTitle(book, t)}
-            </Text>
+            <Group gap={4} wrap="nowrap">
+              <Text fw={600} truncate="end" style={{ maxWidth: "100%" }}>
+                {displayTitle(book, t)}
+              </Text>
+              {book.hasDuplicateFiles && (
+                <Tooltip label={t("bookList.duplicateFiles")}>
+                  <IconAlertCircle size={14} color="var(--mantine-color-orange-6)" style={{ flexShrink: 0 }} />
+                </Tooltip>
+              )}
+            </Group>
           ) : editingTitle ? (
             <TextInput
               size="xs"
@@ -306,6 +313,11 @@ export function BookRow({ book, index, selected, selectedIds, onSelect, onEdit, 
                   {book.title}
                 </Text>
               </UnstyledButton>
+              {book.hasDuplicateFiles && (
+                <Tooltip label={t("bookList.duplicateFiles")}>
+                  <IconAlertCircle size={14} color="var(--mantine-color-orange-6)" style={{ flexShrink: 0 }} />
+                </Tooltip>
+              )}
               {hovered && (
                 <ActionIcon
                   size="xs"
@@ -433,6 +445,14 @@ export function BookRow({ book, index, selected, selectedIds, onSelect, onEdit, 
                 <IconTrash size={14} />
               </ActionIcon>
             </Tooltip>
+          </Group>
+        )}
+        {book.pageCount != null && (
+          <Group gap={4} wrap="nowrap" style={{ flexShrink: 0 }}>
+            <IconPages size={14} color="var(--mantine-color-dimmed)" />
+            <Text size="sm" c="dimmed">
+              {book.pageCount}
+            </Text>
           </Group>
         )}
         <Text component="span" style={{ letterSpacing: 1 }}>

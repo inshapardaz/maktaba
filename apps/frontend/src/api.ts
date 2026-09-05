@@ -15,6 +15,11 @@ export interface BookSummary {
   // coverUrl() so the browser's HTTP cache is busted only when the cover actually changed (e.g.
   // after extracting a new one from an attached file), not on every render.
   coverVersion: number | null;
+  // Issue #67 (follow-up): exact for PDF, an estimate for EPUB - null if it couldn't be determined.
+  pageCount: number | null;
+  // True if two or more of this book's attached files share a content hash - see
+  // BookDetailPanel.tsx's per-file duplicate flag, rolled up to one per-book warning for BookList.
+  hasDuplicateFiles: boolean;
   readingStatus: ReadingStatus;
   // Null unless the book belongs to a series / has ever had reading progress saved - see
   // FilterBar.tsx's SortKey ("seriesIndex"/"lastRead").
@@ -74,8 +79,6 @@ export interface BookDetail extends BookSummary {
   language: string | null;
   publisher: string | null;
   datePublished: string | null;
-  // Issue #67: exact for PDF, an estimate for EPUB - null if it couldn't be determined.
-  pageCount: number | null;
   // Same names as BookSummary.authors, but with id + photo presence (issue #28) for
   // BookDetailPanel's pills.
   authorRefs: AuthorRef[];

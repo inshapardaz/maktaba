@@ -19,6 +19,13 @@ public record BookSummaryDto(
     // CoverLocator.GetVersion. Lets the frontend's coverUrl() bust the browser's HTTP cache only
     // when the actual cover bytes have changed.
     long? CoverVersion,
+    // Issue #67 (follow-up): exact for PDF, an estimate for EPUB (see Book.PageCount) - lets
+    // BookList show it per row without a per-row detail fetch.
+    int? PageCount,
+    // True if two or more of this book's attached files share a content hash (see
+    // BookDetailPanel.tsx's per-file duplicate flag) - lets BookList warn on the row itself without
+    // a per-row detail fetch.
+    bool HasDuplicateFiles,
     string ReadingStatus,
     // Null unless the book belongs to a series / has ever had reading progress saved - lets the
     // frontend offer "series order" and "last read" as sort keys without a second request per book

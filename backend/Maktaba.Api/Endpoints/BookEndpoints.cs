@@ -19,6 +19,11 @@ public static class BookEndpoints
                 IdCodec.Encode(ba.AuthorId), ba.Author.Name, AuthorImageLocator.Find(root, ba.AuthorId) is not null))
             .ToArray();
 
+    // Two or more attached files sharing a content hash - same "duplicate" definition
+    // BookDetailPanel.tsx applies per-file, just rolled up to a single per-book flag for BookList.
+    private static bool HasDuplicateFiles(IEnumerable<BookFile> files) =>
+        files.GroupBy(f => f.ContentHash).Any(g => g.Count() > 1);
+
     public static void MapBookEndpoints(this WebApplication app)
     {
         var group = app.MapGroup("/api/books");
@@ -161,6 +166,8 @@ public static class BookEndpoints
                     b.DateAdded,
                     CoverLocator.Find(root, b.FolderPath) is not null,
                     CoverLocator.GetVersion(root, b.FolderPath),
+                    b.PageCount,
+                    HasDuplicateFiles(b.Files),
                     b.ReadingStatus.ToString(),
                     b.BookSeries.FirstOrDefault()?.SeriesIndex,
                     b.BookSeries.FirstOrDefault()?.Series.Name,
@@ -277,6 +284,8 @@ public static class BookEndpoints
                     b.DateAdded,
                     CoverLocator.Find(root, b.FolderPath) is not null,
                     CoverLocator.GetVersion(root, b.FolderPath),
+                    b.PageCount,
+                    HasDuplicateFiles(b.Files),
                     b.ReadingStatus.ToString(),
                     b.BookSeries.FirstOrDefault()?.SeriesIndex,
                     b.BookSeries.FirstOrDefault()?.Series.Name,

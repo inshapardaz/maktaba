@@ -199,6 +199,7 @@ const en = {
   "bookList.confirmDeleteOne": "Delete \"{title}\"? It will be moved to your system's trash.",
   "bookList.confirmDeleteMany": "Delete {count} books? They will be moved to your system's trash.",
   "bookList.deleteFailedTitle": "Some books couldn't be deleted",
+  "bookList.duplicateFiles": "This book has duplicate files with identical content",
 
   "bookGrid.read": "Read",
   "bookGrid.viewDetails": "View details",
@@ -649,6 +650,7 @@ const ur: TranslationDict = {
   "bookList.confirmDeleteOne": "\"{title}\" حذف کریں؟ اسے آپ کے سسٹم کے ردی کے ڈبے میں منتقل کر دیا جائے گا۔",
   "bookList.confirmDeleteMany": "{count} کتابیں حذف کریں؟ انہیں آپ کے سسٹم کے ردی کے ڈبے میں منتقل کر دیا جائے گا۔",
   "bookList.deleteFailedTitle": "کچھ کتابیں حذف نہیں کی جا سکیں",
+  "bookList.duplicateFiles": "اس کتاب میں ایک جیسے مواد والی نقل فائلیں موجود ہیں",
 
   "bookGrid.read": "پڑھیں",
   "bookGrid.viewDetails": "تفصیلات دیکھیں",
