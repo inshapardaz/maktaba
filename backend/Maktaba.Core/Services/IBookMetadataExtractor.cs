@@ -11,7 +11,9 @@ public record ExtractedBookMetadata(
     string? Description,
     IReadOnlyList<ExtractedIdentifier> Identifiers,
     byte[]? CoverImageBytes,
-    string? CoverContentType
+    string? CoverContentType,
+    // Issue #67: exact for PDF, an estimate for EPUB - see Book.PageCount.
+    int? PageCount = null
 );
 
 /// <summary>Extracts metadata and a cover image from a single ebook file. One implementation per format.</summary>

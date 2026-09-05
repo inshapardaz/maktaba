@@ -74,6 +74,8 @@ export interface BookDetail extends BookSummary {
   language: string | null;
   publisher: string | null;
   datePublished: string | null;
+  // Issue #67: exact for PDF, an estimate for EPUB - null if it couldn't be determined.
+  pageCount: number | null;
   // Same names as BookSummary.authors, but with id + photo presence (issue #28) for
   // BookDetailPanel's pills.
   authorRefs: AuthorRef[];

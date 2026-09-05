@@ -64,6 +64,7 @@ public class ImportService(
             Language = metadata.Language ?? "en",
             Publisher = metadata.Publisher,
             DatePublished = metadata.PublishedDate,
+            PageCount = metadata.PageCount,
         };
 
         for (var i = 0; i < authors.Count; i++)

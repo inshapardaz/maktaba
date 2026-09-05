@@ -101,6 +101,9 @@ public record BookDetailDto(
     DateOnly? DatePublished,
     int Rating,
     DateTime DateAdded,
+    // Issue #67: exact for PDF, an estimate for EPUB (see Book.PageCount) - null if it couldn't be
+    // determined.
+    int? PageCount,
     string[] Authors,
     AuthorRefDto[] AuthorRefs,
     string? SeriesName,

@@ -1,11 +1,17 @@
 using System.Globalization;
+using System.Text.RegularExpressions;
 using Maktaba.Core.Services;
 using VersOne.Epub;
 
 namespace Maktaba.Metadata;
 
-public class EpubMetadataExtractor : IBookMetadataExtractor
+public partial class EpubMetadataExtractor : IBookMetadataExtractor
 {
+    // Issue #67: EPUB is reflowable and has no real "page" concept, unlike PDF - this is a rough
+    // print-page equivalent (the commonly-cited ~250-300 words/printed-page rule of thumb) derived
+    // from the book's total word count, not an exact figure.
+    private const int WordsPerEstimatedPage = 275;
+
     public bool CanHandle(string filePath) =>
         string.Equals(Path.GetExtension(filePath), ".epub", StringComparison.OrdinalIgnoreCase);
 
@@ -46,8 +52,29 @@ public class EpubMetadataExtractor : IBookMetadataExtractor
             Description: book.Description,
             Identifiers: identifiers,
             CoverImageBytes: cover?.Content,
-            CoverContentType: cover?.ContentMimeType);
+            CoverContentType: cover?.ContentMimeType,
+            PageCount: EstimatePageCount(book));
     }
+
+    private static int? EstimatePageCount(EpubBook book)
+    {
+        var wordCount = 0;
+        foreach (var content in book.ReadingOrder)
+        {
+            if (string.IsNullOrEmpty(content.Content))
+            {
+                continue;
+            }
+
+            var text = HtmlTagRegex().Replace(content.Content, " ");
+            wordCount += text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
+        }
+
+        return wordCount > 0 ? Math.Max(1, (int)Math.Round(wordCount / (double)WordsPerEstimatedPage)) : null;
+    }
+
+    [GeneratedRegex("<[^>]+>")]
+    private static partial Regex HtmlTagRegex();
 
     private static DateOnly? TryParseDate(string? rawDate)
     {

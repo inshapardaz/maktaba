@@ -87,7 +87,10 @@ public partial class LibraryRescanService(
         int? PeriodicalId,
         double? IssueNumber,
         int? VolumeNumber,
-        DateOnly? IssueDate);
+        DateOnly? IssueDate,
+        // Issue #67: file-derived, so preserved from the previous row rather than re-extracted -
+        // same rationale as Title/Language/etc. above.
+        int? PageCount);
 
     public async Task<int> RescanAsync(CancellationToken ct = default)
     {
@@ -280,6 +283,7 @@ public partial class LibraryRescanService(
                 b.IssueNumber,
                 b.VolumeNumber,
                 b.IssueDate,
+                b.PageCount,
             })
             .ToListAsync(ct);
 
@@ -344,7 +348,8 @@ public partial class LibraryRescanService(
                 b.PeriodicalId,
                 b.IssueNumber,
                 b.VolumeNumber,
-                b.IssueDate));
+                b.IssueDate,
+                b.PageCount));
     }
 
     private async Task<Dictionary<int, PreviousPeriodicalState>> LoadPreviousPeriodicalStatesAsync(CancellationToken ct)
@@ -447,6 +452,7 @@ public partial class LibraryRescanService(
             Language = previous.Language,
             Publisher = previous.Publisher,
             DatePublished = previous.DatePublished,
+            PageCount = previous.PageCount,
             FolderPath = relativeFolder,
             DateAdded = previous.DateAdded,
             Rating = previous.Rating,
@@ -488,6 +494,7 @@ public partial class LibraryRescanService(
             Language = metadata.Language,
             Publisher = metadata.Publisher,
             DatePublished = metadata.PublishedDate,
+            PageCount = metadata.PageCount,
             FolderPath = relativeFolder,
             // A brand-new issue (found via the Periodicals/ walk, no previous state at all) has no
             // other source for its periodical membership - see PreviousBookState's doc comment.

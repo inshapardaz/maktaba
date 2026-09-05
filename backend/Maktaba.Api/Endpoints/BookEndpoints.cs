@@ -336,6 +336,7 @@ public static class BookEndpoints
                 book.DatePublished,
                 book.Rating,
                 book.DateAdded,
+                book.PageCount,
                 book.BookAuthors.OrderBy(ba => ba.Order).Select(ba => ba.Author.Name).ToArray(),
                 book.BookAuthors.OrderBy(ba => ba.Order).Select(ba =>
                     new AuthorRefDto(

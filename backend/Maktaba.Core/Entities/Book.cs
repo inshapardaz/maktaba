@@ -20,6 +20,12 @@ public class Book
     public int Rating { get; set; }
     public ReadingStatus ReadingStatus { get; set; } = ReadingStatus.Unread;
 
+    // Issue #67: exact for PDF (PdfPig's NumberOfPages); an estimate for EPUB (no true page concept
+    // in a reflowable format - see EpubMetadataExtractor's word-count heuristic). Null if extraction
+    // couldn't determine one. Set once, at import/new-book-rescan time only - see LibraryRescanService's
+    // PreviousBookState, which preserves it across rescans like every other file-derived field.
+    public int? PageCount { get; set; }
+
     /// <summary>Path to this book's folder, relative to the library root.</summary>
     public string FolderPath { get; set; } = string.Empty;
 

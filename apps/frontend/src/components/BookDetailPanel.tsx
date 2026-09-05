@@ -41,6 +41,7 @@ import {
   IconExternalLink,
   IconHash,
   IconLanguage,
+  IconPages,
   IconPencil,
   IconPlus,
   IconTrash,
@@ -522,6 +523,12 @@ export function BookDetailPanel({ bookId, onClose, onRemoved, onSelectFilter }: 
                 <Text size="sm">{languageDisplayName(book.language, t)}</Text>
               </Group>
             )}
+            {book.pageCount != null && (
+              <Group gap={6} wrap="nowrap">
+                <IconPages size={16} color="var(--mantine-color-dimmed)" />
+                <Text size="sm">{t("bookDetail.pageCount", { count: book.pageCount })}</Text>
+              </Group>
+            )}
           </Stack>
 
           {book.tags.length > 0 && (
@@ -596,7 +603,7 @@ export function BookDetailPanel({ bookId, onClose, onRemoved, onSelectFilter }: 
                 </List.Item>
               ) : (
                 <List.Item key={f.id}>
-                  <Group justify="space-between" wrap="nowrap" gap="sm">
+                  <Group justify="space-between" wrap="nowrap" gap="sm" style={{ width: "100%" }}>
                     <Group gap={8} wrap="nowrap" style={{ minWidth: 0, flex: 1 }}>
                       <Box c="dimmed" style={{ flexShrink: 0, display: "flex" }}>
                         <FileFormatIcon format={f.format} />

@@ -33,7 +33,8 @@ public class PdfMetadataExtractor : IBookMetadataExtractor
             Description: string.IsNullOrWhiteSpace(info.Subject) ? null : info.Subject.Trim(),
             Identifiers: [],
             CoverImageBytes: coverBytes,
-            CoverContentType: coverContentType);
+            CoverContentType: coverContentType,
+            PageCount: document.NumberOfPages);
 
         return Task.FromResult(metadata);
     }

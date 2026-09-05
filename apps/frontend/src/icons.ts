@@ -37,6 +37,7 @@ import {
   Info,
   Languages,
   LayoutGrid,
+  Layers,
   Library,
   List,
   ListFilter,
@@ -119,6 +120,7 @@ export const IconMenu2 = withStrokeWidth(Menu);
 export const IconMinus = withStrokeWidth(Minus);
 export const IconMoon = withStrokeWidth(Moon);
 export const IconNews = withStrokeWidth(Newspaper);
+export const IconPages = withStrokeWidth(Layers);
 export const IconPalette = withStrokeWidth(Palette);
 export const IconPencil = withStrokeWidth(PenLine);
 export const IconPlayerPlay = withStrokeWidth(Play);
