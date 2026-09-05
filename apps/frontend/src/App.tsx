@@ -63,12 +63,16 @@ import { hasCompletedOnboarding } from "./onboarding";
 
 // Issue #57: one navigation-history entry - the subset of App's state that represents "where the
 // user is looking", independent of transient things like search text/filters/sort/selection that
-// don't warrant their own back/forward stops.
+// don't warrant their own back/forward stops. `page` is the one exception (added alongside server-
+// side pagination) - turning a page reads as a deliberate "go look at more of this same list"
+// action, the same way a browser's own back/forward steps through a paginated results page, so it's
+// tracked and restored like mainView/groupFilter/etc. rather than left as transient UI state.
 interface NavState {
   mainView: MainView;
   groupFilter: GroupFilter | null;
   selectedPeriodicalId: string | null;
   selectedBookId: string | null;
+  page: number;
 }
 
 function navStateEqual(a: NavState, b: NavState): boolean {
@@ -77,7 +81,8 @@ function navStateEqual(a: NavState, b: NavState): boolean {
     a.selectedPeriodicalId === b.selectedPeriodicalId &&
     a.selectedBookId === b.selectedBookId &&
     a.groupFilter?.kind === b.groupFilter?.kind &&
-    a.groupFilter?.id === b.groupFilter?.id
+    a.groupFilter?.id === b.groupFilter?.id &&
+    a.page === b.page
   );
 }
 
@@ -224,12 +229,12 @@ function App() {
   }, [mainView, groupFilter]);
 
   // Issue #57: back/forward navigation history. A NavState snapshot is captured every time
-  // mainView/groupFilter/selectedPeriodicalId/selectedBookId change, unless the change was itself
-  // caused by goBack/goForward (isNavigatingRef guards against re-recording the same move as a new
-  // entry). Navigating away from the tip of the stack truncates any forward entries, same as a
-  // browser's own history.
+  // mainView/groupFilter/selectedPeriodicalId/selectedBookId/page change, unless the change was
+  // itself caused by goBack/goForward (isNavigatingRef guards against re-recording the same move as
+  // a new entry). Navigating away from the tip of the stack truncates any forward entries, same as
+  // a browser's own history.
   const [navHistory, setNavHistory] = useState<{ entries: NavState[]; index: number }>(() => ({
-    entries: [{ mainView: "home", groupFilter: null, selectedPeriodicalId: null, selectedBookId: null }],
+    entries: [{ mainView: "home", groupFilter: null, selectedPeriodicalId: null, selectedBookId: null, page: 1 }],
     index: 0,
   }));
   const isNavigatingRef = useRef(false);
@@ -239,14 +244,32 @@ function App() {
       isNavigatingRef.current = false;
       return;
     }
-    const current: NavState = { mainView, groupFilter, selectedPeriodicalId, selectedBookId };
+
+    const last = navHistory.entries[navHistory.index];
+    // A new mainView/groupFilter is a fresh look at a different set of books - any page position
+    // left over from wherever the user was before is meaningless there, so it resets to 1 instead
+    // of being recorded as-is. Deliberately narrower than navStateEqual's own comparison below:
+    // opening a book's detail panel or a periodical's detail view (selectedBookId/
+    // selectedPeriodicalId changing on their own) is just an overlay on top of the same
+    // library grid/list page, not a different page of results, so those alone must NOT reset it.
+    //
+    // This resets the actual `page` state (and bails out for now) rather than just computing an
+    // adjusted value to record, so the pending fetch/render also moves to page 1 immediately
+    // instead of briefly showing a now out-of-range page - the follow-up render this triggers
+    // re-enters this same effect with page already 1, which is what actually gets pushed below.
+    const contentChanged = mainView !== last.mainView || groupFilter?.kind !== last.groupFilter?.kind || groupFilter?.id !== last.groupFilter?.id;
+    if (contentChanged && page !== 1) {
+      setPage(1);
+      return;
+    }
+
+    const current: NavState = { mainView, groupFilter, selectedPeriodicalId, selectedBookId, page };
+    if (navStateEqual(last, current)) return;
     setNavHistory((prev) => {
-      const last = prev.entries[prev.index];
-      if (navStateEqual(last, current)) return prev;
       const truncated = prev.entries.slice(0, prev.index + 1);
       return { entries: [...truncated, current], index: truncated.length };
     });
-  }, [mainView, groupFilter, selectedPeriodicalId, selectedBookId]);
+  }, [mainView, groupFilter, selectedPeriodicalId, selectedBookId, page]);
 
   const canGoBack = navHistory.index > 0;
   const canGoForward = navHistory.index < navHistory.entries.length - 1;
@@ -257,6 +280,7 @@ function App() {
     setGroupFilter(state.groupFilter);
     setSelectedPeriodicalId(state.selectedPeriodicalId);
     setSelectedBookId(state.selectedBookId);
+    setPage(state.page);
   };
 
   const goBack = () => {
@@ -345,11 +369,12 @@ function App() {
 
   // Whenever the matching set (or its order) could change, jump back to page 1 - a page number that
   // made sense for the old filter/sort combination is meaningless for a new one. mainView/groupFilter
-  // changes already reset the multi-selection in the effect above; this covers every other input
-  // that reshapes the result set search/format/minRating/sort don't touch groupFilter or mainView.
+  // changes reset page as part of the nav-history effect above instead of here - doing it in two
+  // separate effects that both react to the same dependency raced across two renders and pushed two
+  // history entries (one with the stale page, one correcting it) for what should be a single move.
   useEffect(() => {
     setPage(1);
-  }, [mainView, groupFilter, debouncedSearch, format, minRating, sortKey, sortDirection]);
+  }, [debouncedSearch, format, minRating, sortKey, sortDirection]);
 
   // If a filter change (e.g. from another window/tab, or the count simply shrinking after a delete)
   // leaves the current page beyond what now exists, snap back to the last real page rather than
@@ -663,12 +688,13 @@ function App() {
     setSearch("");
     setFormat("");
     setMinRating(0);
+    setPage(1);
     void queryClient.invalidateQueries({ queryKey: ["library"] });
     invalidateLibraryQueries(queryClient);
     setMainView("home");
     setSettingsOpen(false);
     setNavHistory({
-      entries: [{ mainView: "home", groupFilter: null, selectedPeriodicalId: null, selectedBookId: null }],
+      entries: [{ mainView: "home", groupFilter: null, selectedPeriodicalId: null, selectedBookId: null, page: 1 }],
       index: 0,
     });
   };
