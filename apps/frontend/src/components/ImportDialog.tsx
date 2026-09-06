@@ -2,12 +2,15 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   ActionIcon,
+  Autocomplete,
   Badge,
   Box,
   Button,
+  Fieldset,
   Group,
   Loader,
   Modal,
+  MultiSelect,
   Progress,
   ScrollArea,
   SegmentedControl,
@@ -19,6 +22,8 @@ import {
 import {
   IconBan,
   IconCheck,
+  IconChevronDown,
+  IconChevronUp,
   IconCopy,
   IconEye,
   IconFileUpload,
@@ -28,9 +33,19 @@ import {
   IconStack2,
   IconX,
 } from "../icons";
-import { getSystemCapabilities, type DuplicateAction } from "../api";
+import {
+  getSystemCapabilities,
+  listAuthors,
+  listCollections,
+  listPublishers,
+  listSeries,
+  listTags,
+  type DuplicateAction,
+} from "../api";
+import { buildCreatableData } from "../creatableSelect";
 import { useLanguage } from "../i18n/LanguageContext";
 import type { TranslationKey } from "../i18n/translations";
+import { getLanguageOptions, withCurrentLanguage } from "../languageOptions";
 import { useImportQueue, type ItemStatus } from "../ImportContext";
 import type { ConflictPolicy } from "../ImportContext";
 import { ExistingBookPopup } from "./ExistingBookPopup";
@@ -82,6 +97,8 @@ export function ImportDialog() {
     setConvertFormat,
     conflictPolicy,
     setConflictPolicy,
+    bulkMetadata,
+    setBulkMetadata,
     summary,
     minimize,
     cancel,
@@ -97,9 +114,26 @@ export function ImportDialog() {
   // Clicking a summary badge below filters the list to just that status - clicking the same one
   // again (or "Total") clears it. Purely a display filter, not part of ImportContext's own state.
   const [statusFilter, setStatusFilter] = useState<ItemStatus | null>(null);
+  // Collapsed by default - most drops don't need shared metadata, and the full field set is a lot
+  // to show for what's often a one-file import.
+  const [bulkPanelOpen, setBulkPanelOpen] = useState(false);
+  const [bulkAuthorSearch, setBulkAuthorSearch] = useState("");
+  const [bulkTagSearch, setBulkTagSearch] = useState("");
 
   const capabilitiesQuery = useQuery({ queryKey: ["systemCapabilities"], queryFn: getSystemCapabilities });
   const calibreAvailable = capabilitiesQuery.data?.calibreAvailable ?? false;
+
+  // Same query keys as BookEditForm.tsx/Sidebar.tsx - shares their cache entry instead of firing a
+  // duplicate request (see CLAUDE.md's React Query key conventions).
+  const authorsQuery = useQuery({ queryKey: ["authors"], queryFn: listAuthors });
+  const publishersQuery = useQuery({ queryKey: ["publishers"], queryFn: listPublishers });
+  const seriesQuery = useQuery({ queryKey: ["series"], queryFn: listSeries });
+  const tagsQuery = useQuery({ queryKey: ["tags"], queryFn: listTags });
+  const collectionsQuery = useQuery({ queryKey: ["collections"], queryFn: listCollections });
+
+  const bulkAuthorOptions = buildCreatableData((authorsQuery.data ?? []).map((a) => a.name), bulkMetadata.authors, bulkAuthorSearch, t);
+  const bulkTagOptions = buildCreatableData((tagsQuery.data ?? []).map((tag) => tag.name), bulkMetadata.tags, bulkTagSearch, t);
+  const bulkCollectionOptions = (collectionsQuery.data ?? []).map((c) => ({ value: c.id, label: c.name }));
 
   if (!isOpen) {
     return null;
@@ -215,6 +249,105 @@ export function ImportDialog() {
                 </Button>
               </Group>
             </Stack>
+          </Box>
+
+          <Box>
+            <Button
+              size="xs"
+              variant="subtle"
+              color="gray"
+              px={4}
+              onClick={() => setBulkPanelOpen((prev) => !prev)}
+              rightSection={bulkPanelOpen ? <IconChevronUp size={14} /> : <IconChevronDown size={14} />}
+            >
+              {t("importDialog.bulkMetadataToggle")}
+            </Button>
+            {bulkPanelOpen && (
+              <Fieldset legend={t("importDialog.bulkMetadataToggle")} mt={4}>
+                <Stack gap="sm">
+                  <Text size="xs" c="dimmed">
+                    {t("importDialog.bulkMetadataHint")}
+                  </Text>
+                  <Group grow align="flex-start">
+                    <MultiSelect
+                      label={t("bookEdit.authors")}
+                      placeholder={t("importDialog.bulkMetadataUnset")}
+                      data={bulkAuthorOptions}
+                      value={bulkMetadata.authors}
+                      onChange={(values) => {
+                        setBulkMetadata({ ...bulkMetadata, authors: values });
+                        setBulkAuthorSearch("");
+                      }}
+                      searchable
+                      searchValue={bulkAuthorSearch}
+                      onSearchChange={setBulkAuthorSearch}
+                      onBlur={() => {
+                        const trimmed = bulkAuthorSearch.trim();
+                        if (trimmed.length > 0 && !bulkMetadata.authors.some((a) => a.toLowerCase() === trimmed.toLowerCase())) {
+                          setBulkMetadata({ ...bulkMetadata, authors: [...bulkMetadata.authors, trimmed] });
+                        }
+                        setBulkAuthorSearch("");
+                      }}
+                    />
+                    <Autocomplete
+                      label={t("bookEdit.publisher")}
+                      placeholder={t("importDialog.bulkMetadataUnset")}
+                      data={publishersQuery.data ?? []}
+                      value={bulkMetadata.publisher}
+                      onChange={(value) => setBulkMetadata({ ...bulkMetadata, publisher: value })}
+                    />
+                  </Group>
+                  <Group grow align="flex-start">
+                    <Select
+                      label={t("bookEdit.language")}
+                      placeholder={t("importDialog.bulkMetadataUnset")}
+                      data={withCurrentLanguage(getLanguageOptions(t), bulkMetadata.language)}
+                      value={bulkMetadata.language || null}
+                      onChange={(value) => setBulkMetadata({ ...bulkMetadata, language: value ?? "" })}
+                      searchable
+                      clearable
+                    />
+                    <Autocomplete
+                      label={t("bookEdit.series")}
+                      placeholder={t("importDialog.bulkMetadataUnset")}
+                      data={(seriesQuery.data ?? []).map((s) => s.name)}
+                      value={bulkMetadata.seriesName}
+                      onChange={(value) => setBulkMetadata({ ...bulkMetadata, seriesName: value })}
+                    />
+                  </Group>
+                  <Group grow align="flex-start">
+                    <MultiSelect
+                      label={t("bookEdit.tags")}
+                      placeholder={t("importDialog.bulkMetadataUnset")}
+                      data={bulkTagOptions}
+                      value={bulkMetadata.tags}
+                      onChange={(values) => {
+                        setBulkMetadata({ ...bulkMetadata, tags: values });
+                        setBulkTagSearch("");
+                      }}
+                      searchable
+                      searchValue={bulkTagSearch}
+                      onSearchChange={setBulkTagSearch}
+                      onBlur={() => {
+                        const trimmed = bulkTagSearch.trim();
+                        if (trimmed.length > 0 && !bulkMetadata.tags.some((tag) => tag.toLowerCase() === trimmed.toLowerCase())) {
+                          setBulkMetadata({ ...bulkMetadata, tags: [...bulkMetadata.tags, trimmed] });
+                        }
+                        setBulkTagSearch("");
+                      }}
+                    />
+                    <MultiSelect
+                      label={t("bookEdit.collections")}
+                      placeholder={t("importDialog.bulkMetadataUnset")}
+                      data={bulkCollectionOptions}
+                      value={bulkMetadata.collectionIds}
+                      onChange={(values) => setBulkMetadata({ ...bulkMetadata, collectionIds: values })}
+                      searchable
+                    />
+                  </Group>
+                </Stack>
+              </Fieldset>
+            )}
           </Box>
 
           <Group justify="space-between" wrap="wrap" gap="sm">

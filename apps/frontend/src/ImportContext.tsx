@@ -4,7 +4,9 @@ import {
   ApiError,
   convertBook,
   DuplicateBookError,
+  getBook,
   importBook,
+  updateBook,
   type DuplicateAction,
   type DuplicateBookInfo,
 } from "./api";
@@ -33,6 +35,41 @@ export interface QueueItem {
 // without needing a click per file. Part of issue #25's "ease of bulk actions" ask.
 export type ConflictPolicy = DuplicateAction | "ask";
 
+// Common metadata applied to every book that finishes importing in this batch (dropped as a group,
+// e.g. a folder of issues of the same magazine or chapters by the same author) - set once in
+// ImportDialog's "Common info" panel rather than edited into each book individually afterward.
+// Authors/publisher/language/series are single-valued *facts about the book* if set, they replace
+// whatever the file's own metadata carried; tags/collections are just extra labels, so they're
+// added on top of (not instead of) whatever the file/import already produced.
+export interface BulkMetadata {
+  authors: string[];
+  publisher: string;
+  language: string;
+  seriesName: string;
+  tags: string[];
+  collectionIds: string[];
+}
+
+export const EMPTY_BULK_METADATA: BulkMetadata = {
+  authors: [],
+  publisher: "",
+  language: "",
+  seriesName: "",
+  tags: [],
+  collectionIds: [],
+};
+
+function hasBulkMetadata(bulk: BulkMetadata): boolean {
+  return (
+    bulk.authors.length > 0 ||
+    bulk.publisher.trim().length > 0 ||
+    bulk.language.trim().length > 0 ||
+    bulk.seriesName.trim().length > 0 ||
+    bulk.tags.length > 0 ||
+    bulk.collectionIds.length > 0
+  );
+}
+
 export interface ImportSummary {
   total: number;
   imported: number;
@@ -55,6 +92,8 @@ interface ImportContextValue {
   setConvertFormat: (format: ConvertFormat) => void;
   conflictPolicy: ConflictPolicy;
   setConflictPolicy: (policy: ConflictPolicy) => void;
+  bulkMetadata: BulkMetadata;
+  setBulkMetadata: (metadata: BulkMetadata) => void;
   summary: ImportSummary;
   open: () => void;
   // Minimizes the dialog - scanning/importing keeps running in the background, surfaced via
@@ -110,8 +149,10 @@ export function ImportProvider({ children }: { children: ReactNode }) {
   const [scanProgress, setScanProgress] = useState<{ found: number; currentPath: string } | null>(null);
   const [convertFormat, setConvertFormat] = useState<ConvertFormat>(getStoredDefaultFormat());
   const [conflictPolicy, setConflictPolicy] = useState<ConflictPolicy>("ask");
+  const [bulkMetadata, setBulkMetadata] = useState<BulkMetadata>(EMPTY_BULK_METADATA);
   const convertFormatRef = useRef(convertFormat);
   const conflictPolicyRef = useRef(conflictPolicy);
+  const bulkMetadataRef = useRef(bulkMetadata);
   const processingRef = useRef(false);
   // Bumped by cancel() so an already-running runQueue loop notices and stops picking up further
   // pending items, instead of (racily) also picking up whatever gets queued next - see runQueue.
@@ -125,6 +166,10 @@ export function ImportProvider({ children }: { children: ReactNode }) {
     conflictPolicyRef.current = conflictPolicy;
   }, [conflictPolicy]);
 
+  useEffect(() => {
+    bulkMetadataRef.current = bulkMetadata;
+  }, [bulkMetadata]);
+
   useEffect(
     () => window.maktaba.onResolveEbookPathsProgress((progress) => setScanProgress(progress)),
     [],
@@ -137,6 +182,36 @@ export function ImportProvider({ children }: { children: ReactNode }) {
   function updateItem(filePath: string, patch: Partial<QueueItem>) {
     queueRef.current = queueRef.current.map((item) => (item.filePath === filePath ? { ...item, ...patch } : item));
     commit();
+  }
+
+  // Applied once per successfully-imported book, right before it's marked "done" - see
+  // BulkMetadata's own doc comment for the override-vs-additive split. Needs a fresh getBook() first
+  // since updateBook (BookEditRequestDto) is a full replace, not a patch - every field it doesn't
+  // know about (title, rating, description, ...) has to come from the book's current state, whether
+  // that came from the just-extracted file metadata or (for "merge"/add-format conflicts) whatever
+  // the pre-existing book already had.
+  async function applyBulkMetadata(bookId: string, bulk: BulkMetadata) {
+    const book = await getBook(bookId);
+    await updateBook(bookId, {
+      title: book.title,
+      authors: bulk.authors.length > 0 ? bulk.authors : book.authors,
+      language: bulk.language.trim() || book.language,
+      publisher: bulk.publisher.trim() || book.publisher,
+      publishedDate: book.datePublished,
+      description: book.description,
+      rating: book.rating,
+      seriesName: bulk.seriesName.trim() || book.seriesName,
+      seriesIndex: book.seriesIndex,
+      tags: bulk.tags.length > 0 ? [...new Set([...book.tags, ...bulk.tags])] : book.tags,
+      collectionIds:
+        bulk.collectionIds.length > 0
+          ? [...new Set([...book.collections.map((c) => c.id), ...bulk.collectionIds])]
+          : book.collections.map((c) => c.id),
+      periodicalId: book.periodicalId,
+      issueNumber: book.issueNumber,
+      volumeNumber: book.volumeNumber,
+      issueDate: book.issueDate,
+    });
   }
 
   // action is only passed when re-processing an item that's either just been resolved from its
@@ -191,7 +266,9 @@ export function ImportProvider({ children }: { children: ReactNode }) {
 
     // "skip" resolves to the pre-existing book without adding anything new - surfaced as its own
     // status (with an explanatory message) rather than as a plain "Done" indistinguishable from an
-    // actual new addition, and it doesn't get counted as a fresh import in the summary either.
+    // actual new addition, and it doesn't get counted as a fresh import in the summary either. It
+    // also means this book isn't really "part of this batch" the way a fresh import or an added
+    // format is, so the common-info panel's values shouldn't be pushed onto it either.
     if (action === "skip") {
       updateItem(item.filePath, {
         status: "skipped",
@@ -199,6 +276,16 @@ export function ImportProvider({ children }: { children: ReactNode }) {
         message: t("duplicate.alreadyInLibrary", { title: bookTitle ?? "" }),
       });
       return;
+    }
+
+    const bulk = bulkMetadataRef.current;
+    if (bookId && hasBulkMetadata(bulk)) {
+      try {
+        await applyBulkMetadata(bookId, bulk);
+      } catch (err) {
+        updateItem(item.filePath, { status: "done", title: bookTitle, message: err instanceof Error ? err.message : String(err) });
+        return;
+      }
     }
 
     updateItem(item.filePath, { status: "done", title: bookTitle });
@@ -314,6 +401,9 @@ export function ImportProvider({ children }: { children: ReactNode }) {
     setProcessing(false);
     setOpen(false);
     setMinimized(false);
+    // Common info was set for this batch specifically - closing the dialog for good (as opposed to
+    // minimizing) means the next drop starts a fresh batch, not silently inheriting these values.
+    setBulkMetadata(EMPTY_BULK_METADATA);
   }
 
   function minimize() {
@@ -343,6 +433,8 @@ export function ImportProvider({ children }: { children: ReactNode }) {
     setConvertFormat,
     conflictPolicy,
     setConflictPolicy,
+    bulkMetadata,
+    setBulkMetadata,
     summary,
     open: () => {
       setOpen(true);
