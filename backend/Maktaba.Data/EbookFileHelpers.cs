@@ -10,6 +10,8 @@ internal static class EbookFileHelpers
     {
         ".epub" => BookFormat.Epub,
         ".pdf" => BookFormat.Pdf,
+        ".docx" => BookFormat.Docx,
+        ".txt" => BookFormat.Txt,
         var ext => throw new NotSupportedException($"Unsupported ebook file type: {ext}"),
     };
 

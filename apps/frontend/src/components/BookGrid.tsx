@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ActionIcon, Badge, Box, Group, Image, Loader, Menu, Text, Tooltip, UnstyledButton } from "@mantine/core";
 import { IconBook2, IconChevronDown, IconEdit, IconInfoCircle } from "../icons";
-import { coverUrl, getBook, pickPreferredReadFile, type BookFileInfo, type BookSummary } from "../api";
+import { coverUrl, getBook, isReadableFormat, pickPreferredReadFile, type BookFileInfo, type BookSummary, type ReadableFormat } from "../api";
 import { isBookDrag, readBookDragIds, setBookDragData } from "../bookDrag";
 import { useDragSelect } from "../dragSelect";
 import { useLanguage } from "../i18n/LanguageContext";
@@ -46,10 +46,6 @@ interface BookCardProps {
   onMergeRequest: (targetId: string, sourceIds: string[]) => void;
 }
 
-function isReadableFormat(format: string): format is "Epub" | "Pdf" {
-  return format === "Epub" || format === "Pdf";
-}
-
 function BookCard({ book, index, selected, selectedIds, onSelect, onEdit, onMergeRequest }: BookCardProps) {
   const { t } = useLanguage();
   const launchReader = useReaderLauncher();
@@ -62,13 +58,13 @@ function BookCard({ book, index, selected, selectedIds, onSelect, onEdit, onMerg
   const [isDragging, setIsDragging] = useState(false);
   const readableFormats = book.formats.filter(isReadableFormat);
 
-  const handleRead = async (format?: "Epub" | "Pdf") => {
+  const handleRead = async (format?: ReadableFormat) => {
     if (loadingRead) return;
     setLoadingRead(true);
     try {
       const detail = await getBook(book.id);
       const matchedFile = format
-        ? detail.files.find((f): f is BookFileInfo & { format: "Epub" | "Pdf" } => f.format === format)
+        ? detail.files.find((f): f is BookFileInfo & { format: ReadableFormat } => f.format === format)
         : undefined;
       const file = matchedFile ?? pickPreferredReadFile(detail.files);
       if (file) {

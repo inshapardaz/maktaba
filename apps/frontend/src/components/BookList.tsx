@@ -6,11 +6,13 @@ import { IconAlertCircle, IconBook2, IconChevronDown, IconEdit, IconFolder, Icon
 import {
   coverUrl,
   getBook,
+  isReadableFormat,
   pickPreferredReadFile,
   updateBook,
   type BookEditRequest,
   type BookFileInfo,
   type BookSummary,
+  type ReadableFormat,
 } from "../api";
 import { isBookDrag, readBookDragIds, setBookDragData } from "../bookDrag";
 import { useDragSelect } from "../dragSelect";
@@ -57,10 +59,6 @@ export interface BookRowProps {
   // active selection, and by long-pressing one (touch equivalent of right-click) - always the whole
   // multi-selection when this row is part of it, otherwise just this one book.
   onDeleteRequest: (ids: string[]) => void;
-}
-
-function isReadableFormat(format: string): format is "Epub" | "Pdf" {
-  return format === "Epub" || format === "Pdf";
 }
 
 // A row's own component (rather than inlining the .map body) so its Read action can hold its own
@@ -159,13 +157,13 @@ export function BookRow({ book, index, selected, selectedIds, onSelect, onEdit, 
     longPressTimer.current = window.setTimeout(() => onDeleteRequest(deleteTargetIds()), 600);
   };
 
-  const handleRead = async (format?: "Epub" | "Pdf") => {
+  const handleRead = async (format?: ReadableFormat) => {
     if (loadingRead) return;
     setLoadingRead(true);
     try {
       const detail = await getBook(book.id);
       const matchedFile = format
-        ? detail.files.find((f): f is BookFileInfo & { format: "Epub" | "Pdf" } => f.format === format)
+        ? detail.files.find((f): f is BookFileInfo & { format: ReadableFormat } => f.format === format)
         : undefined;
       const file = matchedFile ?? pickPreferredReadFile(detail.files);
       if (file) {

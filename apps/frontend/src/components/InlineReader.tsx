@@ -1,9 +1,10 @@
 import { useEffect } from "react";
+import type { ReadableFormat } from "../api";
 import { ReaderOverlay } from "./ReaderOverlay";
 
 interface InlineReaderProps {
   bookId: string;
-  format: "Epub" | "Pdf";
+  format: ReadableFormat;
   onClose: () => void;
 }
 

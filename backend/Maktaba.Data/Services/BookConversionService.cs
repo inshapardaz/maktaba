@@ -40,6 +40,8 @@ public class BookConversionService(
         {
             BookFormat.Epub => ".epub",
             BookFormat.Pdf => ".pdf",
+            BookFormat.Docx => ".docx",
+            BookFormat.Txt => ".txt",
             _ => throw new NotSupportedException($"Unsupported target format: {targetFormat}"),
         };
 

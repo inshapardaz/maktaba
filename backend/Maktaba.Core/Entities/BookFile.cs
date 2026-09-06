@@ -4,6 +4,8 @@ public enum BookFormat
 {
     Epub,
     Pdf,
+    Docx,
+    Txt,
 }
 
 public class BookFile

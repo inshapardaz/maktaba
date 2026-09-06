@@ -28,6 +28,7 @@ import {
   ExternalLink,
   Eye,
   FileText,
+  FileType2,
   FileUp,
   Folder,
   FolderOpen,
@@ -104,6 +105,7 @@ export const IconEdit = withStrokeWidth(SquarePen);
 export const IconExternalLink = withStrokeWidth(ExternalLink);
 export const IconEye = withStrokeWidth(Eye);
 export const IconFileText = withStrokeWidth(FileText);
+export const IconFileTypeDocx = withStrokeWidth(FileType2);
 export const IconFileUpload = withStrokeWidth(FileUp);
 export const IconFilter = withStrokeWidth(ListFilter);
 export const IconFolder = withStrokeWidth(Folder);

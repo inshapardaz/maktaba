@@ -1,3 +1,5 @@
+import type { ReadableFormat } from "./api";
+
 export type ReaderOpenMode = "window" | "inline";
 export type ReaderEngine = "internal" | "external";
 export type AutoTagMode = "auto" | "ask";
@@ -17,16 +19,24 @@ export function setStoredReaderOpenMode(mode: ReaderOpenMode): void {
   window.localStorage.setItem(OPEN_MODE_KEY, mode);
 }
 
-// One engine choice per format (rather than a single global toggle) - PDF has much more common,
-// often preferred external viewers than EPUB does, so they're independently configurable.
-export function getStoredReaderEngine(format: "Epub" | "Pdf"): ReaderEngine {
-  if (typeof window === "undefined") {
-    return "internal";
-  }
-  return window.localStorage.getItem(`${ENGINE_KEY_PREFIX}${format}`) === "external" ? "external" : "internal";
+// Docx defaults to the OS's own word processor rather than the internal reader - unlike
+// Epub/Pdf/Txt, qari has no native Docx support (see ReaderOverlay.tsx), so the internal option
+// only ever shows a lossy plain-text reflow of the document, not its real formatting.
+function defaultReaderEngine(format: ReadableFormat): ReaderEngine {
+  return format === "Docx" ? "external" : "internal";
 }
 
-export function setStoredReaderEngine(format: "Epub" | "Pdf", engine: ReaderEngine): void {
+// One engine choice per format (rather than a single global toggle) - PDF has much more common,
+// often preferred external viewers than EPUB does, so they're independently configurable.
+export function getStoredReaderEngine(format: ReadableFormat): ReaderEngine {
+  if (typeof window === "undefined") {
+    return defaultReaderEngine(format);
+  }
+  const stored = window.localStorage.getItem(`${ENGINE_KEY_PREFIX}${format}`);
+  return stored === "external" || stored === "internal" ? stored : defaultReaderEngine(format);
+}
+
+export function setStoredReaderEngine(format: ReadableFormat, engine: ReaderEngine): void {
   window.localStorage.setItem(`${ENGINE_KEY_PREFIX}${format}`, engine);
 }
 

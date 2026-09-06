@@ -476,10 +476,51 @@ public static class BookEndpoints
             {
                 BookFormat.Epub => "application/epub+zip",
                 BookFormat.Pdf => "application/pdf",
+                BookFormat.Docx => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                BookFormat.Txt => "text/plain",
                 _ => "application/octet-stream",
             };
 
             return Results.File(Path.Combine(root, file.FilePath), contentType);
+        });
+
+        // Docx/Txt have no reader qari understands natively - ReaderOverlay.tsx feeds this plain
+        // text to qari as a Markdown source instead of fetching the raw file like Epub/Pdf do.
+        group.MapGet("/{id}/text", async (
+            string id, string? format, MaktabaDbContext db, ILibraryPathProvider libraryPath,
+            IEnumerable<IBookTextContentExtractor> textExtractors, CancellationToken ct) =>
+        {
+            if (!IdCodec.TryDecode(id, out var bookId))
+            {
+                return Results.NotFound();
+            }
+
+            if (!Enum.TryParse<BookFormat>(format, ignoreCase: true, out var parsedFormat))
+            {
+                return Results.BadRequest(new { error = "Invalid or missing format." });
+            }
+
+            var root = libraryPath.LibraryRootPath!;
+
+            var file = await db.Books
+                .Where(b => b.Id == bookId)
+                .SelectMany(b => b.Files)
+                .FirstOrDefaultAsync(f => f.Format == parsedFormat, ct);
+
+            if (file is null)
+            {
+                return Results.NotFound();
+            }
+
+            var absolutePath = Path.Combine(root, file.FilePath);
+            var extractor = textExtractors.FirstOrDefault(e => e.CanHandle(absolutePath));
+            if (extractor is null)
+            {
+                return Results.BadRequest(new { error = "This format has no text content extractor." });
+            }
+
+            var content = await extractor.ExtractAsync(absolutePath, ct);
+            return Results.Text(content, "text/plain");
         });
 
         group.MapPut("/{id}", async (

@@ -1,9 +1,9 @@
 import { createContext, useContext, type ReactNode } from "react";
-import type { ReadingStatus } from "./api";
+import type { ReadableFormat, ReadingStatus } from "./api";
 
 export interface ReaderRequest {
   bookId: string;
-  format: "Epub" | "Pdf";
+  format: ReadableFormat;
   title?: string;
   // Needed for the "external app" reader-engine setting (see readerSettings.ts) to hand the file
   // straight to window.maktaba.openPath instead of ever touching the in-app reader.

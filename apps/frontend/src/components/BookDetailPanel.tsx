@@ -38,6 +38,7 @@ import {
   IconCheck,
   IconChevronDown,
   IconFileText,
+  IconFileTypeDocx,
   IconFolder,
   IconExternalLink,
   IconHash,
@@ -62,8 +63,10 @@ import {
   updateBook,
   updateBookStatus,
   getReadingProgress,
+  isReadableFormat,
   pickPreferredReadFile,
   type BookFileInfo,
+  type ReadableFormat,
   type ReadingStatus,
 } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
@@ -76,13 +79,11 @@ import { BookEditForm } from "./BookEditForm";
 import { languageDisplayName, type GroupFilter } from "./Sidebar";
 import { SpineCover } from "./SpineCover";
 
-function isReadableFormat(format: string): format is "Epub" | "Pdf" {
-  return format === "Epub" || format === "Pdf";
-}
-
 // Issue #66 (follow-up): a small at-a-glance icon per file's format in the files list below.
 function FileFormatIcon({ format }: { format: string }) {
-  return format === "Epub" ? <IconBook2 size={16} /> : <IconFileText size={16} />;
+  if (format === "Epub") return <IconBook2 size={16} />;
+  if (format === "Docx") return <IconFileTypeDocx size={16} />;
+  return <IconFileText size={16} />;
 }
 
 function FieldLabel({ children }: { children: string }) {
@@ -316,13 +317,13 @@ export function BookDetailPanel({ bookId, onClose, onRemoved, onSelectFilter }: 
   // ReaderLauncherContext.tsx / App.tsx's launchReader. Closes this modal first so it isn't left
   // sitting open (or, in "this window" mode, behind the reader taking over the whole window)
   // while the book loads.
-  const openReader = (format: "Epub" | "Pdf", absolutePath: string) => {
+  const openReader = (format: ReadableFormat, absolutePath: string) => {
     onClose();
     launchReader({ bookId, format, title: book && displayTitle(book, t), absolutePath, readingStatus: book?.readingStatus ?? "Unread" });
   };
 
-  const readableFiles: (BookFileInfo & { format: "Epub" | "Pdf" })[] =
-    book?.files.filter((f): f is BookFileInfo & { format: "Epub" | "Pdf" } => isReadableFormat(f.format)) ?? [];
+  const readableFiles: (BookFileInfo & { format: ReadableFormat })[] =
+    book?.files.filter((f): f is BookFileInfo & { format: ReadableFormat } => isReadableFormat(f.format)) ?? [];
   const preferredReadFile = book ? pickPreferredReadFile(book.files) : undefined;
 
   // Combines the chapter-progress and time-read lines into the one compact stats line shown

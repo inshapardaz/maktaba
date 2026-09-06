@@ -85,6 +85,8 @@ export function FilterBar({
     { value: "", label: t("filterBar.allFormats") },
     { value: "Epub", label: "EPUB" },
     { value: "Pdf", label: "PDF" },
+    { value: "Docx", label: "DOCX" },
+    { value: "Txt", label: "TXT" },
   ];
 
   const ratingOptions = RATING_OPTIONS.map((option) =>

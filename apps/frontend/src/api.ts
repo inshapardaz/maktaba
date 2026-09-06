@@ -1,5 +1,10 @@
 export type ReadingStatus = "Unread" | "Reading" | "Finished";
 
+// Formats the in-app reader (ReaderOverlay.tsx) can open. Epub/Pdf are handed to qari as their
+// native source types; Docx/Txt have no reader qari understands, so their text is extracted
+// server-side (see getBookText below) and fed in as a Markdown source instead.
+export type ReadableFormat = "Epub" | "Pdf" | "Docx" | "Txt";
+
 export interface BookSummary {
   id: string;
   title: string;
@@ -329,23 +334,34 @@ export function getBook(id: string): Promise<BookDetail> {
   return request<BookDetail>(`/api/books/${id}`);
 }
 
-function isReadableFormat(format: string): format is "Epub" | "Pdf" {
-  return format === "Epub" || format === "Pdf";
+// Preference order when a book has multiple readable files, e.g. after a format conversion - Epub
+// is the fuller in-app reading experience (reflowable, chapters); Docx/Txt come last since they're
+// bridged into the reader via extracted plain text rather than a real reader engine.
+const READABLE_FORMAT_PREFERENCE: readonly ReadableFormat[] = ["Epub", "Pdf", "Docx", "Txt"];
+
+export function isReadableFormat(format: string): format is ReadableFormat {
+  return (READABLE_FORMAT_PREFERENCE as readonly string[]).includes(format);
 }
 
-// Epub is the fuller in-app reading experience (reflowable, chapters) - preferred when a book has
-// both formats, e.g. after an M8 conversion. Shared by BookDetailPanel and BookGrid's hover "Read"
-// action so both pick the same file for a given book.
-export function pickPreferredReadFile(files: BookFileInfo[]): (BookFileInfo & { format: "Epub" | "Pdf" }) | undefined {
-  const readableFiles = files.filter((f): f is BookFileInfo & { format: "Epub" | "Pdf" } => isReadableFormat(f.format));
-  return readableFiles.find((f) => f.format === "Epub") ?? readableFiles[0];
+// Shared by BookDetailPanel and BookGrid's hover "Read" action so both pick the same file for a
+// given book.
+export function pickPreferredReadFile(files: BookFileInfo[]): (BookFileInfo & { format: ReadableFormat }) | undefined {
+  const readableFiles = files.filter((f): f is BookFileInfo & { format: ReadableFormat } => isReadableFormat(f.format));
+  for (const preferred of READABLE_FORMAT_PREFERENCE) {
+    const match = readableFiles.find((f) => f.format === preferred);
+    if (match) return match;
+  }
+  return undefined;
 }
 
-// Same "prefer Epub" rule as pickPreferredReadFile above, for call sites (BookGrid/BookList) that
+// Same preference order as pickPreferredReadFile above, for call sites (BookGrid/BookList) that
 // only have BookSummary.formats (format names, no per-file AbsolutePath) rather than full file info.
-export function pickPreferredFormat(formats: string[]): ("Epub" | "Pdf") | undefined {
+export function pickPreferredFormat(formats: string[]): ReadableFormat | undefined {
   const readable = formats.filter(isReadableFormat);
-  return readable.find((f) => f === "Epub") ?? readable[0];
+  for (const preferred of READABLE_FORMAT_PREFERENCE) {
+    if (readable.includes(preferred)) return preferred;
+  }
+  return undefined;
 }
 
 export interface ContinueReadingBook {
@@ -358,7 +374,7 @@ export interface ContinueReadingBook {
   hasCover: boolean;
   coverVersion: number | null;
   readingStatus: ReadingStatus;
-  format: "Epub" | "Pdf";
+  format: ReadableFormat;
   absolutePath: string;
   percentage: number;
   updatedAt: string;
@@ -571,14 +587,14 @@ export function getSystemCapabilities(): Promise<SystemCapabilities> {
   return request<SystemCapabilities>("/api/system/capabilities");
 }
 
-export function convertBook(id: string, targetFormat: "Epub" | "Pdf"): Promise<BookFileInfo> {
+export function convertBook(id: string, targetFormat: ReadableFormat): Promise<BookFileInfo> {
   return request<BookFileInfo>(`/api/books/${id}/convert`, {
     method: "POST",
     body: JSON.stringify({ targetFormat }),
   });
 }
 
-export async function getBookFile(id: string, format: "Epub" | "Pdf"): Promise<ArrayBuffer> {
+export async function getBookFile(id: string, format: ReadableFormat): Promise<ArrayBuffer> {
   const { apiBaseUrl, token } = window.maktaba;
   const res = await fetch(`${apiBaseUrl}/api/books/${id}/file?format=${format}`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -587,6 +603,19 @@ export async function getBookFile(id: string, format: "Epub" | "Pdf"): Promise<A
     throw new Error(`Failed to load book file (${res.status}).`);
   }
   return res.arrayBuffer();
+}
+
+// Docx/Txt companion to getBookFile above - used instead of it when format has no reader qari
+// understands natively (see ReaderOverlay.tsx's source dispatch).
+export async function getBookText(id: string, format: ReadableFormat): Promise<string> {
+  const { apiBaseUrl, token } = window.maktaba;
+  const res = await fetch(`${apiBaseUrl}/api/books/${id}/text?format=${format}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to load book text (${res.status}).`);
+  }
+  return res.text();
 }
 
 export interface BookmarkInfo {

@@ -116,6 +116,8 @@ export function ImportDialog() {
     { value: "none", label: t("importDialog.convertNone") },
     { value: "Epub", label: "EPUB" },
     { value: "Pdf", label: "PDF" },
+    { value: "Docx", label: "DOCX" },
+    { value: "Txt", label: "TXT" },
   ];
 
   const conflictOptions: { value: ConflictPolicy; label: string }[] = [

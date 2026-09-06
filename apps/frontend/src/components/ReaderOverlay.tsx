@@ -15,6 +15,7 @@ import type { CustomStoreAdapter, CustomNoteStoreAdapter, CustomProgressStoreAda
 import {
   getBook,
   getBookFile,
+  getBookText,
   getPeriodical,
   listBookmarks,
   saveBookmark,
@@ -26,6 +27,7 @@ import {
   recordReadingActivity,
   saveReadingProgress,
   updateBookStatus,
+  type ReadableFormat,
   type ReadingStatus,
 } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
@@ -45,7 +47,7 @@ function isRtlLanguageCode(code: string | null | undefined): boolean {
 
 interface ReaderOverlayProps {
   bookId: string;
-  format: "Epub" | "Pdf";
+  format: ReadableFormat;
   // Only passed by InlineReader.tsx (the "render in the main window" mode) - the pop-out
   // BrowserWindow case (main.tsx's ReaderWindow) has no in-app "previous screen" to return to, so
   // it leaves this unset and relies on the native window chrome to close instead. qari shows its
@@ -166,16 +168,31 @@ export function ReaderOverlay({ bookId, format, onClose, embedded }: ReaderOverl
     });
   }, []);
 
+  // Docx/Txt have no reader qari understands natively - their content is fetched as extracted
+  // plain text (see api.ts's getBookText) and fed to qari as a Markdown source instead.
+  const isTextFormat = format === "Docx" || format === "Txt";
+
   // staleTime/refetchOnWindowFocus disabled - the book's bytes are immutable for the lifetime of
   // this reader window, so React Query's default focus-refetch would otherwise re-download and
   // re-parse the whole book (a new ArrayBuffer -> new `source` -> qari reloads it) every time this
   // window (or the main library window) regains focus.
-  const fileQuery = useQuery({
+  const binaryFileQuery = useQuery({
     queryKey: ["bookFile", bookId, format],
     queryFn: () => getBookFile(bookId, format),
     staleTime: Infinity,
     refetchOnWindowFocus: false,
+    enabled: !isTextFormat,
   });
+
+  const textFileQuery = useQuery({
+    queryKey: ["bookText", bookId, format],
+    queryFn: () => getBookText(bookId, format),
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    enabled: isTextFormat,
+  });
+
+  const fileQuery = isTextFormat ? textFileQuery : binaryFileQuery;
 
   // Two independent uses: picking a PDF's reading direction (see `direction` below - EPUBs already
   // carry their own page-progression-direction metadata that qari's "auto" detection reads
@@ -242,10 +259,16 @@ export function ReaderOverlay({ bookId, format, onClose, embedded }: ReaderOverl
   // Reader reloads the whole book whenever this object's *reference* changes (its internal
   // load-book effect depends on `source` by identity) - memoized so a settings/progress-driven
   // re-render of this component doesn't create a new object and trigger a spurious reload.
-  const source = useMemo<ReaderSource>(
-    () => (format === "Epub" ? { type: "epub", data: fileQuery.data! } : { type: "pdf", data: fileQuery.data! }),
-    [format, fileQuery.data],
-  );
+  const source = useMemo<ReaderSource>(() => {
+    switch (format) {
+      case "Epub":
+        return { type: "epub", data: binaryFileQuery.data! };
+      case "Pdf":
+        return { type: "pdf", data: binaryFileQuery.data! };
+      default:
+        return { type: "markdown", content: textFileQuery.data ?? "" };
+    }
+  }, [format, binaryFileQuery.data, textFileQuery.data]);
 
   // load/list both resolve to this book's bookmarks/notes regardless of arguments - the adapter
   // instance is already scoped to this one book via the bookId closure, independent of whatever

@@ -56,7 +56,7 @@ contextBridge.exposeInMainWorld("maktaba", {
 
   // Opens a book's reader in its own top-level window so multiple books can be read at once;
   // re-invoking for the same bookId+format focuses the existing window instead of duplicating it.
-  openReaderWindow: (bookId: string, format: "Epub" | "Pdf", title?: string): Promise<void> =>
+  openReaderWindow: (bookId: string, format: "Epub" | "Pdf" | "Docx" | "Txt", title?: string): Promise<void> =>
     ipcRenderer.invoke("maktaba:open-reader-window", { bookId, format, title }),
 
   // Resolves the real filesystem path for a File dropped onto the window (drag-and-drop import).

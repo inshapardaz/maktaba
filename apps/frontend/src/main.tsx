@@ -12,6 +12,7 @@ import { AppThemeProvider, useAppTheme } from "./AppThemeContext";
 import { ThemeColorProvider, useThemeColor } from "./ThemeColorContext";
 import { LanguageProvider, getStoredLanguage } from "./i18n/LanguageContext";
 import { ReaderOverlay } from "./components/ReaderOverlay";
+import { isReadableFormat, type ReadableFormat } from "./api";
 import { BackendGate } from "./components/BackendGate";
 import { HelpWindow } from "./components/HelpWindow";
 import { ImportProvider } from "./ImportContext";
@@ -30,7 +31,10 @@ const readerRequest =
   windowParams.get("view") === "reader"
     ? {
       bookId: windowParams.get("bookId") ?? "",
-      format: windowParams.get("format") === "Pdf" ? ("Pdf" as const) : ("Epub" as const),
+      format: (() => {
+        const raw = windowParams.get("format");
+        return raw && isReadableFormat(raw) ? raw : "Epub";
+      })(),
       title: windowParams.get("title"),
     }
     : null;
@@ -40,7 +44,7 @@ const readerRequest =
 // pattern as the reader window above.
 const isHelpWindow = windowParams.get("view") === "help";
 
-function ReaderWindow({ bookId, format, title }: { bookId: string; format: "Epub" | "Pdf"; title: string | null }) {
+function ReaderWindow({ bookId, format, title }: { bookId: string; format: ReadableFormat; title: string | null }) {
   useEffect(() => {
     if (title) document.title = title;
   }, [title]);

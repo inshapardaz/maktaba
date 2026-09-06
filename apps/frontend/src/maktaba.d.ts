@@ -32,7 +32,7 @@ declare global {
       revealInFolder: (filePath: string) => Promise<void>;
       openPath: (filePath: string) => Promise<void>;
       trashPath: (filePath: string) => Promise<void>;
-      openReaderWindow: (bookId: string, format: "Epub" | "Pdf", title?: string) => Promise<void>;
+      openReaderWindow: (bookId: string, format: "Epub" | "Pdf" | "Docx" | "Txt", title?: string) => Promise<void>;
       getPathForFile: (file: File) => string;
       getSidecarStatus: () => Promise<SidecarStatus>;
       onSidecarStatus: (callback: (status: SidecarStatus) => void) => () => void;

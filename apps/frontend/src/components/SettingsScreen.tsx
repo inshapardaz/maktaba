@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Group, Modal, Select, SegmentedControl, Stack, Switch, Tabs, Text } from "@mantine/core";
 import { IconAlertTriangle, IconBook2, IconBooks, IconInfoCircle, IconLanguage, IconSettings } from "../icons";
 import { useLanguage } from "../i18n/LanguageContext";
+import type { ReadableFormat } from "../api";
 import {
   getStoredAutoTagMode,
   getStoredReaderEngine,
@@ -53,6 +54,8 @@ export function SettingsScreen({ opened, onClose, onLibraryChanged, initialTab }
   const [readerOpenMode, setReaderOpenMode] = useState<ReaderOpenMode>(getStoredReaderOpenMode());
   const [epubEngine, setEpubEngine] = useState<ReaderEngine>(getStoredReaderEngine("Epub"));
   const [pdfEngine, setPdfEngine] = useState<ReaderEngine>(getStoredReaderEngine("Pdf"));
+  const [docxEngine, setDocxEngine] = useState<ReaderEngine>(getStoredReaderEngine("Docx"));
+  const [txtEngine, setTxtEngine] = useState<ReaderEngine>(getStoredReaderEngine("Txt"));
   const [autoTagMode, setAutoTagMode] = useState<AutoTagMode>(getStoredAutoTagMode());
   const [showIssuesInGrid, setShowIssuesInGrid] = useState(getStoredShowIssuesInGrid());
   const queryClient = useQueryClient();
@@ -82,9 +85,16 @@ export function SettingsScreen({ opened, onClose, onLibraryChanged, initialTab }
     setStoredReaderOpenMode(mode);
   };
 
-  const handleEngineChange = (format: "Epub" | "Pdf", value: string) => {
+  const ENGINE_SETTERS: Record<ReadableFormat, (engine: ReaderEngine) => void> = {
+    Epub: setEpubEngine,
+    Pdf: setPdfEngine,
+    Docx: setDocxEngine,
+    Txt: setTxtEngine,
+  };
+
+  const handleEngineChange = (format: ReadableFormat, value: string) => {
     const engine = value as ReaderEngine;
-    (format === "Epub" ? setEpubEngine : setPdfEngine)(engine);
+    ENGINE_SETTERS[format](engine);
     setStoredReaderEngine(format, engine);
   };
 
@@ -262,7 +272,31 @@ export function SettingsScreen({ opened, onClose, onLibraryChanged, initialTab }
                 onChange={(value) => handleEngineChange("Pdf", value)}
               />
             </Group>
-            {(epubEngine === "external" || pdfEngine === "external") && (
+            <Group justify="space-between">
+              <FieldLabel>{t("settings.docxReader")}</FieldLabel>
+              <SegmentedControl
+                size="sm"
+                data={[
+                  { value: "internal", label: t("settings.readerEngineInternal") },
+                  { value: "external", label: t("settings.readerEngineExternal") },
+                ]}
+                value={docxEngine}
+                onChange={(value) => handleEngineChange("Docx", value)}
+              />
+            </Group>
+            <Group justify="space-between">
+              <FieldLabel>{t("settings.txtReader")}</FieldLabel>
+              <SegmentedControl
+                size="sm"
+                data={[
+                  { value: "internal", label: t("settings.readerEngineInternal") },
+                  { value: "external", label: t("settings.readerEngineExternal") },
+                ]}
+                value={txtEngine}
+                onChange={(value) => handleEngineChange("Txt", value)}
+              />
+            </Group>
+            {(epubEngine === "external" || pdfEngine === "external" || docxEngine === "external" || txtEngine === "external") && (
               <Alert color="yellow" variant="light" icon={<IconAlertTriangle size={16} />}>
                 {t("settings.externalReaderWarning")}
               </Alert>

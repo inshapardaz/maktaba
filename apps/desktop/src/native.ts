@@ -5,7 +5,7 @@ import { pathToFileURL } from "url";
 import { gunzipSync } from "zlib";
 import JSZip from "jszip";
 
-const EBOOK_EXTENSIONS = new Set([".epub", ".pdf"]);
+const EBOOK_EXTENSIONS = new Set([".epub", ".pdf", ".docx", ".txt"]);
 
 // qari issue #17: offline word-lookup dictionaries in the StarDict format (.ifo/.idx/.dict[.dz]) -
 // the format used by both the StarDict and GoldenDict desktop applications, and the one most
@@ -124,7 +124,7 @@ export function registerNativeHandlers(getWindow: () => BrowserWindow | null): v
     const result = await dialog.showOpenDialog(win, {
       title: "Import ebooks",
       properties: ["openFile", "multiSelections"],
-      filters: [{ name: "Ebooks", extensions: ["epub", "pdf"] }],
+      filters: [{ name: "Ebooks", extensions: ["epub", "pdf", "docx", "txt"] }],
     });
     return result.canceled ? [] : result.filePaths;
   });

@@ -30,6 +30,10 @@ builder.Services.AddScoped(sp => MaktabaDbContextFactory.Create(sp.GetRequiredSe
 
 builder.Services.AddSingleton<IBookMetadataExtractor, EpubMetadataExtractor>();
 builder.Services.AddSingleton<IBookMetadataExtractor, PdfMetadataExtractor>();
+builder.Services.AddSingleton<IBookMetadataExtractor, DocxMetadataExtractor>();
+builder.Services.AddSingleton<IBookMetadataExtractor, TxtMetadataExtractor>();
+builder.Services.AddSingleton<IBookTextContentExtractor, DocxTextContentExtractor>();
+builder.Services.AddSingleton<IBookTextContentExtractor, TxtTextContentExtractor>();
 builder.Services.AddScoped<IImportService, ImportService>();
 builder.Services.AddScoped<IBookEditService, BookEditService>();
 builder.Services.AddScoped<IAuthorRenameService, AuthorRenameService>();
