@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Avatar, Badge, Box, Button, Center, Group, Image, Progress, Stack, Text, UnstyledButton } from "@mantine/core";
 import { IconBooks, IconCircleCheck, IconPlayerPlay, IconUser } from "../icons";
@@ -16,15 +17,16 @@ import { getStoredShowIssuesInGrid } from "../periodicalSettings";
 import { useReaderLauncher } from "../ReaderLauncherContext";
 import { invalidateLibraryQueries } from "../queries";
 import { BookRow } from "./BookList";
+import { DeleteBooksConfirmDialog } from "./DeleteBooksConfirmDialog";
+import { displayTitle } from "../issueDisplay";
 import type { GroupFilter } from "./Sidebar";
 import { SpineCover } from "./SpineCover";
 
-// No-op stand-ins for BookList's selection/merge machinery - the Recently Added shelf reuses
-// BookRow (issue #52) purely for its richer per-book detail, not for multi-select or drag-to-merge,
-// which don't make sense in this compact Home-page context.
+// No-op stand-in for BookList's merge machinery - the Recently Added shelf reuses BookRow (issue
+// #52) purely for its richer per-book detail, not for multi-select or drag-to-merge, which doesn't
+// make sense in this compact Home-page context. Delete *is* wired up for real, below.
 const NO_SELECTION = new Set<string>();
 function noopMergeRequest() {}
-function noopDeleteRequest() {}
 
 // Issue: Home used to show only the hero book plus whatever else happened to be in progress, with
 // no cap and no way to jump to the rest - now shown together (hero + list) up to this many, with a
@@ -76,6 +78,9 @@ export function HomeView({ onSelectBook, onSelectFilter }: HomeViewProps) {
     queryKey: ["recentlyAdded"],
     queryFn: () => listRecentlyAdded(20, getStoredShowIssuesInGrid()),
   });
+  // Issue: the Recently Added shelf's per-row delete (hover trash icon) used to be wired to a
+  // no-op, same "resolve titles at render time" shape as BookList.tsx's own deleteRequestIds.
+  const [deleteRequestIds, setDeleteRequestIds] = useState<string[] | null>(null);
 
   const resumeBook = (book: ContinueReadingBook) => {
     launchReader({
@@ -329,13 +334,24 @@ export function HomeView({ onSelectBook, onSelectFilter }: HomeViewProps) {
                   onSelect={() => onSelectBook(book.id)}
                   onEdit={() => onSelectBook(book.id)}
                   onMergeRequest={noopMergeRequest}
-                  onDeleteRequest={noopDeleteRequest}
+                  onDeleteRequest={setDeleteRequestIds}
                 />
               ))}
             </Stack>
           </Box>
         )}
       </Stack>
+
+      {deleteRequestIds && (
+        <DeleteBooksConfirmDialog
+          books={deleteRequestIds.map((id) => {
+            const book = recentBooks.find((b) => b.id === id);
+            return { id, title: book ? displayTitle(book, t) : id };
+          })}
+          onClose={() => setDeleteRequestIds(null)}
+          onDeleted={() => setDeleteRequestIds(null)}
+        />
+      )}
     </Box>
   );
 }
