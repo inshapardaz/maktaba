@@ -1,4 +1,5 @@
 using Maktaba.Api.Dtos;
+using Maktaba.Core.Entities;
 using Maktaba.Core.Ids;
 using Maktaba.Data;
 using Microsoft.EntityFrameworkCore;
@@ -126,6 +127,50 @@ public static class AnalyticsEndpoints
                 MostActiveHour: hasActivity ? byHour.MaxBy(h => h.Seconds)!.Hour : null);
 
             return Results.Ok(report);
+        });
+
+        // Library-wide "at a glance" summary - counts and total size, distinct from the reading-
+        // progress/time figures above. Every query here is a plain SQL-side GroupBy/Count/Sum (no
+        // in-memory pass needed, unlike /api/analytics/summary), same style as /api/reading-statuses.
+        app.MapGet("/api/analytics/library-summary", async (MaktabaDbContext db, CancellationToken ct) =>
+        {
+            var totalBooks = await db.Books.CountAsync(b => b.PeriodicalId == null, ct);
+            var totalIssues = await db.Books.CountAsync(b => b.PeriodicalId != null, ct);
+
+            // Counts *books* with at least one file of a format, not files - a book with both an
+            // Epub and a Pdf attached counts in both buckets, matching how /api/books?format= (the
+            // main library view's own format filter) already treats format as a per-book attribute.
+            var bookCountsByFormat = await db.BookFiles
+                .GroupBy(f => f.Format)
+                .Select(g => new { Format = g.Key, BookCount = g.Select(f => f.BookId).Distinct().Count() })
+                .ToDictionaryAsync(x => x.Format, x => x.BookCount, ct);
+            var booksByFormat = Enum.GetValues<BookFormat>()
+                .Select(format => new BookFormatCountDto(format.ToString(), bookCountsByFormat.GetValueOrDefault(format)))
+                .ToArray();
+
+            var statusCounts = await db.Books
+                .GroupBy(b => b.ReadingStatus)
+                .Select(g => new { Status = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.Status, x => x.Count, ct);
+            var booksByReadingStatus = Enum.GetValues<ReadingStatus>()
+                .Select(status => new ReadingStatusCountDto(status.ToString(), statusCounts.GetValueOrDefault(status)))
+                .ToArray();
+
+            var totalSizeBytes = await db.BookFiles.SumAsync(f => (long?)f.FileSizeBytes, ct) ?? 0;
+
+            var summary = new LibrarySummaryDto(
+                TotalBooks: totalBooks,
+                TotalIssues: totalIssues,
+                BooksByFormat: booksByFormat,
+                BooksByReadingStatus: booksByReadingStatus,
+                TotalSizeBytes: totalSizeBytes,
+                TotalAuthors: await db.Authors.CountAsync(ct),
+                TotalCollections: await db.Collections.CountAsync(ct),
+                TotalTags: await db.Tags.CountAsync(ct),
+                TotalSeries: await db.Series.CountAsync(ct),
+                TotalPeriodicals: await db.Periodicals.CountAsync(ct));
+
+            return Results.Ok(summary);
         });
     }
 

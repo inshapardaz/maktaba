@@ -285,3 +285,24 @@ public record ReadingTimeReportDto(
     int? MostActiveDayOfWeek,
     int? MostActiveHour
 );
+
+public record BookFormatCountDto(string Format, int Count);
+
+// A library-wide "at a glance" summary - counts and total size, as opposed to AnalyticsSummaryDto's
+// reading-progress/time figures above. TotalBooks excludes periodical issues (PeriodicalId set) -
+// same "an issue isn't a book for browsing purposes" distinction the main library view's own
+// includeIssues filter already draws - which are counted separately via TotalIssues instead.
+// BooksByFormat/BooksByReadingStatus always include every known format/status (even zero-count
+// ones), same zero-fill convention as ReadingStatusCountDto's other use at /api/reading-statuses.
+public record LibrarySummaryDto(
+    int TotalBooks,
+    int TotalIssues,
+    BookFormatCountDto[] BooksByFormat,
+    ReadingStatusCountDto[] BooksByReadingStatus,
+    long TotalSizeBytes,
+    int TotalAuthors,
+    int TotalCollections,
+    int TotalTags,
+    int TotalSeries,
+    int TotalPeriodicals
+);

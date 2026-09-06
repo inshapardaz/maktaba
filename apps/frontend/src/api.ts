@@ -776,6 +776,31 @@ export function getReadingTimeReport(): Promise<ReadingTimeReport> {
   return request<ReadingTimeReport>("/api/analytics/reading-time");
 }
 
+export interface BookFormatCount {
+  format: string;
+  count: number;
+}
+
+// A library-wide "at a glance" summary - counts and total size, distinct from AnalyticsSummary's
+// reading-progress/time figures above. totalBooks excludes periodical issues (counted separately
+// via totalIssues) - same distinction the main library view's own includeIssues filter draws.
+export interface LibrarySummary {
+  totalBooks: number;
+  totalIssues: number;
+  booksByFormat: BookFormatCount[];
+  booksByReadingStatus: ReadingStatusCount[];
+  totalSizeBytes: number;
+  totalAuthors: number;
+  totalCollections: number;
+  totalTags: number;
+  totalSeries: number;
+  totalPeriodicals: number;
+}
+
+export function getLibrarySummary(): Promise<LibrarySummary> {
+  return request<LibrarySummary>("/api/analytics/library-summary");
+}
+
 // Issue #66: `version` (a BookSummary/BookDetail's coverVersion) should always be passed when
 // available - it's part of the URL specifically so the browser treats a newly extracted/replaced
 // cover as a different resource instead of continuing to serve the previous one it cached under

@@ -15,7 +15,7 @@ import {
   Text,
   Tooltip,
 } from "@mantine/core";
-import { getAnalyticsSummary, getReadingTimeReport } from "../api";
+import { getAnalyticsSummary, getCurrentLibrary, getLibrarySummary, getReadingTimeReport } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
 import { formatDuration } from "../readingTime";
 import { formatDayOfWeek, formatHour, formatMonth, formatShortDate } from "../readingTimeReport";
@@ -24,6 +24,14 @@ import { BrowseViewHeader } from "./BrowseViewHeader";
 
 interface AnalyticsViewProps {
   onBack: () => void;
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const exponent = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
+  const value = bytes / 1024 ** exponent;
+  return `${value.toFixed(exponent === 0 ? 0 : 1)} ${units[exponent]}`;
 }
 
 function StatCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
@@ -82,10 +90,14 @@ type ReadingTimePeriod = "daily" | "weekly" | "monthly";
 
 export function AnalyticsView({ onBack }: AnalyticsViewProps) {
   const { t, language } = useLanguage();
+  const librarySummaryQuery = useQuery({ queryKey: ["analytics", "library-summary"], queryFn: getLibrarySummary });
+  const libraryQuery = useQuery({ queryKey: ["library"], queryFn: getCurrentLibrary });
   const summaryQuery = useQuery({ queryKey: ["analytics"], queryFn: getAnalyticsSummary });
   const readingTimeQuery = useQuery({ queryKey: ["analytics", "reading-time"], queryFn: getReadingTimeReport });
+  const librarySummary = librarySummaryQuery.data;
   const summary = summaryQuery.data;
   const readingTime = readingTimeQuery.data;
+  const periodicalsEnabled = libraryQuery.data?.periodicalsEnabled ?? false;
   const [period, setPeriod] = useState<ReadingTimePeriod>("daily");
 
   const periodBars: Bar[] | undefined =
@@ -134,6 +146,59 @@ export function AnalyticsView({ onBack }: AnalyticsViewProps) {
       <BrowseViewHeader title={t("analytics.title")} onBack={onBack} />
 
       <Box p="xl" style={{ flex: 1, overflow: "auto" }}>
+        {librarySummaryQuery.isLoading && (
+          <Center py="xl">
+            <Loader />
+          </Center>
+        )}
+
+        {librarySummary && (
+          <>
+            <Text fz={10.5} fw={600} c="dimmed" tt="uppercase" mb="sm" style={{ letterSpacing: "0.1em" }}>
+              {t("analytics.library")}
+            </Text>
+            <SimpleGrid cols={{ base: 2, sm: 3, lg: 4 }} mb="md">
+              <StatCard label={t("analytics.totalBooks")} value={String(librarySummary.totalBooks)} />
+              <StatCard label={t("analytics.librarySize")} value={formatBytes(librarySummary.totalSizeBytes)} />
+              <StatCard label={t("analytics.totalAuthors")} value={String(librarySummary.totalAuthors)} />
+              <StatCard label={t("analytics.totalSeries")} value={String(librarySummary.totalSeries)} />
+              <StatCard label={t("analytics.totalTags")} value={String(librarySummary.totalTags)} />
+              <StatCard label={t("analytics.totalCollections")} value={String(librarySummary.totalCollections)} />
+              {periodicalsEnabled && (
+                <>
+                  <StatCard label={t("analytics.totalPeriodicals")} value={String(librarySummary.totalPeriodicals)} />
+                  <StatCard label={t("analytics.totalIssues")} value={String(librarySummary.totalIssues)} />
+                </>
+              )}
+            </SimpleGrid>
+
+            <Card withBorder padding="lg" radius="md" mb="xl">
+              <Stack gap="sm">
+                <Group gap={8} wrap="wrap">
+                  <Text fz={10.5} fw={600} c="dimmed" tt="uppercase" style={{ letterSpacing: "0.1em" }}>
+                    {t("analytics.byFormat")}
+                  </Text>
+                  {librarySummary.booksByFormat.map((f) => (
+                    <Badge key={f.format} size="sm" variant="light" color="gray">
+                      {f.format}: {f.count}
+                    </Badge>
+                  ))}
+                </Group>
+                <Group gap={8} wrap="wrap">
+                  <Text fz={10.5} fw={600} c="dimmed" tt="uppercase" style={{ letterSpacing: "0.1em" }}>
+                    {t("bookDetail.readingStatus")}
+                  </Text>
+                  {librarySummary.booksByReadingStatus.map((s) => (
+                    <Badge key={s.status} size="sm" variant="light" color={READING_STATUS_COLOR[s.status]}>
+                      {t(READING_STATUS_LABEL_KEY[s.status])}: {s.count}
+                    </Badge>
+                  ))}
+                </Group>
+              </Stack>
+            </Card>
+          </>
+        )}
+
         {summaryQuery.isLoading && (
           <Center py="xl">
             <Loader />
