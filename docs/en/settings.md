@@ -50,9 +50,12 @@ From **Settings → Reading** you can choose:
 
 - **Reader window** — whether opening a book pops out its own window (the default) or opens
   inline within the library window.
-- **EPUB reader** and **PDF reader** — each can use Maktaba's **built-in** reader engine, or an
-  **external** one if you've configured one; Maktaba warns you when an external engine is
-  selected, since it's outside Maktaba's control.
+- **EPUB reader**, **PDF reader**, **DOCX reader**, and **TXT reader** — each format can
+  independently use Maktaba's **built-in** reader engine, or an **external** one if you've
+  configured one; Maktaba warns you when an external engine is selected, since it's outside
+  Maktaba's control. **DOCX** defaults to **External** (your computer's own word processor), since
+  Maktaba's built-in reader can only show a DOCX file as reflowed plain text, not its real
+  formatting — the other three formats default to **Internal**.
 - **Reading status** — choose whether starting or finishing a book in the reader **updates your
   reading status automatically**, or shows a notification with the option to apply it (**Ask me
   first**) instead.

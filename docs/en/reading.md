@@ -34,4 +34,19 @@ long-press on touch screens) to see its definition.
 
 ## Supported formats
 
-Maktaba can open **EPUB** and **PDF** books directly — no extra software needed.
+Maktaba can open **EPUB**, **PDF**, and **TXT** (plain text) books directly in its built-in
+reader — no extra software needed. TXT files have no chapters or formatting of their own, so
+Maktaba reflows the text into readable paragraphs automatically.
+
+**DOCX** (Word document) files are also supported, but open in your computer's own word processor
+by default instead of Maktaba's built-in reader — a Word document's formatting, images, and
+tables are best viewed in the application built for them, rather than a plain-text approximation.
+If you'd still like to try reading a DOCX file inside Maktaba (as reflowed plain text, the same as
+TXT), switch its reader to **Internal** under **Settings → Reading → DOCX reader**.
+
+## Choosing internal vs. external readers
+
+For any format, you can choose whether Maktaba opens it with its own **built-in** reader or hands
+it off to an **external** application instead — see **Settings → Reading** for the per-format
+switch (EPUB, PDF, DOCX, and TXT are each independent). Maktaba warns you when an external reader
+is selected, since what happens next is outside Maktaba's control.

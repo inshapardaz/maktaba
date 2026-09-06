@@ -31,8 +31,8 @@ be an empty folder to start fresh, or an existing folder where you already keep 
 
 ## 3. Add your books
 
-You can add books at any time by dragging EPUB or PDF files into the Maktaba window, or by using
-the **Add Books** button. See [Importing Books](./importing) for the full walkthrough.
+You can add books at any time by dragging EPUB, PDF, DOCX, or TXT files into the Maktaba window,
+or by using the **Add Books** button. See [Importing Books](./importing) for the full walkthrough.
 
 ## 4. Browse and read
 

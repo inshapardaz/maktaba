@@ -3,6 +3,15 @@
 Maktaba quietly tracks how much time you actually spend reading, then turns that into a report you
 can check any time. Open it from the sidebar's footer — click the chart icon next to Settings.
 
+## Library summary
+
+At the top of the Analytics page, a row of stat cards gives you an at-a-glance count of your whole
+library: total books, total library size on disk, and how many distinct Authors, Series, Tags, and
+Collections you have — plus Periodicals and Issues if that feature is turned on for this library.
+Below that, two rows of badges break your books down **by format** (EPUB, PDF, DOCX, TXT) and **by
+reading status** (Unread, Reading, Finished), so you can see the shape of your library at a
+glance.
+
 ## How reading time is tracked
 
 While a book is open in the reader and its window is visible, Maktaba keeps a running tally of the

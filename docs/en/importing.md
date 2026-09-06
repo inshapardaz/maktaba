@@ -1,12 +1,13 @@
 # Importing Books
 
 There are two easy ways to add books to your Maktaba library: dragging files in, or using the
-**Add Books** button. Maktaba supports **EPUB** and **PDF** files.
+**Add Books** button. Maktaba supports **EPUB**, **PDF**, **DOCX** (Word documents), and **TXT**
+(plain text) files.
 
 ## Drag and drop
 
-Simply drag one or more EPUB/PDF files (or a whole folder of them) from your computer's file
-browser and drop them anywhere in the Maktaba window.
+Simply drag one or more EPUB/PDF/DOCX/TXT files (or a whole folder of them) from your computer's
+file browser and drop them anywhere in the Maktaba window.
 
 ![Screenshot: dragging ebook files from a file browser into the Maktaba window, with a drop overlay visible](../screenshots/import-drag-drop.png)
 
@@ -29,6 +30,24 @@ If import can results in import of duplicate books, you are prompted to select t
 - **Import as New Book** : Import the book as a new book. If a book with title "Moby Dick" already exists, a new book with title "Moby Dick (2)" will be added 
 
 ![Screenshot: import choices](../screenshots/import-confirm.png)
+
+## Setting common info for a batch of books
+
+If you're importing several books at once that share something in common — the same author, the
+same publisher, a shared language, or a series you want tagged across all of them — open **Common
+info for this batch** just below the drop zone before the import finishes. Whatever you set there
+(author, publisher, language, series, tags, or collections) is applied automatically to every book
+in that batch as it's imported:
+
+- **Author, publisher, language, and series** replace whatever was found in the file itself, since
+  these describe a single fact about the book.
+- **Tags and collections** are added alongside whatever the book already has, rather than
+  replacing them.
+
+Leave a field empty to leave that piece of information exactly as each file's own metadata (or the
+import process) already set it. This is especially handy for **TXT** files, which carry no
+metadata of their own — batch-tagging them with an author and language up front saves editing each
+one individually afterward.
 
 ## What happens to the files
 

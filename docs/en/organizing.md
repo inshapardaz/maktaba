@@ -112,6 +112,22 @@ year has, with **All** at the top to show everything at once. For a Weekly perio
 year expands it into months so you're not scrolling through fifty-two issues at once; for other
 frequencies, clicking a year filters straight to it.
 
+## Browsing a large library
+
+Once your library grows past a page's worth of books, page controls appear at the bottom of the
+grid or list — click through pages the same way you'd page through search results anywhere else.
+Maktaba's own back/forward navigation (the arrows at the top of the window) remembers which page
+you were on, so stepping back after opening a book returns you to the same page instead of
+jumping back to the first one.
+
+## Checking a file's checksum
+
+Open a book's details to see every file attached to it, each with a small checksum icon. Click it
+to copy that file's checksum (a fingerprint of its exact contents) to your clipboard — handy for
+confirming two files are byte-for-byte identical, or for comparing against a checksum published
+elsewhere. Maktaba also uses this same checksum internally to warn you when a book has two
+attached files with identical content.
+
 ## Searching
 
 Press **Ctrl+K** (or **Cmd+K** on Mac) from anywhere in Maktaba to search your whole library
