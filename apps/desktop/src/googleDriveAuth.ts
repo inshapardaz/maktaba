@@ -1,18 +1,21 @@
 import * as crypto from "node:crypto";
 import { generatePkcePair, runOAuthLoopback } from "./oauthLoopback";
 
-// TODO(Cloud: Phase 5 #99): these must be Maktaba's own Google Cloud project's OAuth client id/
-// secret before Google Drive support works - see docs/en/libraries.md's Google Drive setup notes
-// once written. One project/client serves every Maktaba install (end users never create their own);
-// create it at https://console.cloud.google.com -> APIs & Services -> Credentials -> Create
-// Credentials -> OAuth client ID -> Application type "Desktop app".
+// Cloud: Phase 5 (#99) - Maktaba's own Google Cloud project's OAuth client id/secret. One
+// project/client serves every Maktaba install (end users never create their own); created at
+// https://console.cloud.google.com -> APIs & Services -> Credentials -> Create Credentials ->
+// OAuth client ID -> Application type "Desktop app".
 //
 // Unlike OneDrive's public client (PKCE only, no secret - see oneDriveAuth.ts), Google's installed-
 // app OAuth clients still require this secret in the token exchange even when using PKCE, by
 // Google's own design - see https://developers.google.com/identity/protocols/oauth2/native-app.
 // Google's docs explicitly say installed-app client secrets aren't treated as confidential (unlike
-// a web-server client's), since they necessarily ship inside distributed app source/binaries - so
-// hardcoding it here once known is the expected pattern, not a mistake.
+// a web-server client's), since they necessarily ship inside distributed app source/binaries - it's
+// still kept out of *this repo's git history* rather than hardcoded here, read instead from the
+// MAKTABA_GOOGLE_CLIENT_ID/MAKTABA_GOOGLE_CLIENT_SECRET environment variables (set them once via
+// Windows' System Properties -> Environment Variables so every launch - dev or a packaged build -
+// picks them up without needing a terminal session; GoogleDriveStorageProvider.cs's own copy of
+// these needs the exact same two variables set for the .NET backend process to see them too).
 //
 // Also needs an OAuth consent screen configured (User type "External" - Maktaba isn't a Google
 // Workspace organization, so "Internal" isn't an option) before any user can sign in. While that
@@ -20,8 +23,13 @@ import { generatePkcePair, runOAuthLoopback } from "./oauthLoopback";
 // complete sign-in - publish it (Google's own dashboard button) once ready for other people to use,
 // which for the drive.file scope alone shouldn't need Google's full verification review (that's
 // only required for broader/sensitive scopes than the one requested below).
-const CLIENT_ID = "REDACTED";
-const CLIENT_SECRET = "REDACTED";
+function requiredEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`${name} is not set - Google Drive sign-in needs it (see googleDriveAuth.ts's comment).`);
+  }
+  return value;
+}
 
 const AUTHORIZE_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
@@ -96,12 +104,14 @@ async function requestToken(body: URLSearchParams): Promise<GoogleDriveTokens> {
  * Electron channel that nothing else in this app needs), exactly like OneDriveStorageProvider talks
  * to Microsoft directly rather than routing every request through Electron. */
 export async function connectGoogleDrive(): Promise<GoogleDriveTokens> {
+  const clientId = requiredEnv("MAKTABA_GOOGLE_CLIENT_ID");
+  const clientSecret = requiredEnv("MAKTABA_GOOGLE_CLIENT_SECRET");
   const { verifier, challenge } = generatePkcePair();
   const state = crypto.randomBytes(16).toString("hex");
 
   const { code, redirectUri } = await runOAuthLoopback((redirectUri) => {
     const url = new URL(AUTHORIZE_ENDPOINT);
-    url.searchParams.set("client_id", CLIENT_ID);
+    url.searchParams.set("client_id", clientId);
     url.searchParams.set("response_type", "code");
     url.searchParams.set("redirect_uri", redirectUri);
     url.searchParams.set("scope", SCOPES);
@@ -118,8 +128,8 @@ export async function connectGoogleDrive(): Promise<GoogleDriveTokens> {
 
   return requestToken(
     new URLSearchParams({
-      client_id: CLIENT_ID,
-      client_secret: CLIENT_SECRET,
+      client_id: clientId,
+      client_secret: clientSecret,
       grant_type: "authorization_code",
       code,
       redirect_uri: redirectUri,
