@@ -354,6 +354,49 @@ export function syncNow(): Promise<void> {
   return request<void>("/api/libraries/sync-now", { method: "POST" });
 }
 
+// Migration wizard (Cloud: Phase 3) - moves the active library to a new provider. All of these
+// operate on whichever library is currently active; there's no "migrate this other library"
+// variant, matching how Sync Now/Resync are scoped.
+export interface MigrationPreview {
+  fileCount: number;
+}
+
+export function previewMigration(): Promise<MigrationPreview> {
+  return request<MigrationPreview>("/api/libraries/migrate/preview");
+}
+
+export function startMigration(
+  providerType: string, providerConfig: Record<string, string>, credential: S3Credential,
+): Promise<void> {
+  return request<void>("/api/libraries/migrate/start", {
+    method: "POST",
+    body: JSON.stringify({ providerType, providerConfig, credential: JSON.stringify(credential) }),
+  });
+}
+
+export interface MigrationStatus {
+  state: "Idle" | "Copying" | "VerifyingCopy" | "Verified" | "Failed" | "Cancelled";
+  processed: number;
+  total: number;
+  currentFile: string | null;
+  errorMessage: string | null;
+}
+
+export function getMigrationStatus(): Promise<MigrationStatus> {
+  return request<MigrationStatus>("/api/libraries/migrate/status");
+}
+
+export function cancelMigration(): Promise<void> {
+  return request<void>("/api/libraries/migrate/cancel", { method: "POST" });
+}
+
+export function completeMigration(deleteSource: boolean): Promise<void> {
+  return request<void>("/api/libraries/migrate/complete", {
+    method: "POST",
+    body: JSON.stringify({ deleteSource }),
+  });
+}
+
 export function listBooks(filters: BookFilters = {}): Promise<PagedBooks> {
   const params = new URLSearchParams();
   if (filters.search) params.set("search", filters.search);

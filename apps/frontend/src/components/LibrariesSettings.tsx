@@ -7,7 +7,6 @@ import {
   Button,
   Group,
   Modal,
-  PasswordInput,
   Progress,
   Stack,
   Switch,
@@ -45,6 +44,7 @@ import { useLanguage } from "../i18n/LanguageContext";
 import { invalidateLibraryQueries } from "../queries";
 import { useRescan } from "../RescanContext";
 import { useLibrarySync } from "../LibrarySyncContext";
+import { EMPTY_S3_FIELDS, isS3FieldsComplete, S3CredentialFields, type S3FieldsValue } from "./S3CredentialFields";
 
 // Provider names are proper nouns/brand names, not translated - same convention as file format
 // labels (EPUB/PDF/...) elsewhere in this app. Only "local" is reachable today; the rest land with
@@ -427,21 +427,15 @@ interface S3ConnectModalProps {
 function S3ConnectModal({ opened, onClose, onConnected }: S3ConnectModalProps) {
   const { t } = useLanguage();
   const [name, setName] = useState("");
-  const [bucket, setBucket] = useState("");
-  const [region, setRegion] = useState("us-east-1");
-  const [prefix, setPrefix] = useState("");
-  const [endpoint, setEndpoint] = useState("");
-  const [accessKeyId, setAccessKeyId] = useState("");
-  const [secretAccessKey, setSecretAccessKey] = useState("");
+  const [fields, setFields] = useState<S3FieldsValue>(EMPTY_S3_FIELDS);
   const [testResult, setTestResult] = useState<"success" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const credential: S3Credential = { accessKeyId, secretAccessKey };
-  const canSubmit = name.trim().length > 0 && bucket.trim().length > 0 && region.trim().length > 0 &&
-    accessKeyId.length > 0 && secretAccessKey.length > 0;
+  const credential: S3Credential = { accessKeyId: fields.accessKeyId, secretAccessKey: fields.secretAccessKey };
+  const canSubmit = name.trim().length > 0 && isS3FieldsComplete(fields);
 
   const testMutation = useMutation({
-    mutationFn: () => testS3Connection(bucket.trim(), region.trim(), prefix.trim(), credential, endpoint.trim()),
+    mutationFn: () => testS3Connection(fields.bucket.trim(), fields.region.trim(), fields.prefix.trim(), credential, fields.endpoint.trim()),
     onSuccess: () => {
       setTestResult("success");
       setError(null);
@@ -454,9 +448,11 @@ function S3ConnectModal({ opened, onClose, onConnected }: S3ConnectModalProps) {
 
   const connectMutation = useMutation({
     mutationFn: async () => {
-      const providerConfig: Record<string, string> = { bucket: bucket.trim(), region: region.trim(), prefix: prefix.trim() };
-      if (endpoint.trim()) {
-        providerConfig.endpoint = endpoint.trim();
+      const providerConfig: Record<string, string> = {
+        bucket: fields.bucket.trim(), region: fields.region.trim(), prefix: fields.prefix.trim(),
+      };
+      if (fields.endpoint.trim()) {
+        providerConfig.endpoint = fields.endpoint.trim();
       }
       const entry = await connectCloudLibrary(name.trim(), "s3", providerConfig, credential);
       await window.maktaba.saveCloudCredential(entry.id, JSON.stringify(credential));
@@ -471,12 +467,7 @@ function S3ConnectModal({ opened, onClose, onConnected }: S3ConnectModalProps) {
 
   const reset = () => {
     setName("");
-    setBucket("");
-    setRegion("us-east-1");
-    setPrefix("");
-    setEndpoint("");
-    setAccessKeyId("");
-    setSecretAccessKey("");
+    setFields(EMPTY_S3_FIELDS);
     setTestResult(null);
     setError(null);
   };
@@ -496,39 +487,7 @@ function S3ConnectModal({ opened, onClose, onConnected }: S3ConnectModalProps) {
           value={name}
           onChange={(e) => setName(e.currentTarget.value)}
         />
-        <TextInput
-          label={t("librariesSettings.s3Bucket")}
-          value={bucket}
-          onChange={(e) => setBucket(e.currentTarget.value)}
-        />
-        <TextInput
-          label={t("librariesSettings.s3Region")}
-          value={region}
-          onChange={(e) => setRegion(e.currentTarget.value)}
-        />
-        <TextInput
-          label={t("librariesSettings.s3Prefix")}
-          placeholder={t("librariesSettings.s3PrefixPlaceholder")}
-          value={prefix}
-          onChange={(e) => setPrefix(e.currentTarget.value)}
-        />
-        <TextInput
-          label={t("librariesSettings.s3Endpoint")}
-          description={t("librariesSettings.s3EndpointDescription")}
-          placeholder={t("librariesSettings.s3EndpointPlaceholder")}
-          value={endpoint}
-          onChange={(e) => setEndpoint(e.currentTarget.value)}
-        />
-        <TextInput
-          label={t("librariesSettings.s3AccessKey")}
-          value={accessKeyId}
-          onChange={(e) => setAccessKeyId(e.currentTarget.value)}
-        />
-        <PasswordInput
-          label={t("librariesSettings.s3SecretKey")}
-          value={secretAccessKey}
-          onChange={(e) => setSecretAccessKey(e.currentTarget.value)}
-        />
+        <S3CredentialFields value={fields} onChange={(patch) => setFields((prev) => ({ ...prev, ...patch }))} />
 
         {error && (
           <Alert color="red" icon={<IconAlertCircle size={18} />}>
