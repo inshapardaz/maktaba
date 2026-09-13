@@ -264,6 +264,14 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
         var storage = _serviceProvider.GetRequiredService<IStorageProviderFactory>().Current;
         await storage.PullDatabaseAsync(ct);
 
+        // SQLite needs the parent folder to already exist before it can create a new file there.
+        // For "local" that's entry.Path itself (already created above). For a cloud library it's the
+        // local cache mirror folder - PullDatabaseAsync only creates it when a remote metadata.db
+        // actually exists to download; a brand-new library (nothing pushed yet) leaves it missing,
+        // which made EnsureCreatedAsync below fail with "SQLite Error 14: unable to open database
+        // file" the first time anyone connected to a fresh bucket/prefix.
+        Directory.CreateDirectory(Path.GetDirectoryName(DatabasePath)!);
+
         using var db = MaktabaDbContextFactory.Create(this);
         await db.Database.EnsureCreatedAsync(ct);
 

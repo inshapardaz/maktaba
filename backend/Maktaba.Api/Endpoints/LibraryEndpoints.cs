@@ -71,9 +71,9 @@ public static class LibraryEndpoints
                     [Maktaba.Cloud.S3ProviderOptions.RegionKey] = request.Region,
                     [Maktaba.Cloud.S3ProviderOptions.PrefixKey] = request.Prefix,
                 };
-                if (!string.IsNullOrWhiteSpace(request.ServiceUrl))
+                if (!string.IsNullOrWhiteSpace(request.Endpoint))
                 {
-                    config[Maktaba.Cloud.S3ProviderOptions.ServiceUrlKey] = request.ServiceUrl;
+                    config[Maktaba.Cloud.S3ProviderOptions.EndpointKey] = request.Endpoint;
                 }
 
                 var options = Maktaba.Cloud.S3ProviderOptions.FromConfig(config, request.Credential);

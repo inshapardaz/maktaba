@@ -7,8 +7,8 @@ namespace Maktaba.Cloud;
 /// <summary>
 /// First concrete cloud IStorageProvider - proves the abstraction end-to-end. Talks to Amazon S3
 /// itself by default, or any S3-compatible provider (MinIO, Backblaze B2, DigitalOcean Spaces,
-/// Cloudflare R2, a self-hosted object store, ...) when a ServiceUrl is configured - see
-/// S3ProviderOptions.ServiceUrl and BuildConfig below. Keeps a local cache mirror (via
+/// Cloudflare R2, a self-hosted object store, ...) when an Endpoint is configured - see
+/// S3ProviderOptions.Endpoint/BuildClientConfig. Keeps a local cache mirror (via
 /// ICloudCacheManager) in sync with the bucket/prefix; every method that returns a "local path"
 /// downloads into that mirror first if the file isn't cached yet. Deliberately presence-only
 /// caching for v1 (matches ICloudCacheManager's documented scope): once a file is cached, it's

@@ -183,10 +183,10 @@ public record OpenLibraryCredentialRequestDto(string? Credential);
 public record ConnectCloudLibraryRequestDto(
     string Name, string ProviderType, Dictionary<string, string> ProviderConfig, string Credential);
 
-// ServiceUrl is null/omitted to talk to Amazon S3 itself, or set to point at any other
-// S3-compatible provider (MinIO, Backblaze B2, DigitalOcean Spaces, Cloudflare R2, ...) - see
-// S3ProviderOptions.ServiceUrl.
-public record TestS3ConnectionRequestDto(string Bucket, string Region, string Prefix, string Credential, string? ServiceUrl = null);
+// Endpoint is null/omitted to talk to Amazon S3 itself, or a bare host (optionally with a port) to
+// point at any other S3-compatible provider (MinIO, Backblaze B2, DigitalOcean Spaces, Cloudflare
+// R2, ...) - see S3ProviderOptions.Endpoint.
+public record TestS3ConnectionRequestDto(string Bucket, string Region, string Prefix, string Credential, string? Endpoint = null);
 
 public record LibraryDto(string Path, string Id, string Name, bool PeriodicalsEnabled);
 

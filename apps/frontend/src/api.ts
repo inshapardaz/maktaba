@@ -325,16 +325,17 @@ export interface S3Credential {
   secretAccessKey: string;
 }
 
-// serviceUrl: leave empty to talk to Amazon S3 itself, or set it to point at any other
-// S3-compatible provider (MinIO, Backblaze B2, DigitalOcean Spaces, Cloudflare R2, a self-hosted
-// object store, ...) - see backend S3ProviderOptions.ServiceUrl.
+// endpoint: leave empty to talk to Amazon S3 itself, or a bare host (optionally with a port, e.g.
+// "s3.example.com" or "play.min.io:9000") to point at any other S3-compatible provider (MinIO,
+// Backblaze B2, DigitalOcean Spaces, Cloudflare R2, a self-hosted object store, ...) - see backend
+// S3ProviderOptions.Endpoint, which turns this into a full URL itself.
 export function testS3Connection(
-  bucket: string, region: string, prefix: string, credential: S3Credential, serviceUrl?: string,
+  bucket: string, region: string, prefix: string, credential: S3Credential, endpoint?: string,
 ): Promise<void> {
   return request<void>("/api/libraries/test-s3-connection", {
     method: "POST",
     body: JSON.stringify({
-      bucket, region, prefix, credential: JSON.stringify(credential), serviceUrl: serviceUrl || null,
+      bucket, region, prefix, credential: JSON.stringify(credential), endpoint: endpoint || null,
     }),
   });
 }
