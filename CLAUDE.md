@@ -1,8 +1,10 @@
 # Maktaba (مکتبہ) — project context for Claude
 
 Local-first ebook library manager (Calibre-alternative). Electron + React/TypeScript frontend,
-C#/.NET 9 backend running as a local HTTP sidecar. All data lives on the user's disk under a
-library folder the user picks; no accounts, no cloud.
+C#/.NET 9 backend running as a local HTTP sidecar. By default all data lives on the user's disk
+under a library folder the user picks, no accounts needed — a library can *optionally* live in an
+S3-compatible cloud storage bucket instead (see "Cloud storage" below), but local-first remains the
+default and every local workflow is unaffected by that being available.
 
 `docs/` is the bilingual (English + Urdu) end-user help site (VitePress; see "Help & onboarding"
 below) — it is **not** background/spec material for Claude. (Earlier revisions of this file
@@ -33,6 +35,9 @@ Backend (ASP.NET Core Minimal API, backend/Maktaba.sln)
   Maktaba.Data      — MaktabaDbContext (EF Core + SQLite), service implementations
                        (Services/*.cs), CoverLocator, EbookFileHelpers
   Maktaba.Metadata  — EPUB (VersOne.Epub) / PDF (PdfPig + PDFtoImage) metadata+cover extraction
+  Maktaba.Cloud     — cloud storage provider SDKs, isolated from Maktaba.Data the same way
+                       Maktaba.Metadata isolates format-parsing SDKs (S3StorageProvider today;
+                       OneDrive/Google Drive land the same way later) - see "Cloud storage" below
   Maktaba.Tests     — nearly empty (one placeholder test); this project has no real test suite,
                        verification is build + live HTTP/UI smoke testing (see below)
 ```
@@ -77,6 +82,74 @@ resolves the DB path from whichever is currently active, re-evaluated fresh per 
 switching libraries at runtime (no process restart) already works cleanly. Frontend surface:
 Settings → Libraries tab (`LibrariesSettings.tsx`) — switch/rename/relocate/resync/remove any
 registered library, only one active at a time.
+
+## Cloud storage
+
+A library's `ProviderType` (on its `LibraryRegistryEntry`, `Maktaba.Core/Services/ILibraryService.cs`)
+is `"local"` (default, unchanged behavior) or a cloud provider — `"s3"` today, covering both real
+Amazon S3 and any S3-compatible provider (MinIO/Backblaze B2/DigitalOcean Spaces/Cloudflare
+R2/IDrive e2/self-hosted), via an optional `Endpoint` in `ProviderConfig`
+(`Maktaba.Cloud/S3ProviderOptions.cs`). `IStorageProvider` (`Maktaba.Core/Services/IStorageProvider.cs`)
+is the abstraction every file-touching service goes through instead of raw `System.IO` -
+`LocalFileSystemProvider` is a pass-through for local libraries; `S3StorageProvider` keeps a local
+cache mirror (`ICloudCacheManager`, under `{userData}/CloudCache/{libraryId}/`) in sync with the
+bucket, so reads/writes above the provider layer still just work with plain local paths (offline
+reading of already-cached books included). `StorageProviderFactory` resolves the right one per the
+active library.
+
+**metadata.db stays local even for a cloud library** — only pulled/pushed as a whole file
+(`IStorageProvider.PullDatabaseAsync`/`PushDatabaseAsync`), pulled on library open, pushed on a
+timer (`CloudSyncLifecycleService`, every 5 min + best-effort on shutdown) and via the manual
+"sync to cloud now" button (`LibrarySyncContext.tsx`, confirms then blocks the whole app behind a
+plain page for the duration — see below for why). Concurrency model is single-writer,
+last-write-wins — no reconciliation logic, the file is just replaced wholesale, so don't have the
+same cloud library open on two devices at once (an accidental double-open silently loses whichever
+side pushes second).
+
+**Credentials never reach this backend's disk.** The Electron main process encrypts them via
+`safeStorage` (`apps/desktop/src/native.ts`'s `maktaba:*-cloud-credential` IPC, keyed by an opaque
+`CredentialRef` — currently always just the library's own id) - this .NET process can't decrypt
+that blob itself, so the renderer decrypts it and passes the plaintext over the loopback HTTP
+sidecar each time it's needed (connecting a library, reopening one after every backend restart -
+`ICloudCredentialCache` is in-memory-only, cleared every restart). `App.tsx`'s `cloudReconnectQuery`
+does this automatically on startup for whichever library was last active; if that fails (dead
+network, revoked credential, ...) the error screen embeds the same library list Settings →
+Libraries shows, so switching to a different library never requires fighting through Settings
+first - a real gap found and fixed during Phase 2 development, see git history on the
+`inshapardaz/maktaba` "S3 Library Support" PR for the full trail of what broke and why.
+
+**Known sharp edge**: Microsoft.Data.Sqlite defaults to WAL mode, which keeps a memory-mapped
+`{db}-shm` file (plus a `{db}-wal` journal) open via the connection pool for a while after every
+`MaktabaDbContext` using them is disposed - overwriting `metadata.db` (on pull) or reading it raw
+(on push) without first calling `SqliteConnection.ClearAllPools()` and clearing stale `-wal`/`-shm`
+sidecars fails on Windows with a *persistent* (not transient) `IOException`/`UnauthorizedAccessException`
+that no retry count fixes. Both `LibraryService.ActivateAsync` (pull) and the `/sync-now` endpoint
+(push) do this already for any non-local provider - if a new code path ever touches
+`metadata.db`'s bytes directly for a cloud library, it needs the same treatment.
+
+Frontend surface: `LibrariesSettings.tsx`'s "Connect S3-compatible library…" form (bucket/region/
+subfolder/endpoint/access key/secret, with a "Test connection" step), a provider badge, and a
+sync-to-cloud button - all only ever rendered for a non-local library, so a local-only user sees
+nothing new. See `docs/en/libraries.md`'s "Cloud libraries" section for the end-user-facing
+explanation of all of this.
+
+**Migration wizard** (`MigrationWizard.tsx`, Stepper: Target → Review → Migrate → Finish) moves the
+*active* library to a new provider - `ILibraryMigrationService`/`LibraryMigrationService`
+(`Maktaba.Data/Services/LibraryMigrationService.cs`) runs the copy as a background `Task.Run`,
+tracked via an in-memory `MigrationProgressSnapshot` polled the same way rescan progress is
+(`GET /api/libraries/migrate/status`). Walks every file via `IStorageProvider.EnumerateAsync`
+(recursing manually - it only ever returns one level), copies each via
+`GetLocalPathAsync`(source)+`NotifyWrittenAsync`(target) - deliberately built on `IStorageProvider`'s
+existing methods rather than adding a new "copy bytes" one. Resumable the same way
+`S3StorageProvider`'s own caching is: a file already present at the target
+(`IStorageProvider.ExistsAsync`, which checks the remote store, not just a local cache) is skipped.
+`metadata.db` is migrated separately via each provider's own `Pull`/`PushDatabaseAsync`, never as a
+plain file copy. Never touches the library registry until a verified migration's `CompleteAsync`
+runs (the wizard's Finish step) - `ILibraryService.SwitchProviderAsync` re-points the *same*
+library id at the new provider (so DB-only data survives untouched), and optionally deletes the
+old *local* folder (never a previous cloud source's remote objects - out of scope for a checkbox).
+`IStorageProviderFactory.CreateForProvider` is what makes an ad-hoc target provider possible before
+the library is actually registered under that provider type.
 
 ## IDs
 

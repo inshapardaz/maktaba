@@ -190,6 +190,14 @@ public record TestS3ConnectionRequestDto(string Bucket, string Region, string Pr
 
 public record LibraryDto(string Path, string Id, string Name, bool PeriodicalsEnabled, string ProviderType = "local");
 
+// Same shape as ConnectCloudLibraryRequestDto minus Name - a migration targets the *active*
+// library's existing name/id, it doesn't create a new one.
+public record StartMigrationRequestDto(string ProviderType, Dictionary<string, string> ProviderConfig, string Credential);
+
+public record MigrationStatusDto(string State, int Processed, int Total, string? CurrentFile, string? ErrorMessage);
+
+public record CompleteMigrationRequestDto(bool DeleteSource);
+
 public record LibraryEntryDto(string Id, string Name, string Path, bool IsActive, bool PeriodicalsEnabled, string ProviderType = "local");
 
 public record RenameLibraryRequestDto(string Name);

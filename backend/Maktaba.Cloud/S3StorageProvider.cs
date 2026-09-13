@@ -34,7 +34,17 @@ public class S3StorageProvider(
     private string ToKey(string relativePath)
     {
         var normalized = relativePath.Replace('\\', '/').Trim('/');
-        return string.IsNullOrEmpty(options.Prefix) ? normalized : $"{options.Prefix.Trim('/')}/{normalized}";
+        if (string.IsNullOrEmpty(options.Prefix))
+        {
+            return normalized;
+        }
+
+        var prefix = options.Prefix.Trim('/');
+        // Don't append "/" + "" for the root ("" relativePath) - EnumerateAsync appends its own "/"
+        // to whatever this returns to build a listing prefix, and a trailing slash here would double
+        // it up into "prefix//", which matches no keys at all (every real object lives under the
+        // single-slash "prefix/..."), silently making the whole bucket look empty.
+        return normalized.Length == 0 ? prefix : $"{prefix}/{normalized}";
     }
 
     public async Task<string> GetLocalPathAsync(string relativePath, CancellationToken ct = default)
@@ -130,13 +140,11 @@ public class S3StorageProvider(
         }
     }
 
-    public async Task<bool> ExistsAsync(string relativePath, CancellationToken ct = default)
-    {
-        if (cache.Exists(libraryId, relativePath))
-        {
-            return true;
-        }
+    public async Task<bool> ExistsAsync(string relativePath, CancellationToken ct = default) =>
+        cache.Exists(libraryId, relativePath) || await ExistsRemoteAsync(relativePath, ct);
 
+    public async Task<bool> ExistsRemoteAsync(string relativePath, CancellationToken ct = default)
+    {
         try
         {
             await _client.GetObjectMetadataAsync(options.Bucket, ToKey(relativePath), ct);
@@ -153,7 +161,7 @@ public class S3StorageProvider(
                 Prefix = prefix.Length > 0 ? prefix + "/" : prefix,
                 MaxKeys = 1,
             }, ct);
-            return response.S3Objects.Count > 0;
+            return response.S3Objects is { Count: > 0 };
         }
     }
 
@@ -174,12 +182,12 @@ public class S3StorageProvider(
                 ContinuationToken = continuationToken,
             }, ct);
 
-            foreach (var commonPrefix in response.CommonPrefixes)
+            foreach (var commonPrefix in response.CommonPrefixes ?? [])
             {
                 yield return new StorageEntry(StripPrefix(commonPrefix.TrimEnd('/')), IsDirectory: true);
             }
 
-            foreach (var obj in response.S3Objects)
+            foreach (var obj in response.S3Objects ?? [])
             {
                 if (obj.Key != listPrefix)
                 {
@@ -207,6 +215,12 @@ public class S3StorageProvider(
 
     public Task PushDatabaseAsync(CancellationToken ct = default) => NotifyWrittenAsync(DatabaseRelativePath, ct);
 
+    // Diagnostic-only - surfaced in error messages (e.g. migration verification failures) so a
+    // mismatch between "what the user configured" and "what actually got checked" is visible
+    // without needing to add a debugger.
+    public override string ToString() =>
+        $"s3 bucket={options.Bucket} prefix={(string.IsNullOrEmpty(options.Prefix) ? "(none)" : options.Prefix)} endpoint={options.Endpoint ?? "(aws default)"}";
+
     private async Task<List<string>> ListAllKeysAsync(string prefix, CancellationToken ct)
     {
         var keys = new List<string>();
@@ -221,7 +235,7 @@ public class S3StorageProvider(
                 ContinuationToken = continuationToken,
             }, ct);
 
-            keys.AddRange(response.S3Objects.Select(o => o.Key));
+            keys.AddRange((response.S3Objects ?? []).Select(o => o.Key));
             continuationToken = response.IsTruncated == true ? response.NextContinuationToken : null;
         } while (continuationToken is not null);
 

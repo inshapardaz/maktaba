@@ -75,6 +75,22 @@ public interface ILibraryService
     /// library, switches to another registered one if any remain, otherwise leaves none open.
     /// Returns false if no such library was registered.</summary>
     Task<bool> RemoveAsync(string id, CancellationToken ct = default);
+
+    /// <summary>
+    /// Points an *existing* registered library at a new provider - the completion step of the
+    /// migration wizard (Cloud: Phase 3), after a migration has copied everything over and been
+    /// verified. The library keeps its id (and therefore its DB-only data, ratings/tags/etc.) -
+    /// only where its files live changes. <paramref name="credential"/> is cached the same way
+    /// <see cref="OpenCloudLibraryAsync"/>'s is; pass null when switching *to* "local" (no
+    /// credential needed). Re-activates in place if this is the currently open library. Returns
+    /// null if no such library is registered.
+    /// </summary>
+    Task<LibraryRegistryEntry?> SwitchProviderAsync(
+        string id,
+        string providerType,
+        IReadOnlyDictionary<string, string>? providerConfig,
+        string? credential,
+        CancellationToken ct = default);
 }
 
 /// <summary>

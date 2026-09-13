@@ -10,6 +10,35 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
 {
     private const string DatabaseFileName = "metadata.db";
 
+    // A cloud library has no real folder, so LibraryRegistryEntry.Path (shown verbatim as the
+    // secondary line under a library's name in Settings → Libraries) is a synthetic display string
+    // rather than something ever passed to System.IO - built here from providerConfig so it reads
+    // as an actual address (the S3 endpoint/bucket, plus the subfolder if one was set) instead of
+    // the provider type and the library's own name, which told the user nothing they didn't already
+    // see on the line above it.
+    private static string BuildCloudDisplayPath(string providerType, string name, IReadOnlyDictionary<string, string>? providerConfig)
+    {
+        if (providerType != "s3" || providerConfig is null)
+        {
+            return $"{providerType}://{name}";
+        }
+
+        var bucket = providerConfig.GetValueOrDefault("bucket") ?? name;
+        var region = providerConfig.GetValueOrDefault("region");
+        var prefix = providerConfig.GetValueOrDefault("prefix");
+        var host = providerConfig.GetValueOrDefault("endpoint") is { Length: > 0 } endpoint
+            ? endpoint
+            : $"s3.{region}.amazonaws.com";
+
+        var display = $"{host}/{bucket}";
+        if (!string.IsNullOrEmpty(prefix))
+        {
+            display += $"/{prefix.Trim('/')}";
+        }
+
+        return $"s3://{display}";
+    }
+
     // Resolved lazily (not constructor-injected) to avoid a circular dependency:
     // IStorageProviderFactory itself depends on ILibraryService, which this class implements.
     private readonly IServiceProvider _serviceProvider;
@@ -81,6 +110,21 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
             if (config.Libraries is { Count: > 0 } libraries)
             {
                 _libraries.AddRange(libraries);
+            }
+
+            // Refreshes any cloud entry's synthetic display Path to the current
+            // BuildCloudDisplayPath format on every load, rather than only when it's first
+            // connected/switched - so an improvement to that format (e.g. showing the actual
+            // endpoint/bucket/folder instead of just the provider type and library name) reaches
+            // libraries that were already registered before the change, without the user needing to
+            // reconnect or migrate again.
+            for (var i = 0; i < _libraries.Count; i++)
+            {
+                var entry = _libraries[i];
+                if (entry.ProviderType != "local")
+                {
+                    _libraries[i] = entry with { Path = BuildCloudDisplayPath(entry.ProviderType, entry.Name, entry.ProviderConfig) };
+                }
             }
 
             // Migrates a pre-multi-library config.json (which only ever recorded a single
@@ -163,13 +207,60 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
         // frontend already has on hand (no separate id-generation step needed when it calls
         // window.maktaba.saveCloudCredential after a successful connect).
         var entry = new LibraryRegistryEntry(
-            id, name, Path: $"{providerType}://{name}",
+            id, name, Path: BuildCloudDisplayPath(providerType, name, providerConfig),
             ProviderType: providerType, ProviderConfig: providerConfig, CredentialRef: id);
         _libraries.Add(entry);
 
         _credentialCache.Set(entry.Id, credential);
         await ActivateAsync(entry, ct);
         return new LibraryInfo(entry.Path);
+    }
+
+    public async Task<LibraryRegistryEntry?> SwitchProviderAsync(
+        string id, string providerType, IReadOnlyDictionary<string, string>? providerConfig, string? credential,
+        CancellationToken ct = default)
+    {
+        var index = _libraries.FindIndex(l => l.Id == id);
+        if (index < 0)
+        {
+            return null;
+        }
+
+        if (credential is not null)
+        {
+            _credentialCache.Set(id, credential);
+        }
+
+        var updated = _libraries[index] with
+        {
+            ProviderType = providerType,
+            ProviderConfig = providerConfig,
+            // CredentialRef mirrors OpenCloudLibraryAsync's own convention (the library's own id) -
+            // null for "local", which needs no credential at all.
+            CredentialRef = providerType == "local" ? null : id,
+            // Path is a synthetic display string for any non-local provider (see
+            // BuildCloudDisplayPath/OpenCloudLibraryAsync) - only meaningful as a real folder for
+            // "local", and migrating *to* local isn't supported yet (no path to point it at), so
+            // this only ever produces a sensible value for a cloud target.
+            Path = providerType == "local" ? _libraries[index].Path : BuildCloudDisplayPath(providerType, _libraries[index].Name, providerConfig),
+        };
+        _libraries[index] = updated;
+
+        if (CurrentLibraryId == id)
+        {
+            // The active library's storage just changed out from under itself - re-activate in
+            // place so LibraryRootPath/DatabasePath (and the schema-verified flag) track it. Safe
+            // to do unconditionally here: the migration wizard only calls this after a verified
+            // migration already copied everything (including metadata.db) to the new provider, so
+            // this pull is just confirming what's already there, not doing the real work.
+            await ActivateAsync(updated, ct);
+        }
+        else
+        {
+            SaveConfig();
+        }
+
+        return updated;
     }
 
     public Task<LibraryRegistryEntry?> RenameAsync(string id, string name, CancellationToken ct = default)

@@ -22,6 +22,7 @@ import {
   IconCloud,
   IconCloudUpload,
   IconFolderOpen,
+  IconKey,
   IconPencil,
   IconPlus,
   IconRefresh,
@@ -36,6 +37,7 @@ import {
   relocateLibrary,
   removeLibrary,
   renameLibrary,
+  reopenCloudLibrary,
   setLibraryPeriodicalsEnabled,
   testS3Connection,
   type LibraryEntry,
@@ -45,6 +47,8 @@ import { useLanguage } from "../i18n/LanguageContext";
 import { invalidateLibraryQueries } from "../queries";
 import { useRescan } from "../RescanContext";
 import { useLibrarySync } from "../LibrarySyncContext";
+import { EMPTY_S3_FIELDS, isS3FieldsComplete, S3CredentialFields, type S3FieldsValue } from "./S3CredentialFields";
+import { MigrationWizard } from "./MigrationWizard";
 
 // Provider names are proper nouns/brand names, not translated - same convention as file format
 // labels (EPUB/PDF/...) elsewhere in this app. Only "local" is reachable today; the rest land with
@@ -194,6 +198,8 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
   };
 
   const [s3ModalOpen, setS3ModalOpen] = useState(false);
+  const [migratingLibraryId, setMigratingLibraryId] = useState<string | null>(null);
+  const [reconnectingEntry, setReconnectingEntry] = useState<LibraryEntry | null>(null);
 
   const handleS3Connected = () => {
     setS3ModalOpen(false);
@@ -218,6 +224,24 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
       </Group>
 
       <S3ConnectModal opened={s3ModalOpen} onClose={() => setS3ModalOpen(false)} onConnected={handleS3Connected} />
+      <MigrationWizard
+        opened={migratingLibraryId !== null}
+        libraryId={migratingLibraryId ?? ""}
+        onClose={() => setMigratingLibraryId(null)}
+        onActiveLibraryChanged={() => {
+          invalidateLibraries();
+          refreshActiveLibrary();
+        }}
+      />
+      <ReconnectModal
+        entry={reconnectingEntry}
+        onClose={() => setReconnectingEntry(null)}
+        onReconnected={() => {
+          setReconnectingEntry(null);
+          invalidateLibraries();
+          refreshActiveLibrary();
+        }}
+      />
 
       {addError && (
         <Alert color="red" icon={<IconAlertCircle size={18} />} title={t("settings.changeLibraryErrorTitle")}>
@@ -339,6 +363,18 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
                     </ActionIcon>
                   </Tooltip>
                 )}
+                {entry.isActive && entry.providerType === "local" && (
+                  <Tooltip label={t("librariesSettings.migrateToCloud")}>
+                    <ActionIcon
+                      variant="subtle"
+                      color="gray"
+                      onClick={() => setMigratingLibraryId(entry.id)}
+                      aria-label={t("librariesSettings.migrateToCloud")}
+                    >
+                      <IconCloud size={14} />
+                    </ActionIcon>
+                  </Tooltip>
+                )}
                 {entry.isActive && entry.providerType !== "local" && (
                   <Tooltip label={t("librariesSettings.syncNow")}>
                     <ActionIcon
@@ -349,6 +385,18 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
                       aria-label={t("librariesSettings.syncNow")}
                     >
                       <IconCloudUpload size={14} />
+                    </ActionIcon>
+                  </Tooltip>
+                )}
+                {entry.providerType !== "local" && (
+                  <Tooltip label={t("librariesSettings.reconnect")}>
+                    <ActionIcon
+                      variant="subtle"
+                      color="gray"
+                      onClick={() => setReconnectingEntry(entry)}
+                      aria-label={t("librariesSettings.reconnect")}
+                    >
+                      <IconKey size={14} />
                     </ActionIcon>
                   </Tooltip>
                 )}
@@ -427,21 +475,15 @@ interface S3ConnectModalProps {
 function S3ConnectModal({ opened, onClose, onConnected }: S3ConnectModalProps) {
   const { t } = useLanguage();
   const [name, setName] = useState("");
-  const [bucket, setBucket] = useState("");
-  const [region, setRegion] = useState("us-east-1");
-  const [prefix, setPrefix] = useState("");
-  const [endpoint, setEndpoint] = useState("");
-  const [accessKeyId, setAccessKeyId] = useState("");
-  const [secretAccessKey, setSecretAccessKey] = useState("");
+  const [fields, setFields] = useState<S3FieldsValue>(EMPTY_S3_FIELDS);
   const [testResult, setTestResult] = useState<"success" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const credential: S3Credential = { accessKeyId, secretAccessKey };
-  const canSubmit = name.trim().length > 0 && bucket.trim().length > 0 && region.trim().length > 0 &&
-    accessKeyId.length > 0 && secretAccessKey.length > 0;
+  const credential: S3Credential = { accessKeyId: fields.accessKeyId, secretAccessKey: fields.secretAccessKey };
+  const canSubmit = name.trim().length > 0 && isS3FieldsComplete(fields);
 
   const testMutation = useMutation({
-    mutationFn: () => testS3Connection(bucket.trim(), region.trim(), prefix.trim(), credential, endpoint.trim()),
+    mutationFn: () => testS3Connection(fields.bucket.trim(), fields.region.trim(), fields.prefix.trim(), credential, fields.endpoint.trim()),
     onSuccess: () => {
       setTestResult("success");
       setError(null);
@@ -454,9 +496,11 @@ function S3ConnectModal({ opened, onClose, onConnected }: S3ConnectModalProps) {
 
   const connectMutation = useMutation({
     mutationFn: async () => {
-      const providerConfig: Record<string, string> = { bucket: bucket.trim(), region: region.trim(), prefix: prefix.trim() };
-      if (endpoint.trim()) {
-        providerConfig.endpoint = endpoint.trim();
+      const providerConfig: Record<string, string> = {
+        bucket: fields.bucket.trim(), region: fields.region.trim(), prefix: fields.prefix.trim(),
+      };
+      if (fields.endpoint.trim()) {
+        providerConfig.endpoint = fields.endpoint.trim();
       }
       const entry = await connectCloudLibrary(name.trim(), "s3", providerConfig, credential);
       await window.maktaba.saveCloudCredential(entry.id, JSON.stringify(credential));
@@ -471,12 +515,7 @@ function S3ConnectModal({ opened, onClose, onConnected }: S3ConnectModalProps) {
 
   const reset = () => {
     setName("");
-    setBucket("");
-    setRegion("us-east-1");
-    setPrefix("");
-    setEndpoint("");
-    setAccessKeyId("");
-    setSecretAccessKey("");
+    setFields(EMPTY_S3_FIELDS);
     setTestResult(null);
     setError(null);
   };
@@ -496,39 +535,7 @@ function S3ConnectModal({ opened, onClose, onConnected }: S3ConnectModalProps) {
           value={name}
           onChange={(e) => setName(e.currentTarget.value)}
         />
-        <TextInput
-          label={t("librariesSettings.s3Bucket")}
-          value={bucket}
-          onChange={(e) => setBucket(e.currentTarget.value)}
-        />
-        <TextInput
-          label={t("librariesSettings.s3Region")}
-          value={region}
-          onChange={(e) => setRegion(e.currentTarget.value)}
-        />
-        <TextInput
-          label={t("librariesSettings.s3Prefix")}
-          placeholder={t("librariesSettings.s3PrefixPlaceholder")}
-          value={prefix}
-          onChange={(e) => setPrefix(e.currentTarget.value)}
-        />
-        <TextInput
-          label={t("librariesSettings.s3Endpoint")}
-          description={t("librariesSettings.s3EndpointDescription")}
-          placeholder={t("librariesSettings.s3EndpointPlaceholder")}
-          value={endpoint}
-          onChange={(e) => setEndpoint(e.currentTarget.value)}
-        />
-        <TextInput
-          label={t("librariesSettings.s3AccessKey")}
-          value={accessKeyId}
-          onChange={(e) => setAccessKeyId(e.currentTarget.value)}
-        />
-        <PasswordInput
-          label={t("librariesSettings.s3SecretKey")}
-          value={secretAccessKey}
-          onChange={(e) => setSecretAccessKey(e.currentTarget.value)}
-        />
+        <S3CredentialFields value={fields} onChange={(patch) => setFields((prev) => ({ ...prev, ...patch }))} />
 
         {error && (
           <Alert color="red" icon={<IconAlertCircle size={18} />}>
@@ -552,6 +559,89 @@ function S3ConnectModal({ opened, onClose, onConnected }: S3ConnectModalProps) {
           </Button>
           <Button disabled={!canSubmit} loading={connectMutation.isPending} onClick={() => connectMutation.mutate()}>
             {t("librariesSettings.s3Connect")}
+          </Button>
+        </Group>
+      </Stack>
+    </Modal>
+  );
+}
+
+interface ReconnectModalProps {
+  // null = closed. Kept as the whole entry (not just an id) so the modal can show the library's
+  // name without a separate lookup, and so closing it doesn't need to clear a second piece of state.
+  entry: LibraryEntry | null;
+  onClose: () => void;
+  onReconnected: () => void;
+}
+
+// Re-supplies an already-registered cloud library's credential - needed after rotating an access
+// key with the storage provider, or to recover a library whose saved credential is missing/invalid
+// (see docs/en/libraries.md's "If a cloud library won't reconnect"). Unlike S3ConnectModal, this
+// only asks for the access key/secret - bucket/region/prefix/endpoint are already on the registry
+// entry and aren't being changed here.
+function ReconnectModal({ entry, onClose, onReconnected }: ReconnectModalProps) {
+  const { t } = useLanguage();
+  const [accessKeyId, setAccessKeyId] = useState("");
+  const [secretAccessKey, setSecretAccessKey] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const reset = () => {
+    setAccessKeyId("");
+    setSecretAccessKey("");
+    setError(null);
+  };
+
+  const reconnectMutation = useMutation({
+    mutationFn: async () => {
+      if (!entry) {
+        return;
+      }
+      const credential: S3Credential = { accessKeyId, secretAccessKey };
+      await reopenCloudLibrary(entry.id, credential);
+      await window.maktaba.saveCloudCredential(entry.id, JSON.stringify(credential));
+    },
+    onSuccess: () => {
+      reset();
+      onReconnected();
+    },
+    onError: (err) => setError(err instanceof Error ? err.message : String(err)),
+  });
+
+  const canSubmit = accessKeyId.trim().length > 0 && secretAccessKey.length > 0;
+
+  return (
+    <Modal
+      opened={entry !== null}
+      onClose={() => {
+        reset();
+        onClose();
+      }}
+      title={entry ? t("librariesSettings.reconnectTitle", { name: entry.name }) : ""}
+    >
+      <Stack gap="sm">
+        <Text size="sm" c="dimmed">
+          {t("librariesSettings.reconnectDescription")}
+        </Text>
+        <TextInput
+          label={t("librariesSettings.s3AccessKey")}
+          value={accessKeyId}
+          onChange={(e) => setAccessKeyId(e.currentTarget.value)}
+        />
+        <PasswordInput
+          label={t("librariesSettings.s3SecretKey")}
+          value={secretAccessKey}
+          onChange={(e) => setSecretAccessKey(e.currentTarget.value)}
+        />
+
+        {error && (
+          <Alert color="red" icon={<IconAlertCircle size={18} />}>
+            {error}
+          </Alert>
+        )}
+
+        <Group justify="flex-end">
+          <Button disabled={!canSubmit} loading={reconnectMutation.isPending} onClick={() => reconnectMutation.mutate()}>
+            {t("librariesSettings.reconnectButton")}
           </Button>
         </Group>
       </Stack>

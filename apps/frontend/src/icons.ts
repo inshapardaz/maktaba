@@ -38,6 +38,7 @@ import {
   Hash,
   House,
   Info,
+  KeyRound,
   Languages,
   LayoutGrid,
   Layers,
@@ -117,6 +118,7 @@ export const IconFolderOpen = withStrokeWidth(FolderOpen);
 export const IconHash = withStrokeWidth(Hash);
 export const IconHelpCircle = withStrokeWidth(CircleQuestionMark);
 export const IconHome2 = withStrokeWidth(House);
+export const IconKey = withStrokeWidth(KeyRound);
 export const IconInfoCircle = withStrokeWidth(Info);
 export const IconLanguage = withStrokeWidth(Languages);
 export const IconLayoutBottombarExpand = withStrokeWidth(PanelBottomOpen);
