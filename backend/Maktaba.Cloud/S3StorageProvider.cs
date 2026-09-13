@@ -174,12 +174,12 @@ public class S3StorageProvider(
                 ContinuationToken = continuationToken,
             }, ct);
 
-            foreach (var commonPrefix in response.CommonPrefixes)
+            foreach (var commonPrefix in response.CommonPrefixes ?? [])
             {
                 yield return new StorageEntry(StripPrefix(commonPrefix.TrimEnd('/')), IsDirectory: true);
             }
 
-            foreach (var obj in response.S3Objects)
+            foreach (var obj in response.S3Objects ?? [])
             {
                 if (obj.Key != listPrefix)
                 {
@@ -221,7 +221,7 @@ public class S3StorageProvider(
                 ContinuationToken = continuationToken,
             }, ct);
 
-            keys.AddRange(response.S3Objects.Select(o => o.Key));
+            keys.AddRange((response.S3Objects ?? []).Select(o => o.Key));
             continuationToken = response.IsTruncated == true ? response.NextContinuationToken : null;
         } while (continuationToken is not null);
 
