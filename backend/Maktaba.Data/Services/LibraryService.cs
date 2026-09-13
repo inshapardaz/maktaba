@@ -2,6 +2,7 @@ using System.Text.Json;
 using Maktaba.Core.Services;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Maktaba.Data.Services;
 
@@ -9,6 +10,9 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
 {
     private const string DatabaseFileName = "metadata.db";
 
+    // Resolved lazily (not constructor-injected) to avoid a circular dependency:
+    // IStorageProviderFactory itself depends on ILibraryService, which this class implements.
+    private readonly IServiceProvider _serviceProvider;
     private readonly string _configFilePath;
     private readonly List<LibraryRegistryEntry> _libraries = [];
     private readonly SemaphoreSlim _schemaCheckLock = new(1, 1);
@@ -23,8 +27,10 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
     public string? DatabasePath =>
         LibraryRootPath is null ? null : Path.Combine(LibraryRootPath, DatabaseFileName);
 
-    public LibraryService()
+    public LibraryService(IServiceProvider serviceProvider)
     {
+        _serviceProvider = serviceProvider;
+
         var appDataDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "Maktaba");
@@ -200,6 +206,14 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
         LibraryRootPath = entry.Path;
         CurrentLibraryId = entry.Id;
         _schemaVerified = false;
+
+        // Cloud Sync Core: pull the remote copy of metadata.db (if any) into the local cache before
+        // EF ever opens it, so an existing cloud library's DB isn't shadowed by a freshly-created
+        // empty one below. A no-op for a local library (LocalFileSystemProvider.PullDatabaseAsync
+        // just returns DatabasePath) - CurrentLibraryId/LibraryRootPath are already set above, so
+        // the factory resolves the right provider for the library being activated.
+        var storage = _serviceProvider.GetRequiredService<IStorageProviderFactory>().Current;
+        await storage.PullDatabaseAsync(ct);
 
         using var db = MaktabaDbContextFactory.Create(this);
         await db.Database.EnsureCreatedAsync(ct);
