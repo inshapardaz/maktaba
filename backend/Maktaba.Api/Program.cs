@@ -28,6 +28,7 @@ builder.Services.AddSingleton<ILibraryPathProvider>(sp => sp.GetRequiredService<
 
 builder.Services.AddSingleton<LocalFileSystemProvider>();
 builder.Services.AddSingleton<IStorageProviderFactory, StorageProviderFactory>();
+builder.Services.AddSingleton<ICloudCacheManager, CloudCacheManager>();
 
 builder.Services.AddScoped(sp => MaktabaDbContextFactory.Create(sp.GetRequiredService<ILibraryPathProvider>()));
 
