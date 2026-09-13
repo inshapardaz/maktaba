@@ -418,6 +418,11 @@ const en = {
   "librariesSettings.empty": "No libraries yet.",
   "librariesSettings.manage": "Manage libraries…",
   "librariesSettings.periodicals": "Periodicals feature",
+  "librariesSettings.syncNow": "Sync now",
+  "librariesSettings.syncStatus.idle": "Not yet synced",
+  "librariesSettings.syncStatus.syncing": "Syncing…",
+  "librariesSettings.syncStatus.synced": "Synced at {time}",
+  "librariesSettings.syncStatus.error": "Sync failed: {message}",
 
   "home.continueReading": "Continue Reading",
   "home.currentlyReading": "Currently Reading",
@@ -882,6 +887,11 @@ const ur: TranslationDict = {
   "librariesSettings.empty": "ابھی کوئی لائبریری موجود نہیں۔",
   "librariesSettings.manage": "لائبریریاں منظم کریں…",
   "librariesSettings.periodicals": "متواتر اشاعتوں کی خصوصیت",
+  "librariesSettings.syncNow": "ابھی ہم آہنگ کریں",
+  "librariesSettings.syncStatus.idle": "ابھی تک ہم آہنگ نہیں ہوئی",
+  "librariesSettings.syncStatus.syncing": "ہم آہنگ ہو رہی ہے…",
+  "librariesSettings.syncStatus.synced": "{time} پر ہم آہنگ ہوئی",
+  "librariesSettings.syncStatus.error": "ہم آہنگی ناکام: {message}",
 
   "home.continueReading": "مطالعہ جاری رکھیں",
   "home.currentlyReading": "زیرِ مطالعہ کتابیں",

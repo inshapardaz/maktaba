@@ -177,7 +177,7 @@ public record OpenLibraryRequest(string Path);
 
 public record LibraryDto(string Path, string Id, string Name, bool PeriodicalsEnabled);
 
-public record LibraryEntryDto(string Id, string Name, string Path, bool IsActive, bool PeriodicalsEnabled);
+public record LibraryEntryDto(string Id, string Name, string Path, bool IsActive, bool PeriodicalsEnabled, string ProviderType = "local");
 
 public record RenameLibraryRequestDto(string Name);
 

@@ -76,7 +76,7 @@ public static class LibraryEndpoints
         group.MapGet("", (ILibraryService libraryService) =>
         {
             var entries = libraryService.Libraries
-                .Select(l => new LibraryEntryDto(l.Id, l.Name, l.Path, l.Id == libraryService.CurrentLibraryId, l.PeriodicalsEnabled));
+                .Select(l => new LibraryEntryDto(l.Id, l.Name, l.Path, l.Id == libraryService.CurrentLibraryId, l.PeriodicalsEnabled, l.ProviderType));
             return Results.Ok(entries);
         });
 
@@ -103,7 +103,7 @@ public static class LibraryEndpoints
             var entry = await libraryService.RenameAsync(id, name, ct);
             return entry is null
                 ? Results.NotFound()
-                : Results.Ok(new LibraryEntryDto(entry.Id, entry.Name, entry.Path, entry.Id == libraryService.CurrentLibraryId, entry.PeriodicalsEnabled));
+                : Results.Ok(new LibraryEntryDto(entry.Id, entry.Name, entry.Path, entry.Id == libraryService.CurrentLibraryId, entry.PeriodicalsEnabled, entry.ProviderType));
         });
 
         group.MapPut("/{id}/path", async (string id, RelocateLibraryRequestDto request, ILibraryService libraryService, CancellationToken ct) =>
@@ -116,7 +116,7 @@ public static class LibraryEndpoints
             var entry = await libraryService.RelocateAsync(id, request.Path, ct);
             return entry is null
                 ? Results.NotFound()
-                : Results.Ok(new LibraryEntryDto(entry.Id, entry.Name, entry.Path, entry.Id == libraryService.CurrentLibraryId, entry.PeriodicalsEnabled));
+                : Results.Ok(new LibraryEntryDto(entry.Id, entry.Name, entry.Path, entry.Id == libraryService.CurrentLibraryId, entry.PeriodicalsEnabled, entry.ProviderType));
         });
 
         group.MapPut("/{id}/periodicals-enabled", async (
@@ -125,7 +125,7 @@ public static class LibraryEndpoints
             var entry = await libraryService.SetPeriodicalsEnabledAsync(id, request.Enabled, ct);
             return entry is null
                 ? Results.NotFound()
-                : Results.Ok(new LibraryEntryDto(entry.Id, entry.Name, entry.Path, entry.Id == libraryService.CurrentLibraryId, entry.PeriodicalsEnabled));
+                : Results.Ok(new LibraryEntryDto(entry.Id, entry.Name, entry.Path, entry.Id == libraryService.CurrentLibraryId, entry.PeriodicalsEnabled, entry.ProviderType));
         });
 
         group.MapDelete("/{id}", async (string id, ILibraryService libraryService, CancellationToken ct) =>

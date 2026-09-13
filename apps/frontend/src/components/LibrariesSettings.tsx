@@ -25,6 +25,7 @@ import {
   IconX,
 } from "../icons";
 import {
+  getSyncStatus,
   listLibraries,
   openLibrary,
   openLibraryById,
@@ -32,11 +33,22 @@ import {
   removeLibrary,
   renameLibrary,
   setLibraryPeriodicalsEnabled,
+  syncNow,
   type LibraryEntry,
 } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
 import { invalidateLibraryQueries } from "../queries";
 import { useRescan } from "../RescanContext";
+
+// Provider names are proper nouns/brand names, not translated - same convention as file format
+// labels (EPUB/PDF/...) elsewhere in this app. Only "local" is reachable today; the rest land with
+// their own phases (S3 first).
+const PROVIDER_LABELS: Record<string, string> = {
+  s3: "Amazon S3",
+  onedrive: "OneDrive",
+  googledrive: "Google Drive",
+  nawishta: "Nawishta",
+};
 
 interface LibrariesSettingsProps {
   // Called whenever the ACTIVE library's identity or contents actually changed (switched to a
@@ -50,6 +62,20 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
   const queryClient = useQueryClient();
 
   const librariesQuery = useQuery({ queryKey: ["libraries"], queryFn: listLibraries });
+
+  // Cloud Sync Core: only meaningful once a non-local library exists (none do yet - S3 lands in a
+  // later phase), so this never polls at all for today's all-local libraries.
+  const hasCloudLibrary = librariesQuery.data?.some((l) => l.providerType !== "local") ?? false;
+  const syncStatusQuery = useQuery({
+    queryKey: ["librarySyncStatus"],
+    queryFn: getSyncStatus,
+    enabled: hasCloudLibrary,
+    refetchInterval: hasCloudLibrary ? 5000 : false,
+  });
+  const syncNowMutation = useMutation({
+    mutationFn: syncNow,
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["librarySyncStatus"] }),
+  });
 
   const [addBusy, setAddBusy] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
@@ -255,6 +281,11 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
                       {t("librariesSettings.active")}
                     </Badge>
                   )}
+                  {entry.providerType !== "local" && (
+                    <Badge size="xs" variant="outline" color="gray">
+                      {PROVIDER_LABELS[entry.providerType] ?? entry.providerType}
+                    </Badge>
+                  )}
                 </Group>
               )}
 
@@ -335,6 +366,30 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
                 onChange={(e) => periodicalsToggleMutation.mutate({ id: entry.id, enabled: e.currentTarget.checked })}
               />
             </Group>
+
+            {entry.isActive && entry.providerType !== "local" && syncStatusQuery.data && (
+              <Group justify="space-between">
+                <Text size="xs" c={syncStatusQuery.data.state === "Error" ? "red" : "dimmed"}>
+                  {syncStatusQuery.data.state === "Syncing" && t("librariesSettings.syncStatus.syncing")}
+                  {syncStatusQuery.data.state === "Error" &&
+                    t("librariesSettings.syncStatus.error", { message: syncStatusQuery.data.errorMessage ?? "" })}
+                  {syncStatusQuery.data.state === "Idle" &&
+                    (syncStatusQuery.data.lastSyncedAtUtc
+                      ? t("librariesSettings.syncStatus.synced", {
+                          time: new Date(syncStatusQuery.data.lastSyncedAtUtc).toLocaleTimeString(),
+                        })
+                      : t("librariesSettings.syncStatus.idle"))}
+                </Text>
+                <Button
+                  size="xs"
+                  variant="subtle"
+                  loading={syncNowMutation.isPending}
+                  onClick={() => syncNowMutation.mutate()}
+                >
+                  {t("librariesSettings.syncNow")}
+                </Button>
+              </Group>
+            )}
 
             {rescan.libraryId === entry.id && (
               <Stack gap={2}>

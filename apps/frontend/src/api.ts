@@ -253,6 +253,10 @@ export interface LibraryEntry {
   path: string;
   isActive: boolean;
   periodicalsEnabled: boolean;
+  // "local" | "s3" | "onedrive" | "googledrive" | "nawishta" - only "local" exists today (S3 lands
+  // in a later phase). Defaults to "local" so this stays optional for anyone building against an
+  // older backend response shape.
+  providerType: string;
 }
 
 // Every library the user has ever opened - only one (isActive) is the one every other request
@@ -294,6 +298,22 @@ export function removeLibrary(id: string): Promise<void> {
 // in the Libraries list, not just the currently active one.
 export function resyncLibrary(id: string): Promise<{ bookCount: number }> {
   return request<{ bookCount: number }>(`/api/libraries/${id}/resync`, { method: "POST" });
+}
+
+// Cloud Sync Core: only meaningful for a cloud-backed library (see LibraryEntry.providerType) -
+// always Idle for a local one, since nothing ever reports sync activity for it.
+export interface SyncStatus {
+  state: "Idle" | "Syncing" | "Error";
+  lastSyncedAtUtc: string | null;
+  errorMessage: string | null;
+}
+
+export function getSyncStatus(): Promise<SyncStatus> {
+  return request<SyncStatus>("/api/libraries/sync-status");
+}
+
+export function syncNow(): Promise<void> {
+  return request<void>("/api/libraries/sync-now", { method: "POST" });
 }
 
 export function listBooks(filters: BookFilters = {}): Promise<PagedBooks> {
