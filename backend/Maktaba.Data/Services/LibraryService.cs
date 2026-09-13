@@ -147,9 +147,13 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
         string name, string providerType, IReadOnlyDictionary<string, string> providerConfig, string credential,
         CancellationToken ct = default)
     {
+        var id = Guid.NewGuid().ToString("N");
+        // CredentialRef is just this library's own id - simplest possible opaque key, and one the
+        // frontend already has on hand (no separate id-generation step needed when it calls
+        // window.maktaba.saveCloudCredential after a successful connect).
         var entry = new LibraryRegistryEntry(
-            Guid.NewGuid().ToString("N"), name, Path: $"{providerType}://{name}",
-            ProviderType: providerType, ProviderConfig: providerConfig);
+            id, name, Path: $"{providerType}://{name}",
+            ProviderType: providerType, ProviderConfig: providerConfig, CredentialRef: id);
         _libraries.Add(entry);
 
         _credentialCache.Set(entry.Id, credential);

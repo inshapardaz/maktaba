@@ -266,7 +266,9 @@ export function listLibraries(): Promise<LibraryEntry[]> {
 }
 
 export function openLibraryById(id: string): Promise<LibraryInfo> {
-  return request<LibraryInfo>(`/api/libraries/${id}/open`, { method: "POST" });
+  // Explicit {} body (rather than none) so the backend's optional credential DTO always has real
+  // JSON to bind against - see reopenCloudLibrary for the credential-carrying version of this call.
+  return request<LibraryInfo>(`/api/libraries/${id}/open`, { method: "POST", body: JSON.stringify({}) });
 }
 
 export function renameLibrary(id: string, name: string): Promise<LibraryEntry> {
@@ -314,6 +316,40 @@ export function getSyncStatus(): Promise<SyncStatus> {
 
 export function syncNow(): Promise<void> {
   return request<void>("/api/libraries/sync-now", { method: "POST" });
+}
+
+// The credential shape saved via window.maktaba.saveCloudCredential/getCloudCredential for an S3
+// library - see backend S3ProviderOptions.FromConfig, which expects exactly this JSON shape.
+export interface S3Credential {
+  accessKeyId: string;
+  secretAccessKey: string;
+}
+
+export function testS3Connection(
+  bucket: string, region: string, prefix: string, credential: S3Credential,
+): Promise<void> {
+  return request<void>("/api/libraries/test-s3-connection", {
+    method: "POST",
+    body: JSON.stringify({ bucket, region, prefix, credential: JSON.stringify(credential) }),
+  });
+}
+
+export function connectCloudLibrary(
+  name: string, providerType: string, providerConfig: Record<string, string>, credential: S3Credential,
+): Promise<LibraryEntry> {
+  return request<LibraryEntry>("/api/libraries/cloud", {
+    method: "POST",
+    body: JSON.stringify({ name, providerType, providerConfig, credential: JSON.stringify(credential) }),
+  });
+}
+
+// Re-supplies a cloud library's credential to the backend for this process session - needed once
+// per backend restart (see ICloudCredentialCache), not on every switch within the same session.
+export function reopenCloudLibrary(id: string, credential: S3Credential): Promise<LibraryInfo> {
+  return request<LibraryInfo>(`/api/libraries/${id}/open`, {
+    method: "POST",
+    body: JSON.stringify({ credential: JSON.stringify(credential) }),
+  });
 }
 
 export function listBooks(filters: BookFilters = {}): Promise<PagedBooks> {

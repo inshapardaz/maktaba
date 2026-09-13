@@ -6,6 +6,8 @@ import {
   Badge,
   Button,
   Group,
+  Modal,
+  PasswordInput,
   Progress,
   Stack,
   Switch,
@@ -17,6 +19,7 @@ import {
   IconAlertCircle,
   IconBooks,
   IconCheck,
+  IconCloud,
   IconFolderOpen,
   IconPencil,
   IconPlus,
@@ -25,6 +28,7 @@ import {
   IconX,
 } from "../icons";
 import {
+  connectCloudLibrary,
   getSyncStatus,
   listLibraries,
   openLibrary,
@@ -34,7 +38,9 @@ import {
   renameLibrary,
   setLibraryPeriodicalsEnabled,
   syncNow,
+  testS3Connection,
   type LibraryEntry,
+  type S3Credential,
 } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
 import { invalidateLibraryQueries } from "../queries";
@@ -200,16 +206,31 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
     renameMutation.mutate({ id, name: trimmed });
   };
 
+  const [s3ModalOpen, setS3ModalOpen] = useState(false);
+
+  const handleS3Connected = () => {
+    setS3ModalOpen(false);
+    invalidateLibraries();
+    refreshActiveLibrary();
+  };
+
   return (
     <Stack gap="md">
       <Group justify="space-between">
         <Text size="sm" c="dimmed">
           {t("librariesSettings.description")}
         </Text>
-        <Button size="sm" leftSection={<IconPlus size={14} />} onClick={() => void handleAdd()} loading={addBusy}>
-          {t("librariesSettings.addLibrary")}
-        </Button>
+        <Group gap="xs">
+          <Button size="sm" variant="default" leftSection={<IconCloud size={14} />} onClick={() => setS3ModalOpen(true)}>
+            {t("librariesSettings.connectS3")}
+          </Button>
+          <Button size="sm" leftSection={<IconPlus size={14} />} onClick={() => void handleAdd()} loading={addBusy}>
+            {t("librariesSettings.addLibrary")}
+          </Button>
+        </Group>
       </Group>
+
+      <S3ConnectModal opened={s3ModalOpen} onClose={() => setS3ModalOpen(false)} onConnected={handleS3Connected} />
 
       {addError && (
         <Alert color="red" icon={<IconAlertCircle size={18} />} title={t("settings.changeLibraryErrorTitle")}>
@@ -409,5 +430,139 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
         ))}
       </Stack>
     </Stack>
+  );
+}
+
+interface S3ConnectModalProps {
+  opened: boolean;
+  onClose: () => void;
+  onConnected: () => void;
+}
+
+// Amazon S3 connect form (Cloud: Phase 2) - Test connection verifies the bucket/region/credentials
+// work before Connect commits to registering a library against them. On success, the credential is
+// saved encrypted (window.maktaba.saveCloudCredential, keyed by the new library's own id - see
+// LibraryService.OpenCloudLibraryAsync's CredentialRef) so a later app launch can re-supply it
+// without asking the user to retype it every time.
+function S3ConnectModal({ opened, onClose, onConnected }: S3ConnectModalProps) {
+  const { t } = useLanguage();
+  const [name, setName] = useState("");
+  const [bucket, setBucket] = useState("");
+  const [region, setRegion] = useState("us-east-1");
+  const [prefix, setPrefix] = useState("");
+  const [accessKeyId, setAccessKeyId] = useState("");
+  const [secretAccessKey, setSecretAccessKey] = useState("");
+  const [testResult, setTestResult] = useState<"success" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const credential: S3Credential = { accessKeyId, secretAccessKey };
+  const canSubmit = name.trim().length > 0 && bucket.trim().length > 0 && region.trim().length > 0 &&
+    accessKeyId.length > 0 && secretAccessKey.length > 0;
+
+  const testMutation = useMutation({
+    mutationFn: () => testS3Connection(bucket.trim(), region.trim(), prefix.trim(), credential),
+    onSuccess: () => {
+      setTestResult("success");
+      setError(null);
+    },
+    onError: (err) => {
+      setTestResult(null);
+      setError(err instanceof Error ? err.message : String(err));
+    },
+  });
+
+  const connectMutation = useMutation({
+    mutationFn: async () => {
+      const entry = await connectCloudLibrary(
+        name.trim(), "s3", { bucket: bucket.trim(), region: region.trim(), prefix: prefix.trim() }, credential);
+      await window.maktaba.saveCloudCredential(entry.id, JSON.stringify(credential));
+      return entry;
+    },
+    onSuccess: () => {
+      reset();
+      onConnected();
+    },
+    onError: (err) => setError(err instanceof Error ? err.message : String(err)),
+  });
+
+  const reset = () => {
+    setName("");
+    setBucket("");
+    setRegion("us-east-1");
+    setPrefix("");
+    setAccessKeyId("");
+    setSecretAccessKey("");
+    setTestResult(null);
+    setError(null);
+  };
+
+  return (
+    <Modal
+      opened={opened}
+      onClose={() => {
+        reset();
+        onClose();
+      }}
+      title={t("librariesSettings.connectS3")}
+    >
+      <Stack gap="sm">
+        <TextInput
+          label={t("librariesSettings.s3Name")}
+          value={name}
+          onChange={(e) => setName(e.currentTarget.value)}
+        />
+        <TextInput
+          label={t("librariesSettings.s3Bucket")}
+          value={bucket}
+          onChange={(e) => setBucket(e.currentTarget.value)}
+        />
+        <TextInput
+          label={t("librariesSettings.s3Region")}
+          value={region}
+          onChange={(e) => setRegion(e.currentTarget.value)}
+        />
+        <TextInput
+          label={t("librariesSettings.s3Prefix")}
+          placeholder={t("librariesSettings.s3PrefixPlaceholder")}
+          value={prefix}
+          onChange={(e) => setPrefix(e.currentTarget.value)}
+        />
+        <TextInput
+          label={t("librariesSettings.s3AccessKey")}
+          value={accessKeyId}
+          onChange={(e) => setAccessKeyId(e.currentTarget.value)}
+        />
+        <PasswordInput
+          label={t("librariesSettings.s3SecretKey")}
+          value={secretAccessKey}
+          onChange={(e) => setSecretAccessKey(e.currentTarget.value)}
+        />
+
+        {error && (
+          <Alert color="red" icon={<IconAlertCircle size={18} />}>
+            {error}
+          </Alert>
+        )}
+        {testResult === "success" && (
+          <Alert color="green" icon={<IconCheck size={18} />}>
+            {t("librariesSettings.s3TestSuccess")}
+          </Alert>
+        )}
+
+        <Group justify="flex-end">
+          <Button
+            variant="default"
+            disabled={!canSubmit}
+            loading={testMutation.isPending}
+            onClick={() => testMutation.mutate()}
+          >
+            {t("librariesSettings.s3TestConnection")}
+          </Button>
+          <Button disabled={!canSubmit} loading={connectMutation.isPending} onClick={() => connectMutation.mutate()}>
+            {t("librariesSettings.s3Connect")}
+          </Button>
+        </Group>
+      </Stack>
+    </Modal>
   );
 }
