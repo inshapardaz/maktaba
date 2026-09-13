@@ -153,7 +153,7 @@ public class S3StorageProvider(
                 Prefix = prefix.Length > 0 ? prefix + "/" : prefix,
                 MaxKeys = 1,
             }, ct);
-            return response.S3Objects.Count > 0;
+            return response.S3Objects is { Count: > 0 };
         }
     }
 

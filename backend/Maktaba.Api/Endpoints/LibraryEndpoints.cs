@@ -160,7 +160,7 @@ public static class LibraryEndpoints
             try
             {
                 migrationService.Start(new MigrationTarget(request.ProviderType, request.ProviderConfig, request.Credential));
-                return Results.Accepted();
+                return Results.NoContent();
             }
             catch (InvalidOperationException ex)
             {
