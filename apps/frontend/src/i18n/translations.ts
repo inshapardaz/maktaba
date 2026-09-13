@@ -340,6 +340,10 @@ const en = {
   "app.loading": "Loading…",
   "app.cloudReconnectFailedTitle": "Couldn't reconnect to your cloud library",
   "app.cloudReconnectMissingCredential": "No saved credential found for this library. Reconnect it from Settings → Libraries.",
+  "app.syncingToCloud": "Syncing to cloud…",
+  "app.syncFailedTitle": "Sync failed",
+  "app.syncConfirmTitle": "Sync to cloud now?",
+  "app.syncConfirmMessage": "This will briefly close your library to sync it safely, then reopen it. Continue?",
 
   "settings.title": "Settings",
   "settings.libraries": "Libraries",
@@ -821,6 +825,10 @@ const ur: TranslationDict = {
   "app.loading": "لوڈ ہو رہا ہے…",
   "app.cloudReconnectFailedTitle": "آپ کی کلاؤڈ لائبریری سے دوبارہ رابطہ نہیں ہو سکا",
   "app.cloudReconnectMissingCredential": "اس لائبریری کے لیے کوئی محفوظ شدہ کریڈینشل نہیں ملا۔ اسے سیٹنگز → لائبریریاں سے دوبارہ مربوط کریں۔",
+  "app.syncingToCloud": "کلاؤڈ سے ہم آہنگ ہو رہا ہے…",
+  "app.syncFailedTitle": "ہم آہنگی ناکام ہوئی",
+  "app.syncConfirmTitle": "ابھی کلاؤڈ سے ہم آہنگ کریں؟",
+  "app.syncConfirmMessage": "یہ محفوظ طریقے سے ہم آہنگ کرنے کے لیے آپ کی لائبریری کو مختصر وقت کے لیے بند کر دے گا، پھر دوبارہ کھول دے گا۔ جاری رکھیں؟",
 
   "settings.title": "ترتیبات",
   "settings.libraries": "لائبریریاں",

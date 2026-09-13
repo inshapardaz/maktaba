@@ -70,11 +70,25 @@ public record S3ProviderOptions(
     // (https://developers.cloudflare.com/r2/api/s3/tokens/), regardless of what the user typed in
     // the Region field - a mismatched region there is a signature failure R2 reports back as a
     // plain, unhelpful "Access Denied", not a clearer "region mismatch" error.
+    // A dead/unreachable network (the whole point of adding cloud support is that this becomes a
+    // routine scenario, not an edge case) must fail fast rather than hang - the AWS SDK's own
+    // defaults are tuned for a normally-reachable AWS endpoint and can block for a long time
+    // (multiple retries, each with its own long timeout) before giving up. A cloud library's
+    // reconnect on app startup (see App.tsx's cloudReconnectQuery) would otherwise leave the whole
+    // app stuck behind a loading screen for that entire duration. Applied to every AmazonS3Config
+    // this options object builds, AWS or not.
+    private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(10);
+
     public AmazonS3Config BuildClientConfig()
     {
         if (string.IsNullOrWhiteSpace(Endpoint))
         {
-            return new AmazonS3Config { RegionEndpoint = RegionEndpoint.GetBySystemName(Region) };
+            return new AmazonS3Config
+            {
+                RegionEndpoint = RegionEndpoint.GetBySystemName(Region),
+                Timeout = RequestTimeout,
+                MaxErrorRetry = 1,
+            };
         }
 
         var serviceUrl = ToServiceUrl(Endpoint);
@@ -86,6 +100,8 @@ public record S3ProviderOptions(
             ServiceURL = serviceUrl,
             ForcePathStyle = true,
             AuthenticationRegion = authRegion,
+            Timeout = RequestTimeout,
+            MaxErrorRetry = 1,
             // AWSSDK.S3 3.7.412+ (this project is on the 4.x line) defaults to attaching a CRC32
             // integrity checksum to every request and validating one on every response
             // (RequestChecksumCalculation/ResponseChecksumValidation = WHEN_SUPPORTED). Real AWS S3

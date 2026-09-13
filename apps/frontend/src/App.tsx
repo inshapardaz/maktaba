@@ -8,6 +8,7 @@ import {
   Center,
   Loader,
   MantineProvider,
+  Modal,
   Overlay,
   Pagination,
   Stack,
@@ -65,6 +66,7 @@ import { createWhiteTheme } from "./theme";
 import { ReaderLauncherProvider, type ReaderRequest } from "./ReaderLauncherContext";
 import { useImportQueue } from "./ImportContext";
 import { useRescan } from "./RescanContext";
+import { useLibrarySync } from "./LibrarySyncContext";
 import { getStoredAutoTagMode, getStoredReaderEngine, getStoredReaderOpenMode } from "./readerSettings";
 import { getStoredShowIssuesInGrid } from "./periodicalSettings";
 import {
@@ -160,6 +162,7 @@ function App() {
   const queryClient = useQueryClient();
   const importQueue = useImportQueue();
   const rescan = useRescan();
+  const librarySync = useLibrarySync();
   const { appTheme, darkChrome } = useAppTheme();
   const { themeColor, customColorHex } = useThemeColor();
   // Issue #63: only meaningful under the White theme (Organic already has its own fixed --app-
@@ -396,10 +399,22 @@ function App() {
     }
   }, [libraryQuery.data, mainView]);
 
+  // Surfaced as a toast (not inline UI) since the sync that failed could have been started from
+  // Settings, which may well be closed again by the time it finishes - see LibrarySyncContext.
+  useEffect(() => {
+    if (librarySync.error) {
+      notifications.show({ color: "red", title: t("app.syncFailedTitle"), message: librarySync.error });
+      librarySync.dismissError();
+    }
+  }, [librarySync.error, librarySync, t]);
+
   // A cloud-backed library isn't actually usable until cloudReconnectQuery above has succeeded -
-  // see its comment. hasLibrary (used throughout the rest of this component) is computed here,
-  // ahead of booksQuery, so both gate on the exact same condition.
-  const hasLibrary = !!libraryQuery.data && (!needsCloudReconnect || cloudReconnectQuery.isSuccess);
+  // see its comment. Also false for the whole duration of a manual cloud sync (LibrarySyncContext)
+  // - the backend clears its SQLite connection pool as part of that, so no query here should be
+  // allowed to open a fresh database connection until it's done. hasLibrary (used throughout the
+  // rest of this component) is computed here, ahead of booksQuery, so both gate on the exact same
+  // condition.
+  const hasLibrary = !!libraryQuery.data && (!needsCloudReconnect || cloudReconnectQuery.isSuccess) && !librarySync.isSyncing;
 
   const booksQuery = useQuery({
     queryKey: ["books", filters],
@@ -781,6 +796,22 @@ function App() {
       }
     >
       <UpdateNotifier />
+      <Modal
+        opened={librarySync.confirming}
+        onClose={librarySync.cancel}
+        title={t("app.syncConfirmTitle")}
+        centered
+      >
+        <Stack gap="md">
+          <Text size="sm">{t("app.syncConfirmMessage")}</Text>
+          <Group justify="flex-end">
+            <Button variant="default" onClick={librarySync.cancel}>
+              {t("common.cancel")}
+            </Button>
+            <Button onClick={librarySync.confirm}>{t("common.confirm")}</Button>
+          </Group>
+        </Stack>
+      </Modal>
       <OnboardingTour
         opened={tourOpen}
         onClose={() => setTourOpen(false)}
@@ -821,7 +852,7 @@ function App() {
                 canGoForward={canGoForward}
                 onGoBack={goBack}
                 onGoForward={goForward}
-                actionsHidden={!!inlineReader}
+                actionsHidden={!!inlineReader || librarySync.isSyncing}
               />
               {showImportBar && <ImportStatusBar />}
               {showRescanBar && <RescanStatusBar />}
@@ -863,7 +894,9 @@ function App() {
           )}
 
           <AppShell.Main style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
-            {libraryQuery.isLoading || (needsCloudReconnect && cloudReconnectQuery.isLoading) ? (
+            {librarySync.isSyncing ? (
+              <LoadingContent message={t("app.syncingToCloud")} />
+            ) : libraryQuery.isLoading || (needsCloudReconnect && cloudReconnectQuery.isLoading) ? (
               <LoadingContent message={t("app.loading")} />
             ) : needsCloudReconnect && cloudReconnectQuery.isError ? (
               <Center style={{ flex: 1 }}>

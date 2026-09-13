@@ -518,6 +518,28 @@ export function TitleBar({
         </Group>
       )}
 
+      {/* Settings must stay reachable even without a usable library - e.g. a cloud library whose
+          credential failed to reconnect on startup (see App.tsx's cloudReconnectQuery) still needs
+          a way to switch to a different registered library, which only Settings offers. The
+          showActions block above already renders Settings once hasLibrary is true, so this is the
+          standalone fallback for when it isn't - same "always reachable" reasoning as HelpButton.
+          Deliberately keyed off actionsHidden (not showActions, which actionsHidden also drives) -
+          actionsHidden is also true during the inline reader and a manual cloud sync in progress
+          (see App.tsx), neither of which should offer this fallback either. */}
+      {!hasLibrary && !actionsHidden && (
+        <Tooltip label={t("settings.title")}>
+          <ActionIcon
+            className="maktaba-titlebar-no-drag"
+            variant={settingsOpen ? "light" : "subtle"}
+            color="gray"
+            onClick={() => onOpenSettings()}
+            aria-label={t("settings.title")}
+          >
+            <IconSettings size={16} />
+          </ActionIcon>
+        </Tooltip>
+      )}
+
       <HelpButton />
       {!isMac && <WindowControls />}
     </Box>

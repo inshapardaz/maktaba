@@ -123,6 +123,18 @@ public static class LibraryEndpoints
             try
             {
                 tracker.Syncing();
+
+                // Microsoft.Data.Sqlite pools native sqlite3 handles for reuse even after every
+                // MaktabaDbContext/SqliteConnection using them has been disposed (each request gets
+                // its own short-lived DbContext, but the pool keeps the underlying file handle open
+                // behind the scenes) - on Windows that pooled handle's sharing mode can conflict
+                // with the plain FileStream PushDatabaseAsync opens to read metadata.db, failing
+                // with "the process cannot access the file because it is being used by another
+                // process". Clearing every pool releases those handles first. Safe for a desktop
+                // app that only ever has one library's connections open at a time - the next
+                // request against this (or any other) library just repools a fresh connection.
+                Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+
                 await storage.PushDatabaseAsync(ct);
                 tracker.Synced();
                 return Results.NoContent();
