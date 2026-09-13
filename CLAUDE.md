@@ -36,8 +36,9 @@ Backend (ASP.NET Core Minimal API, backend/Maktaba.sln)
                        (Services/*.cs), CoverLocator, EbookFileHelpers
   Maktaba.Metadata  — EPUB (VersOne.Epub) / PDF (PdfPig + PDFtoImage) metadata+cover extraction
   Maktaba.Cloud     — cloud storage provider SDKs, isolated from Maktaba.Data the same way
-                       Maktaba.Metadata isolates format-parsing SDKs (S3StorageProvider today;
-                       OneDrive/Google Drive land the same way later) - see "Cloud storage" below
+                       Maktaba.Metadata isolates format-parsing SDKs (S3StorageProvider,
+                       GoogleDriveStorageProvider today; OneDrive lands the same way once its own
+                       Azure AD app registration is sorted out) - see "Cloud storage" below
   Maktaba.Tests     — nearly empty (one placeholder test); this project has no real test suite,
                        verification is build + live HTTP/UI smoke testing (see below)
 ```
@@ -86,16 +87,37 @@ registered library, only one active at a time.
 ## Cloud storage
 
 A library's `ProviderType` (on its `LibraryRegistryEntry`, `Maktaba.Core/Services/ILibraryService.cs`)
-is `"local"` (default, unchanged behavior) or a cloud provider — `"s3"` today, covering both real
-Amazon S3 and any S3-compatible provider (MinIO/Backblaze B2/DigitalOcean Spaces/Cloudflare
-R2/IDrive e2/self-hosted), via an optional `Endpoint` in `ProviderConfig`
-(`Maktaba.Cloud/S3ProviderOptions.cs`). `IStorageProvider` (`Maktaba.Core/Services/IStorageProvider.cs`)
-is the abstraction every file-touching service goes through instead of raw `System.IO` -
-`LocalFileSystemProvider` is a pass-through for local libraries; `S3StorageProvider` keeps a local
-cache mirror (`ICloudCacheManager`, under `{userData}/CloudCache/{libraryId}/`) in sync with the
-bucket, so reads/writes above the provider layer still just work with plain local paths (offline
-reading of already-cached books included). `StorageProviderFactory` resolves the right one per the
-active library.
+is `"local"` (default, unchanged behavior) or a cloud provider — `"s3"` (real Amazon S3 or any
+S3-compatible provider: MinIO/Backblaze B2/DigitalOcean Spaces/Cloudflare R2/IDrive e2/self-hosted,
+via an optional `Endpoint` in `ProviderConfig`, `Maktaba.Cloud/S3ProviderOptions.cs`) or
+`"googledrive"` (`Maktaba.Cloud/GoogleDriveProviderOptions.cs`) today. `IStorageProvider`
+(`Maktaba.Core/Services/IStorageProvider.cs`) is the abstraction every file-touching service goes
+through instead of raw `System.IO` - `LocalFileSystemProvider` is a pass-through for local
+libraries; `S3StorageProvider`/`GoogleDriveStorageProvider` each keep a local cache mirror
+(`ICloudCacheManager`, under `{userData}/CloudCache/{libraryId}/`) in sync with the remote store, so
+reads/writes above the provider layer still just work with plain local paths (offline reading of
+already-cached books included). `StorageProviderFactory` resolves the right one per the active
+library, keyed by `(libraryId, providerType, credentialHash)` so a library migrated from one
+provider to another (or reconnected with a changed credential) never accidentally reuses a cached
+instance built for the old one.
+
+**Google Drive specifics** (`GoogleDriveStorageProvider.cs`) - unlike S3's flat keyspace or a
+path-addressable filesystem, Drive links every file/folder to its parent purely by id (and even
+tolerates duplicate names under one parent). `ResolveFolderIdAsync`/`FindChildAsync`/
+`FindItemIdAsync` are this provider's own substitute for path addressing: walk a `/`-separated path
+one segment at a time, matching (and, for folders, creating) by name under each resolved parent id,
+with an in-memory path→id cache scoped to the provider instance's lifetime. Talks to Drive v3
+directly over `HttpClient` rather than pulling in Google's own client SDK (Drive v3's REST surface
+is small enough that this avoided a third generated-client dependency in `Maktaba.Cloud`, after
+`AWSSDK.S3` and `Microsoft.Graph`). Sign-in is OAuth2 with PKCE via a loopback listener in Electron's
+main process (`apps/desktop/src/googleDriveAuth.ts` + the provider-agnostic
+`apps/desktop/src/oauthLoopback.ts`, opened with `shell.openExternal` rather than an embedded
+webview) - unlike a fully public OAuth client, Google's "Desktop app" client type still requires a
+`client_secret` in the token exchange even with PKCE, which Google's own docs say isn't meant to
+stay confidential for this client type (it ships inside the app regardless), so it's hardcoded in
+both `googleDriveAuth.ts` and `GoogleDriveStorageProvider.cs`'s `GoogleDriveTokenManager` rather than
+sourced from the environment - the latter only protects a secret a build pipeline injects, and this
+project packages locally with no such pipeline (see "Desktop packaging" below).
 
 **metadata.db stays local even for a cloud library** — only pulled/pushed as a whole file
 (`IStorageProvider.PullDatabaseAsync`/`PushDatabaseAsync`), pulled on library open, pushed on a
@@ -128,10 +150,17 @@ that no retry count fixes. Both `LibraryService.ActivateAsync` (pull) and the `/
 `metadata.db`'s bytes directly for a cloud library, it needs the same treatment.
 
 Frontend surface: `LibrariesSettings.tsx`'s "Connect S3-compatible library…" form (bucket/region/
-subfolder/endpoint/access key/secret, with a "Test connection" step), a provider badge, and a
-sync-to-cloud button - all only ever rendered for a non-local library, so a local-only user sees
-nothing new. See `docs/en/libraries.md`'s "Cloud libraries" section for the end-user-facing
-explanation of all of this.
+subfolder/endpoint/access key/secret, with a "Test connection" step) and "Connect Google Drive…"
+form (name/optional folder, plus a "Sign in with Google" button instead of typed credentials - a
+successful sign-in already proves the credential works, so there's no separate test step), a
+provider badge, and a sync-to-cloud button - all only ever rendered for a non-local library, so a
+local-only user sees nothing new. The key-icon "Reconnect…" action (re-supplying a stale/missing
+credential without disconnecting the whole library) branches the same way: typed access key/secret
+for S3, a "Sign in again" button for an OAuth-based provider. `connectCloudLibrary`/
+`reopenCloudLibrary` (`api.ts`) are generic over the credential shape - neither they nor the backend
+endpoints care about a specific provider's credential JSON, only that it round-trips as an opaque
+string. See `docs/en/libraries.md`'s "Cloud libraries" section for the end-user-facing explanation
+of all of this.
 
 **Migration wizard** (`MigrationWizard.tsx`, Stepper: Target → Review → Migrate → Finish) moves the
 *active* library to a new provider - `ILibraryMigrationService`/`LibraryMigrationService`
@@ -140,9 +169,13 @@ tracked via an in-memory `MigrationProgressSnapshot` polled the same way rescan 
 (`GET /api/libraries/migrate/status`). Walks every file via `IStorageProvider.EnumerateAsync`
 (recursing manually - it only ever returns one level), copies each via
 `GetLocalPathAsync`(source)+`NotifyWrittenAsync`(target) - deliberately built on `IStorageProvider`'s
-existing methods rather than adding a new "copy bytes" one. Resumable the same way
-`S3StorageProvider`'s own caching is: a file already present at the target
-(`IStorageProvider.ExistsAsync`, which checks the remote store, not just a local cache) is skipped.
+existing methods rather than adding a new "copy bytes" one. Resumable via
+`IStorageProvider.ExistsRemoteAsync` - a file already confirmed present at the target is skipped.
+Deliberately *not* the general-purpose `ExistsAsync` (which checks a provider's local cache mirror
+first): a target's cache can hold a file copied into it locally on a previous interrupted/failed
+migration attempt but never actually confirmed pushed remotely, which `ExistsAsync`'s cache-first
+shortcut would mistake for "already migrated" and silently skip re-uploading forever - a real bug
+hit and fixed during Phase 3 development (see git history for the full trail).
 `metadata.db` is migrated separately via each provider's own `Pull`/`PushDatabaseAsync`, never as a
 plain file copy. Never touches the library registry until a verified migration's `CompleteAsync`
 runs (the wizard's Finish step) - `ILibraryService.SwitchProviderAsync` re-points the *same*
