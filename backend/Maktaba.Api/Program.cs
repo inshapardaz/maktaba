@@ -31,6 +31,7 @@ builder.Services.AddSingleton<IStorageProviderFactory, StorageProviderFactory>()
 builder.Services.AddSingleton<ICloudCacheManager, CloudCacheManager>();
 builder.Services.AddSingleton<ISyncStatusTracker, SyncStatusTracker>();
 builder.Services.AddSingleton<ICloudCredentialCache, CloudCredentialCache>();
+builder.Services.AddSingleton<ILibraryMigrationService, LibraryMigrationService>();
 builder.Services.AddHostedService<Maktaba.Api.CloudSyncLifecycleService>();
 
 builder.Services.AddScoped(sp => MaktabaDbContextFactory.Create(sp.GetRequiredService<ILibraryPathProvider>()));
