@@ -75,6 +75,11 @@ const en = {
   "toolbar.gridLabel": "Grid",
   "toolbar.listLabel": "List",
   "toolbar.allBooks": "All books",
+  "toolbar.syncStatusSyncing": "Syncing to cloud…",
+  "toolbar.syncStatusSynced": "Synced",
+  "toolbar.syncStatusSyncedAt": "Synced at {time}",
+  "toolbar.syncStatusErrorGeneric": "Cloud sync failed - click to open Libraries settings",
+  "toolbar.syncStatusError": "Cloud sync failed: {message}",
 
   "sidebar.authors": "Authors",
   "sidebar.sortBy": "Sort",
@@ -596,6 +601,11 @@ const ur: TranslationDict = {
   "toolbar.gridLabel": "گرڈ",
   "toolbar.listLabel": "فہرست",
   "toolbar.allBooks": "تمام کتابیں",
+  "toolbar.syncStatusSyncing": "کلاؤڈ سے ہم آہنگ ہو رہا ہے…",
+  "toolbar.syncStatusSynced": "ہم آہنگ",
+  "toolbar.syncStatusSyncedAt": "{time} پر ہم آہنگ ہوا",
+  "toolbar.syncStatusErrorGeneric": "کلاؤڈ ہم آہنگی ناکام ہوئی - لائبریریوں کی ترتیبات کھولنے کے لیے کلک کریں",
+  "toolbar.syncStatusError": "کلاؤڈ ہم آہنگی ناکام ہوئی: {message}",
 
   "sidebar.authors": "مصنفین",
   "sidebar.sortBy": "ترتیب",
