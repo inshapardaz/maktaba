@@ -28,10 +28,27 @@ public record S3ProviderOptions(
     public const string PrefixKey = "prefix";
     public const string EndpointKey = "endpoint";
 
+    // The frontend sends {accessKeyId, secretAccessKey} (camelCase, natural for TS - see api.ts's
+    // S3Credential). System.Text.Json's default Deserialize<T> is case-sensitive and matches
+    // against this record's PascalCase constructor parameters, so without this option every field
+    // silently comes back empty instead of throwing - the request then gets signed with blank
+    // credentials, which a server reports back as a perfectly ordinary "Access Denied" with no hint
+    // that the credentials themselves never arrived. Found via an isolated deserialization test
+    // after ruling out region/endpoint/checksum-config theories that all tested fine in isolation.
+    private static readonly System.Text.Json.JsonSerializerOptions CredentialJsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+    };
+
     public static S3ProviderOptions FromConfig(IReadOnlyDictionary<string, string> config, string credentialJson)
     {
-        var credential = System.Text.Json.JsonSerializer.Deserialize<S3Credential>(credentialJson)
+        var credential = System.Text.Json.JsonSerializer.Deserialize<S3Credential>(credentialJson, CredentialJsonOptions)
             ?? throw new InvalidOperationException("Malformed S3 credential.");
+
+        if (string.IsNullOrWhiteSpace(credential.AccessKeyId) || string.IsNullOrWhiteSpace(credential.SecretAccessKey))
+        {
+            throw new InvalidOperationException("S3 credential is missing an access key or secret key.");
+        }
 
         return new S3ProviderOptions(
             config.GetValueOrDefault(BucketKey) ?? throw new InvalidOperationException("Missing S3 bucket."),
@@ -64,7 +81,25 @@ public record S3ProviderOptions(
         var authRegion = serviceUrl.Contains(".r2.cloudflarestorage.com", StringComparison.OrdinalIgnoreCase)
             ? "auto"
             : Region;
-        return new AmazonS3Config { ServiceURL = serviceUrl, ForcePathStyle = true, AuthenticationRegion = authRegion };
+        return new AmazonS3Config
+        {
+            ServiceURL = serviceUrl,
+            ForcePathStyle = true,
+            AuthenticationRegion = authRegion,
+            // AWSSDK.S3 3.7.412+ (this project is on the 4.x line) defaults to attaching a CRC32
+            // integrity checksum to every request and validating one on every response
+            // (RequestChecksumCalculation/ResponseChecksumValidation = WHEN_SUPPORTED). Real AWS S3
+            // handles this fine, but some non-AWS S3-compatible servers (MinIO in particular - see
+            // github.com/minio/minio/issues/20845) don't understand the extra
+            // x-amz-sdk-checksum-algorithm/aws-chunked framing this adds to the signed request, and
+            // reject the whole request - surfacing as a plain 403 AccessDenied with no hint that
+            // checksums were the actual problem (confirmed *not* the cause for the IDrive e2 bug
+            // that prompted this pass - see the credential case-sensitivity fix above, which was -
+            // but kept anyway since it's still AWS's own documented guidance for any non-AWS
+            // endpoint: https://docs.aws.amazon.com/sdkref/latest/guide/feature-dataintegrity.html).
+            RequestChecksumCalculation = Amazon.Runtime.RequestChecksumCalculation.WHEN_REQUIRED,
+            ResponseChecksumValidation = Amazon.Runtime.ResponseChecksumValidation.WHEN_REQUIRED,
+        };
     }
 
     private static string ToServiceUrl(string endpoint) =>
