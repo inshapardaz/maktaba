@@ -23,6 +23,7 @@ import {
   CircleDashed,
   CircleQuestionMark,
   Cloud,
+  CloudUpload,
   Coffee,
   Compass,
   Copy,
@@ -100,6 +101,7 @@ export const IconChevronUp = withStrokeWidth(ChevronUp);
 export const IconCircleCheck = withStrokeWidth(CircleCheck);
 export const IconCircleDashed = withStrokeWidth(CircleDashed);
 export const IconCloud = withStrokeWidth(Cloud);
+export const IconCloudUpload = withStrokeWidth(CloudUpload);
 export const IconCoffee = withStrokeWidth(Coffee);
 export const IconCompass = withStrokeWidth(Compass);
 export const IconCopy = withStrokeWidth(Copy);

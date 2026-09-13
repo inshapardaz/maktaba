@@ -188,7 +188,7 @@ public record ConnectCloudLibraryRequestDto(
 // R2, ...) - see S3ProviderOptions.Endpoint.
 public record TestS3ConnectionRequestDto(string Bucket, string Region, string Prefix, string Credential, string? Endpoint = null);
 
-public record LibraryDto(string Path, string Id, string Name, bool PeriodicalsEnabled);
+public record LibraryDto(string Path, string Id, string Name, bool PeriodicalsEnabled, string ProviderType = "local");
 
 public record LibraryEntryDto(string Id, string Name, string Path, bool IsActive, bool PeriodicalsEnabled, string ProviderType = "local");
 

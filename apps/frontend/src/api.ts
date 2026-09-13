@@ -107,6 +107,10 @@ export interface LibraryInfo {
   // Per-library preference (Settings -> Libraries) - hides the Periodicals sidebar section and the
   // book-edit form's Periodical fieldset when off, without touching this library's own data.
   periodicalsEnabled: boolean;
+  // "local" | "s3" | ... - see LibraryEntry.providerType. App.tsx uses this on startup: a
+  // cloud-backed active library needs its credential re-supplied every fresh backend process
+  // (see ICloudCredentialCache), since the backend can't decrypt it itself.
+  providerType: string;
 }
 
 export interface BrowseGroup {
@@ -340,6 +344,14 @@ export function reopenCloudLibrary(id: string, credential: S3Credential): Promis
     method: "POST",
     body: JSON.stringify({ credential: JSON.stringify(credential) }),
   });
+}
+
+// Pushes the current library's local metadata.db to its cloud provider immediately, rather than
+// waiting for the backend's periodic heartbeat - see CloudSyncLifecycleService. A no-op for a
+// local library; only meaningful (and only ever surfaced in the UI) for the active library when
+// it's cloud-backed.
+export function syncNow(): Promise<void> {
+  return request<void>("/api/libraries/sync-now", { method: "POST" });
 }
 
 export function listBooks(filters: BookFilters = {}): Promise<PagedBooks> {

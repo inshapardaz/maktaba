@@ -20,6 +20,7 @@ import {
   IconBooks,
   IconCheck,
   IconCloud,
+  IconCloudUpload,
   IconFolderOpen,
   IconPencil,
   IconPlus,
@@ -36,6 +37,7 @@ import {
   removeLibrary,
   renameLibrary,
   setLibraryPeriodicalsEnabled,
+  syncNow,
   testS3Connection,
   type LibraryEntry,
   type S3Credential,
@@ -158,6 +160,16 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
         refreshActiveLibrary();
       }
     },
+    onError: (err) => setActionError(err instanceof Error ? err.message : String(err)),
+  });
+
+  // Pushes the active library's local metadata.db to its cloud provider on demand, rather than
+  // waiting for the backend's periodic heartbeat (or a graceful app shutdown, which the desktop
+  // app's process.kill()-based sidecar shutdown doesn't reliably deliver in time to run on every
+  // platform) - only meaningful for the currently active library, since PushDatabaseAsync always
+  // acts on whichever one that is.
+  const syncNowMutation = useMutation({
+    mutationFn: syncNow,
     onError: (err) => setActionError(err instanceof Error ? err.message : String(err)),
   });
 
@@ -333,6 +345,19 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
                       aria-label={t("librariesSettings.resync")}
                     >
                       <IconRefresh size={14} />
+                    </ActionIcon>
+                  </Tooltip>
+                )}
+                {entry.isActive && entry.providerType !== "local" && (
+                  <Tooltip label={t("librariesSettings.syncNow")}>
+                    <ActionIcon
+                      variant="subtle"
+                      color="gray"
+                      loading={syncNowMutation.isPending}
+                      onClick={() => syncNowMutation.mutate()}
+                      aria-label={t("librariesSettings.syncNow")}
+                    >
+                      <IconCloudUpload size={14} />
                     </ActionIcon>
                   </Tooltip>
                 )}

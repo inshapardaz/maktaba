@@ -338,6 +338,8 @@ const en = {
   "app.emptyLibrary": 'No books yet. Click "Import Book(s)" or drag EPUB/PDF/DOCX/TXT files onto this window.',
   "app.dropToImport": "Drop EPUB/PDF/DOCX/TXT files to import",
   "app.loading": "Loading…",
+  "app.cloudReconnectFailedTitle": "Couldn't reconnect to your cloud library",
+  "app.cloudReconnectMissingCredential": "No saved credential found for this library. Reconnect it from Settings → Libraries.",
 
   "settings.title": "Settings",
   "settings.libraries": "Libraries",
@@ -418,6 +420,7 @@ const en = {
   "librariesSettings.empty": "No libraries yet.",
   "librariesSettings.manage": "Manage libraries…",
   "librariesSettings.periodicals": "Periodicals feature",
+  "librariesSettings.syncNow": "Sync to cloud now",
   "librariesSettings.connectS3": "Connect S3-compatible library…",
   "librariesSettings.s3Name": "Library name",
   "librariesSettings.s3Bucket": "Bucket",
@@ -816,6 +819,8 @@ const ur: TranslationDict = {
   "app.emptyLibrary": '"کتاب درآمد کریں" پر کلک کریں یا EPUB/PDF/DOCX/TXT فائلیں اس ونڈو پر گھسیٹ لائیں۔ ابھی کوئی کتاب موجود نہیں۔',
   "app.dropToImport": "درآمد کرنے کے لیے EPUB/PDF/DOCX/TXT فائلیں یہاں چھوڑیں",
   "app.loading": "لوڈ ہو رہا ہے…",
+  "app.cloudReconnectFailedTitle": "آپ کی کلاؤڈ لائبریری سے دوبارہ رابطہ نہیں ہو سکا",
+  "app.cloudReconnectMissingCredential": "اس لائبریری کے لیے کوئی محفوظ شدہ کریڈینشل نہیں ملا۔ اسے سیٹنگز → لائبریریاں سے دوبارہ مربوط کریں۔",
 
   "settings.title": "ترتیبات",
   "settings.libraries": "لائبریریاں",
@@ -896,6 +901,7 @@ const ur: TranslationDict = {
   "librariesSettings.empty": "ابھی کوئی لائبریری موجود نہیں۔",
   "librariesSettings.manage": "لائبریریاں منظم کریں…",
   "librariesSettings.periodicals": "متواتر اشاعتوں کی خصوصیت",
+  "librariesSettings.syncNow": "ابھی کلاؤڈ سے ہم آہنگ کریں",
   "librariesSettings.connectS3": "S3-مطابقت لائبریری سے مربوط کریں…",
   "librariesSettings.s3Name": "لائبریری کا نام",
   "librariesSettings.s3Bucket": "بکٹ (Bucket)",

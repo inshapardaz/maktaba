@@ -1,16 +1,32 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AppShell, Box, Center, Loader, MantineProvider, Overlay, Pagination, Text, Group, type MantineThemeOverride } from "@mantine/core";
+import {
+  Alert,
+  AppShell,
+  Box,
+  Button,
+  Center,
+  Loader,
+  MantineProvider,
+  Overlay,
+  Pagination,
+  Stack,
+  Text,
+  Group,
+  type MantineThemeOverride,
+} from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { IconUpload } from "./icons";
+import { IconAlertCircle, IconUpload } from "./icons";
 import {
   getBook,
   getCurrentLibrary,
   listBooks,
+  reopenCloudLibrary,
   updateBook,
   updateBookStatus,
   type BookEditRequest,
   type BookFilters,
+  type S3Credential,
 } from "./api";
 import { isBookDrag } from "./bookDrag";
 import type { TranslationKey } from "./i18n/translations";
@@ -346,6 +362,30 @@ function App() {
     queryFn: getCurrentLibrary,
   });
 
+  // The backend only marks a cloud-backed library "active" from its registry on startup (see
+  // LibraryService.LoadConfig) - it can't actually pull/serve it until its credential is
+  // re-supplied, since ICloudCredentialCache is in-memory only and cleared on every backend
+  // restart (the backend has no way to decrypt the Electron-side safeStorage copy itself). This
+  // fetches that credential and re-opens the library with it before any other query - booksQuery
+  // included - is allowed to fire against it; without this gate, a fresh backend process throws a
+  // 500 on the very first request for a cloud library reopened this way.
+  const needsCloudReconnect = libraryQuery.data?.providerType !== undefined && libraryQuery.data.providerType !== "local";
+  const cloudReconnectQuery = useQuery({
+    queryKey: ["cloudReconnect", libraryQuery.data?.id],
+    queryFn: async () => {
+      const id = libraryQuery.data!.id;
+      const credentialJson = await window.maktaba.getCloudCredential(id);
+      if (!credentialJson) {
+        throw new Error(t("app.cloudReconnectMissingCredential"));
+      }
+      await reopenCloudLibrary(id, JSON.parse(credentialJson) as S3Credential);
+      return true;
+    },
+    enabled: needsCloudReconnect,
+    retry: false,
+    staleTime: Infinity,
+  });
+
   // Falls back off the Periodicals view if this library's setting (Settings -> Libraries) gets
   // toggled off while it's the one currently showing, or a different library (with the feature
   // off) is switched to while it was showing - stale local UI state, not persisted.
@@ -356,10 +396,15 @@ function App() {
     }
   }, [libraryQuery.data, mainView]);
 
+  // A cloud-backed library isn't actually usable until cloudReconnectQuery above has succeeded -
+  // see its comment. hasLibrary (used throughout the rest of this component) is computed here,
+  // ahead of booksQuery, so both gate on the exact same condition.
+  const hasLibrary = !!libraryQuery.data && (!needsCloudReconnect || cloudReconnectQuery.isSuccess);
+
   const booksQuery = useQuery({
     queryKey: ["books", filters],
     queryFn: () => listBooks(filters),
-    enabled: !!libraryQuery.data,
+    enabled: hasLibrary,
     placeholderData: (previousData) => previousData,
   });
 
@@ -699,7 +744,6 @@ function App() {
     });
   };
 
-  const hasLibrary = !!libraryQuery.data;
   const showImportBar =
     importQueue.isMinimized && (importQueue.isProcessing || importQueue.isResolving || importQueue.summary.conflicted > 0);
   // Settings shows its own inline resync progress (LibrariesSettings.tsx) while it's open, so this
@@ -819,8 +863,17 @@ function App() {
           )}
 
           <AppShell.Main style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
-            {libraryQuery.isLoading ? (
+            {libraryQuery.isLoading || (needsCloudReconnect && cloudReconnectQuery.isLoading) ? (
               <LoadingContent message={t("app.loading")} />
+            ) : needsCloudReconnect && cloudReconnectQuery.isError ? (
+              <Center style={{ flex: 1 }}>
+                <Stack align="center" gap="md" maw={420}>
+                  <Alert color="red" icon={<IconAlertCircle size={18} />} title={t("app.cloudReconnectFailedTitle")}>
+                    {cloudReconnectQuery.error instanceof Error ? cloudReconnectQuery.error.message : String(cloudReconnectQuery.error)}
+                  </Alert>
+                  <Button onClick={() => void cloudReconnectQuery.refetch()}>{t("backend.retry")}</Button>
+                </Stack>
+              </Center>
             ) : !hasLibrary ? (
               <LibraryPicker
                 onOpened={(_path, filesToImport) => {

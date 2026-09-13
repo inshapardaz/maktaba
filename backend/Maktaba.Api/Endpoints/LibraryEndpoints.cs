@@ -17,7 +17,7 @@ public static class LibraryEndpoints
             }
 
             var active = libraryService.Libraries.First(l => l.Id == libraryService.CurrentLibraryId);
-            return Results.Ok(new LibraryDto(active.Path, active.Id, active.Name, active.PeriodicalsEnabled));
+            return Results.Ok(new LibraryDto(active.Path, active.Id, active.Name, active.PeriodicalsEnabled, active.ProviderType));
         });
 
         group.MapPost("/open", async (OpenLibraryRequest request, ILibraryService libraryService, CancellationToken ct) =>
@@ -29,7 +29,7 @@ public static class LibraryEndpoints
 
             await libraryService.OpenAsync(request.Path, ct);
             var active = libraryService.Libraries.First(l => l.Id == libraryService.CurrentLibraryId);
-            return Results.Ok(new LibraryDto(active.Path, active.Id, active.Name, active.PeriodicalsEnabled));
+            return Results.Ok(new LibraryDto(active.Path, active.Id, active.Name, active.PeriodicalsEnabled, active.ProviderType));
         });
 
         // Registers and activates a brand-new cloud-backed library (S3 today; OneDrive/Google Drive/
@@ -153,7 +153,7 @@ public static class LibraryEndpoints
             }
 
             var active = libraryService.Libraries.First(l => l.Id == libraryService.CurrentLibraryId);
-            return Results.Ok(new LibraryDto(active.Path, active.Id, active.Name, active.PeriodicalsEnabled));
+            return Results.Ok(new LibraryDto(active.Path, active.Id, active.Name, active.PeriodicalsEnabled, active.ProviderType));
         });
 
         group.MapPut("/{id}/name", async (string id, RenameLibraryRequestDto request, ILibraryService libraryService, CancellationToken ct) =>

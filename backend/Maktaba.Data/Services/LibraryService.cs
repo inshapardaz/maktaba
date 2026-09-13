@@ -94,10 +94,17 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
                 lastLibraryId = migrated.Id;
             }
 
+            // The local existence check below only makes sense for "local" - entryToOpen.Path is a
+            // synthetic display string ("s3://...") for a cloud entry, never a real folder, so
+            // Directory.Exists/File.Exists would always be false and silently leave *no* library
+            // open at all (not even falling back to a different one) - this is exactly what made
+            // every registered library appear to "vanish" after restarting with a cloud library
+            // last active. A cloud entry is always considered valid to mark active here; whether it
+            // can actually be *used* yet depends on its credential being re-supplied this session
+            // (see ICloudCredentialCache) - the frontend does that right after startup, since this
+            // constructor has no way to prompt for one itself.
             var entryToOpen = _libraries.FirstOrDefault(l => l.Id == lastLibraryId) ?? _libraries.FirstOrDefault();
-            if (entryToOpen is not null &&
-                Directory.Exists(entryToOpen.Path) &&
-                File.Exists(Path.Combine(entryToOpen.Path, DatabaseFileName)))
+            if (entryToOpen is not null && IsValidToAutoOpen(entryToOpen))
             {
                 LibraryRootPath = entryToOpen.Path;
                 CurrentLibraryId = entryToOpen.Id;
@@ -109,6 +116,10 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
             // the user will be prompted to open one again.
         }
     }
+
+    private static bool IsValidToAutoOpen(LibraryRegistryEntry entry) =>
+        entry.ProviderType != "local" ||
+        (Directory.Exists(entry.Path) && File.Exists(Path.Combine(entry.Path, DatabaseFileName)));
 
     public async Task<LibraryInfo> OpenAsync(string path, CancellationToken ct = default)
     {
