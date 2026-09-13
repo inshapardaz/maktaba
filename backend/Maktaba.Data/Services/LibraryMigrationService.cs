@@ -147,6 +147,11 @@ public class LibraryMigrationService(
             var targetFiles = await EnumerateAllFilesAsync(target, ct);
             if (targetFiles.Count < files.Count)
             {
+                logger.LogWarning(
+                    "Migration verification mismatch. Source ({Source}) has {SourceCount} file(s): {SourceFiles}. " +
+                    "Target ({Target}) has {TargetCount} file(s): {TargetFiles}.",
+                    source, files.Count, string.Join(", ", files),
+                    target, targetFiles.Count, string.Join(", ", targetFiles));
                 throw new InvalidOperationException(
                     $"Verification failed: the source has {files.Count} file(s) but the target only has {targetFiles.Count}.");
             }

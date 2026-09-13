@@ -217,6 +217,12 @@ public class S3StorageProvider(
 
     public Task PushDatabaseAsync(CancellationToken ct = default) => NotifyWrittenAsync(DatabaseRelativePath, ct);
 
+    // Diagnostic-only - surfaced in error messages (e.g. migration verification failures) so a
+    // mismatch between "what the user configured" and "what actually got checked" is visible
+    // without needing to add a debugger.
+    public override string ToString() =>
+        $"s3 bucket={options.Bucket} prefix={(string.IsNullOrEmpty(options.Prefix) ? "(none)" : options.Prefix)} endpoint={options.Endpoint ?? "(aws default)"}";
+
     private async Task<List<string>> ListAllKeysAsync(string prefix, CancellationToken ct)
     {
         var keys = new List<string>();

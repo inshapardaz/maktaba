@@ -52,6 +52,14 @@ public class StorageProviderFactory(
     // new library, only changes where an existing one's files live) - see ICloudCacheManager, whose
     // cache is keyed by libraryId, so the target's local cache mirror naturally lines up with
     // whatever this library ends up being once the switch happens.
+    //
+    // Deliberately bypasses _s3Cache (unlike Current, below): a migration target is a one-off,
+    // and the same libraryId+credential can legitimately point at a *different* bucket/prefix
+    // across retries (e.g. the user picks a different bucket the second time around, or retries
+    // migration after fixing something) - satisfying that from a cache keyed only on
+    // (libraryId, credentialHash) would silently keep using whichever bucket/prefix was configured
+    // on the *first* call this backend process ever made for that pair, ignoring the new
+    // providerConfig entirely.
     public IStorageProvider CreateForProvider(
         string libraryId, string providerType, IReadOnlyDictionary<string, string> providerConfig, string credential)
     {
@@ -59,7 +67,7 @@ public class StorageProviderFactory(
         return providerType switch
         {
             "local" => local,
-            "s3" => GetOrCreateS3Provider(libraryId, providerType, providerConfig, credential),
+            "s3" => new S3StorageProvider(libraryId, S3ProviderOptions.FromConfig(providerConfig, credential), cloudCacheManager),
             _ => throw new NotSupportedException($"Storage provider \"{providerType}\" isn't implemented yet."),
         };
     }
