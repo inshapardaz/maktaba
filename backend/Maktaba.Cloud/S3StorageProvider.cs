@@ -34,7 +34,17 @@ public class S3StorageProvider(
     private string ToKey(string relativePath)
     {
         var normalized = relativePath.Replace('\\', '/').Trim('/');
-        return string.IsNullOrEmpty(options.Prefix) ? normalized : $"{options.Prefix.Trim('/')}/{normalized}";
+        if (string.IsNullOrEmpty(options.Prefix))
+        {
+            return normalized;
+        }
+
+        var prefix = options.Prefix.Trim('/');
+        // Don't append "/" + "" for the root ("" relativePath) - EnumerateAsync appends its own "/"
+        // to whatever this returns to build a listing prefix, and a trailing slash here would double
+        // it up into "prefix//", which matches no keys at all (every real object lives under the
+        // single-slash "prefix/..."), silently making the whole bucket look empty.
+        return normalized.Length == 0 ? prefix : $"{prefix}/{normalized}";
     }
 
     public async Task<string> GetLocalPathAsync(string relativePath, CancellationToken ct = default)
