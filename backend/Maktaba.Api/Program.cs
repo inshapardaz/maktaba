@@ -26,6 +26,9 @@ builder.Services.AddSingleton<LibraryService>();
 builder.Services.AddSingleton<ILibraryService>(sp => sp.GetRequiredService<LibraryService>());
 builder.Services.AddSingleton<ILibraryPathProvider>(sp => sp.GetRequiredService<LibraryService>());
 
+builder.Services.AddSingleton<LocalFileSystemProvider>();
+builder.Services.AddSingleton<IStorageProviderFactory, StorageProviderFactory>();
+
 builder.Services.AddScoped(sp => MaktabaDbContextFactory.Create(sp.GetRequiredService<ILibraryPathProvider>()));
 
 builder.Services.AddSingleton<IBookMetadataExtractor, EpubMetadataExtractor>();

@@ -1,5 +1,4 @@
 using Maktaba.Core.Entities;
-using Maktaba.Core.Ids;
 using Maktaba.Core.Naming;
 
 namespace Maktaba.Data;
@@ -23,18 +22,11 @@ internal static class BookFolderRelocator
     /// </summary>
     public static FolderMove? RelocateIfNeeded(Book book, string oldFolderRelative, string libraryRoot)
     {
-        var issueFolderSegment = FileNaming.SanitizePathSegment($"{book.Title} ({IdCodec.Encode(book.Id)})");
-
         var newFolderRelative = book.Periodical is { } periodical
-            ? Path.Combine(
-                "Periodicals",
-                FileNaming.SanitizePathSegment($"{periodical.Name} ({IdCodec.Encode(periodical.Id)})"),
-                issueFolderSegment)
-            : Path.Combine(
-                FileNaming.SanitizePathSegment(
-                    book.BookAuthors.OrderBy(ba => ba.Order).Select(ba => ba.Author.SortName).FirstOrDefault()
-                        ?? "Unknown Author"),
-                issueFolderSegment);
+            ? LibraryPathBuilder.IssueFolderPath(periodical.Name, periodical.Id, book.Title, book.Id)
+            : LibraryPathBuilder.BookFolderPath(
+                book.BookAuthors.OrderBy(ba => ba.Order).Select(ba => ba.Author.SortName).FirstOrDefault(),
+                book.Title, book.Id);
 
         if (string.Equals(newFolderRelative, oldFolderRelative, StringComparison.Ordinal))
         {

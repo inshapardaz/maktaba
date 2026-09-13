@@ -1,5 +1,4 @@
 using Maktaba.Core.Entities;
-using Maktaba.Core.Ids;
 using Maktaba.Core.Naming;
 using Maktaba.Core.Services;
 using Microsoft.EntityFrameworkCore;
@@ -36,8 +35,7 @@ public class PeriodicalService(MaktabaDbContext db, ILibraryPathProvider library
         db.Periodicals.Add(periodical);
         await db.SaveChangesAsync(ct);
 
-        var relativeFolder = Path.Combine(
-            "Periodicals", FileNaming.SanitizePathSegment($"{trimmed} ({IdCodec.Encode(periodical.Id)})"));
+        var relativeFolder = LibraryPathBuilder.PeriodicalFolderPath(trimmed, periodical.Id);
         var absoluteFolder = Path.Combine(libraryRoot, relativeFolder);
 
         try
@@ -71,8 +69,7 @@ public class PeriodicalService(MaktabaDbContext db, ILibraryPathProvider library
 
         var trimmed = request.Name.Trim();
         var oldFolderRelative = periodical.FolderPath;
-        var newFolderRelative = Path.Combine(
-            "Periodicals", FileNaming.SanitizePathSegment($"{trimmed} ({IdCodec.Encode(periodical.Id)})"));
+        var newFolderRelative = LibraryPathBuilder.PeriodicalFolderPath(trimmed, periodical.Id);
 
         FolderMoveState? move = null;
         if (!string.Equals(oldFolderRelative, newFolderRelative, StringComparison.Ordinal))

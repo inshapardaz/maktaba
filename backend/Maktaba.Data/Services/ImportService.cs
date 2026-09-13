@@ -85,10 +85,8 @@ public class ImportService(
         db.Books.Add(book);
         await db.SaveChangesAsync(ct);
 
-        var authorFolderSegment = FileNaming.SanitizePathSegment(
-            authors.Count > 0 ? authors[0].SortName : "Unknown Author");
-        var bookFolderSegment = FileNaming.SanitizePathSegment($"{title} ({IdCodec.Encode(book.Id)})");
-        var relativeFolder = Path.Combine(authorFolderSegment, bookFolderSegment);
+        var relativeFolder = LibraryPathBuilder.BookFolderPath(
+            authors.Count > 0 ? authors[0].SortName : null, title, book.Id);
         var absoluteFolder = Path.Combine(libraryRoot, relativeFolder);
 
         Directory.CreateDirectory(absoluteFolder);
