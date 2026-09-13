@@ -13,6 +13,7 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
     // Resolved lazily (not constructor-injected) to avoid a circular dependency:
     // IStorageProviderFactory itself depends on ILibraryService, which this class implements.
     private readonly IServiceProvider _serviceProvider;
+    private readonly ICloudCacheManager _cloudCacheManager;
     private readonly string _configFilePath;
     private readonly List<LibraryRegistryEntry> _libraries = [];
     private readonly SemaphoreSlim _schemaCheckLock = new(1, 1);
@@ -24,12 +25,30 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
 
     public IReadOnlyList<LibraryRegistryEntry> Libraries => _libraries;
 
-    public string? DatabasePath =>
-        LibraryRootPath is null ? null : Path.Combine(LibraryRootPath, DatabaseFileName);
+    // For a local library this is unchanged: Path.Combine(LibraryRootPath, "metadata.db"). For a
+    // cloud-backed one, metadata.db lives in the local cache mirror instead - the same local path
+    // that provider's own PullDatabaseAsync downloads it to (see ICloudCacheManager), not under
+    // LibraryRootPath at all (which for a cloud library isn't a real local folder in the same sense).
+    public string? DatabasePath
+    {
+        get
+        {
+            if (LibraryRootPath is null)
+            {
+                return null;
+            }
 
-    public LibraryService(IServiceProvider serviceProvider)
+            var entry = _libraries.FirstOrDefault(l => l.Id == CurrentLibraryId);
+            return entry is null || entry.ProviderType == "local"
+                ? Path.Combine(LibraryRootPath, DatabaseFileName)
+                : _cloudCacheManager.GetLocalPath(entry.Id, DatabaseFileName);
+        }
+    }
+
+    public LibraryService(IServiceProvider serviceProvider, ICloudCacheManager cloudCacheManager)
     {
         _serviceProvider = serviceProvider;
+        _cloudCacheManager = cloudCacheManager;
 
         var appDataDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
