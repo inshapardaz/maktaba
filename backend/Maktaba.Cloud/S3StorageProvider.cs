@@ -1,4 +1,3 @@
-using Amazon;
 using Amazon.S3;
 using Amazon.S3.Model;
 using Maktaba.Core.Services;
@@ -6,12 +5,15 @@ using Maktaba.Core.Services;
 namespace Maktaba.Cloud;
 
 /// <summary>
-/// First concrete cloud IStorageProvider - proves the abstraction end-to-end. Keeps a local cache
-/// mirror (via ICloudCacheManager) in sync with an S3 bucket/prefix; every method that returns a
-/// "local path" downloads into that mirror first if the file isn't cached yet. Deliberately
-/// presence-only caching for v1 (matches ICloudCacheManager's documented scope): once a file is
-/// cached, it's trusted until explicitly re-written, with no cross-device freshness check against
-/// S3's own ETag/last-modified - a known v1 limitation, not an oversight.
+/// First concrete cloud IStorageProvider - proves the abstraction end-to-end. Talks to Amazon S3
+/// itself by default, or any S3-compatible provider (MinIO, Backblaze B2, DigitalOcean Spaces,
+/// Cloudflare R2, a self-hosted object store, ...) when a ServiceUrl is configured - see
+/// S3ProviderOptions.ServiceUrl and BuildConfig below. Keeps a local cache mirror (via
+/// ICloudCacheManager) in sync with the bucket/prefix; every method that returns a "local path"
+/// downloads into that mirror first if the file isn't cached yet. Deliberately presence-only
+/// caching for v1 (matches ICloudCacheManager's documented scope): once a file is cached, it's
+/// trusted until explicitly re-written, with no cross-device freshness check against the remote
+/// ETag/last-modified - a known v1 limitation, not an oversight.
 ///
 /// S3 has no real directories - a "folder" is just a common key prefix. CreateDirectoryAsync only
 /// ever needs to create the local cache folder; Move/Delete of a "folder" enumerate and act on
@@ -24,8 +26,8 @@ public class S3StorageProvider(
 {
     private const string DatabaseRelativePath = "metadata.db";
 
-    private readonly AmazonS3Client _client = new(
-        options.AccessKeyId, options.SecretAccessKey, RegionEndpoint.GetBySystemName(options.Region));
+    private readonly AmazonS3Client _client =
+        new(options.AccessKeyId, options.SecretAccessKey, options.BuildClientConfig());
 
     public string ProviderType => "s3";
 

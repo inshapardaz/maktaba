@@ -65,17 +65,21 @@ public static class LibraryEndpoints
         {
             try
             {
-                var options = Maktaba.Cloud.S3ProviderOptions.FromConfig(
-                    new Dictionary<string, string>
-                    {
-                        [Maktaba.Cloud.S3ProviderOptions.BucketKey] = request.Bucket,
-                        [Maktaba.Cloud.S3ProviderOptions.RegionKey] = request.Region,
-                        [Maktaba.Cloud.S3ProviderOptions.PrefixKey] = request.Prefix,
-                    },
-                    request.Credential);
+                var config = new Dictionary<string, string>
+                {
+                    [Maktaba.Cloud.S3ProviderOptions.BucketKey] = request.Bucket,
+                    [Maktaba.Cloud.S3ProviderOptions.RegionKey] = request.Region,
+                    [Maktaba.Cloud.S3ProviderOptions.PrefixKey] = request.Prefix,
+                };
+                if (!string.IsNullOrWhiteSpace(request.ServiceUrl))
+                {
+                    config[Maktaba.Cloud.S3ProviderOptions.ServiceUrlKey] = request.ServiceUrl;
+                }
+
+                var options = Maktaba.Cloud.S3ProviderOptions.FromConfig(config, request.Credential);
 
                 using var client = new Amazon.S3.AmazonS3Client(
-                    options.AccessKeyId, options.SecretAccessKey, Amazon.RegionEndpoint.GetBySystemName(options.Region));
+                    options.AccessKeyId, options.SecretAccessKey, options.BuildClientConfig());
                 await client.ListObjectsV2Async(new Amazon.S3.Model.ListObjectsV2Request
                 {
                     BucketName = options.Bucket,

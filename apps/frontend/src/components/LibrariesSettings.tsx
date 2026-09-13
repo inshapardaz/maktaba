@@ -450,6 +450,7 @@ function S3ConnectModal({ opened, onClose, onConnected }: S3ConnectModalProps) {
   const [bucket, setBucket] = useState("");
   const [region, setRegion] = useState("us-east-1");
   const [prefix, setPrefix] = useState("");
+  const [serviceUrl, setServiceUrl] = useState("");
   const [accessKeyId, setAccessKeyId] = useState("");
   const [secretAccessKey, setSecretAccessKey] = useState("");
   const [testResult, setTestResult] = useState<"success" | null>(null);
@@ -460,7 +461,7 @@ function S3ConnectModal({ opened, onClose, onConnected }: S3ConnectModalProps) {
     accessKeyId.length > 0 && secretAccessKey.length > 0;
 
   const testMutation = useMutation({
-    mutationFn: () => testS3Connection(bucket.trim(), region.trim(), prefix.trim(), credential),
+    mutationFn: () => testS3Connection(bucket.trim(), region.trim(), prefix.trim(), credential, serviceUrl.trim()),
     onSuccess: () => {
       setTestResult("success");
       setError(null);
@@ -473,8 +474,11 @@ function S3ConnectModal({ opened, onClose, onConnected }: S3ConnectModalProps) {
 
   const connectMutation = useMutation({
     mutationFn: async () => {
-      const entry = await connectCloudLibrary(
-        name.trim(), "s3", { bucket: bucket.trim(), region: region.trim(), prefix: prefix.trim() }, credential);
+      const providerConfig: Record<string, string> = { bucket: bucket.trim(), region: region.trim(), prefix: prefix.trim() };
+      if (serviceUrl.trim()) {
+        providerConfig.serviceUrl = serviceUrl.trim();
+      }
+      const entry = await connectCloudLibrary(name.trim(), "s3", providerConfig, credential);
       await window.maktaba.saveCloudCredential(entry.id, JSON.stringify(credential));
       return entry;
     },
@@ -490,6 +494,7 @@ function S3ConnectModal({ opened, onClose, onConnected }: S3ConnectModalProps) {
     setBucket("");
     setRegion("us-east-1");
     setPrefix("");
+    setServiceUrl("");
     setAccessKeyId("");
     setSecretAccessKey("");
     setTestResult(null);
@@ -526,6 +531,13 @@ function S3ConnectModal({ opened, onClose, onConnected }: S3ConnectModalProps) {
           placeholder={t("librariesSettings.s3PrefixPlaceholder")}
           value={prefix}
           onChange={(e) => setPrefix(e.currentTarget.value)}
+        />
+        <TextInput
+          label={t("librariesSettings.s3ServiceUrl")}
+          description={t("librariesSettings.s3ServiceUrlDescription")}
+          placeholder={t("librariesSettings.s3ServiceUrlPlaceholder")}
+          value={serviceUrl}
+          onChange={(e) => setServiceUrl(e.currentTarget.value)}
         />
         <TextInput
           label={t("librariesSettings.s3AccessKey")}
