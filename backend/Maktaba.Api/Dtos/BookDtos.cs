@@ -187,6 +187,8 @@ public record SetPeriodicalsEnabledRequestDto(bool Enabled);
 
 public record RescanProgressDto(bool IsRunning, int Processed, int Total, string? CurrentBook);
 
+public record SyncStatusDto(string State, DateTimeOffset? LastSyncedAtUtc, string? ErrorMessage);
+
 public record BrowseGroupDto(string Id, string Name, int BookCount, bool HasImage = false);
 
 public record CreateCollectionRequestDto(string Name);

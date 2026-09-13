@@ -40,6 +40,37 @@ public static class LibraryEndpoints
             return Results.Ok(new RescanProgressDto(snapshot.IsRunning, snapshot.Processed, snapshot.Total, snapshot.CurrentBook));
         });
 
+        // Cloud Sync Core: polled by the frontend to show a "synced/syncing/error" indicator for a
+        // cloud-backed library (see CloudSyncLifecycleService's periodic heartbeat) - always Idle
+        // for a local library, since nothing ever reports sync activity for one.
+        group.MapGet("/sync-status", (ISyncStatusTracker tracker) =>
+        {
+            var snapshot = tracker.Snapshot;
+            return Results.Ok(new SyncStatusDto(snapshot.State.ToString(), snapshot.LastSyncedAtUtc, snapshot.ErrorMessage));
+        });
+
+        // Manual "Sync now" - pushes the local metadata.db to the current library's cloud provider
+        // immediately rather than waiting for the next heartbeat. Harmless no-op for a local library
+        // (PushDatabaseAsync does nothing); the frontend only needs to surface this action for a
+        // cloud-backed one.
+        group.MapPost("/sync-now", async (
+            IStorageProviderFactory storageFactory, ISyncStatusTracker tracker, CancellationToken ct) =>
+        {
+            var storage = storageFactory.Current;
+            try
+            {
+                tracker.Syncing();
+                await storage.PushDatabaseAsync(ct);
+                tracker.Synced();
+                return Results.NoContent();
+            }
+            catch (Exception ex)
+            {
+                tracker.Failed(ex.Message);
+                return Results.Json(new { error = ex.Message }, statusCode: StatusCodes.Status502BadGateway);
+            }
+        });
+
         // Every library the user has ever opened - only one (IsActive) is the one every other
         // endpoint actually reads/writes through at a time; see docs/SPEC.md and LibraryService.
         group.MapGet("", (ILibraryService libraryService) =>
