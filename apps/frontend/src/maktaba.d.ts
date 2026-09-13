@@ -63,6 +63,9 @@ declare global {
       saveStarDictDictionary: (language: string, zipSourcePath: string) => Promise<void>;
       removeStarDictDictionary: (language: string) => Promise<void>;
       getStarDictDictionaryUrls: (language: string) => Promise<{ ifoUrl: string; idxUrl: string; dictUrl: string } | null>;
+      saveCloudCredential: (ref: string, secret: string) => Promise<void>;
+      getCloudCredential: (ref: string) => Promise<string | null>;
+      deleteCloudCredential: (ref: string) => Promise<void>;
     };
   }
 }

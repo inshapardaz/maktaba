@@ -3,12 +3,26 @@ using Maktaba.Core.Services;
 namespace Maktaba.Data.Services;
 
 /// <summary>
-/// Resolves the currently open library's <see cref="IStorageProvider"/>. For now every library is
-/// local, so this always returns <see cref="LocalFileSystemProvider"/> - the extension point for
-/// picking a provider by the library registry entry's provider type (once that field exists) is
-/// phase 1's "Cloud Sync Core" work, not phase 0's.
+/// Resolves the currently open library's <see cref="IStorageProvider"/> by its registry entry's
+/// <see cref="LibraryRegistryEntry.ProviderType"/>. Only "local" is implemented so far (S3/
+/// OneDrive/Google Drive/Nawishta land in later phases) - this is the one place a new provider
+/// type gets wired in without any caller above this factory needing to change.
 /// </summary>
-public class StorageProviderFactory(LocalFileSystemProvider local) : IStorageProviderFactory
+public class StorageProviderFactory(ILibraryService libraryService, LocalFileSystemProvider local) : IStorageProviderFactory
 {
-    public IStorageProvider Current => local;
+    public IStorageProvider Current
+    {
+        get
+        {
+            var providerType = libraryService.Libraries
+                .FirstOrDefault(l => l.Id == libraryService.CurrentLibraryId)?.ProviderType
+                ?? "local";
+
+            return providerType switch
+            {
+                "local" => local,
+                _ => throw new NotSupportedException($"Storage provider \"{providerType}\" isn't implemented yet."),
+            };
+        }
+    }
 }

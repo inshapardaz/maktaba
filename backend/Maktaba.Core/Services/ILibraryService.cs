@@ -4,7 +4,22 @@ public record LibraryInfo(string Path);
 
 /// <summary>A library the user has opened at least once, kept in the app-wide registry (see
 /// LibraryService) regardless of whether it's the one currently active.</summary>
-public record LibraryRegistryEntry(string Id, string Name, string Path, bool PeriodicalsEnabled = true);
+/// <param name="ProviderType">"local" | "s3" | "onedrive" | "googledrive" | "nawishta". Defaults to
+/// "local" so an entry loaded from a pre-cloud-support config.json (missing the field entirely)
+/// deserializes exactly as it always has - see the cloud storage epic's non-breaking-changes
+/// requirement.</param>
+/// <param name="ProviderConfig">Provider-specific, non-secret settings only (e.g. S3's bucket/
+/// region/prefix, Nawishta's server URL/remote library id) - never a secret. Null for "local".</param>
+/// <param name="CredentialRef">Opaque key into the OS-backed credential store (see the Cloud Sync
+/// Core credential-store task) - never the secret itself. Null for "local".</param>
+public record LibraryRegistryEntry(
+    string Id,
+    string Name,
+    string Path,
+    bool PeriodicalsEnabled = true,
+    string ProviderType = "local",
+    IReadOnlyDictionary<string, string>? ProviderConfig = null,
+    string? CredentialRef = null);
 
 public interface ILibraryService
 {
