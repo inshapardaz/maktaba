@@ -55,7 +55,7 @@ public class CloudCacheManager : ICloudCacheManager
 
     private static async Task MoveWithRetryAsync(string tempPath, string destPath, CancellationToken ct)
     {
-        const int maxAttempts = 5;
+        const int maxAttempts = 8;
         for (var attempt = 1; ; attempt++)
         {
             try
@@ -63,7 +63,11 @@ public class CloudCacheManager : ICloudCacheManager
                 File.Move(tempPath, destPath, overwrite: true);
                 return;
             }
-            catch (IOException) when (attempt < maxAttempts)
+            // Windows reports what is fundamentally the same "something else still has this file
+            // open" condition as either an IOException (ERROR_SHARING_VIOLATION) or an
+            // UnauthorizedAccessException (ERROR_ACCESS_DENIED, from MoveFileEx specifically)
+            // depending on exact timing - both need the same retry, not just IOException.
+            catch (Exception ex) when ((ex is IOException or UnauthorizedAccessException) && attempt < maxAttempts)
             {
                 await Task.Delay(200 * attempt, ct);
             }

@@ -158,14 +158,29 @@ public static class LibraryEndpoints
         group.MapPost("/{id}/open", async (
             string id, OpenLibraryCredentialRequestDto? request, ILibraryService libraryService, CancellationToken ct) =>
         {
-            var info = await libraryService.OpenLibraryByIdAsync(id, request?.Credential, ct);
-            if (info is null)
+            // Opening a cloud-backed library touches the network and the local filesystem cache
+            // (see LibraryService.ActivateAsync/PullDatabaseAsync) - either can fail in ways this
+            // endpoint has to turn into a clean, parseable error response rather than letting an
+            // unhandled exception reach Kestrel's default handling, which the frontend's fetch()
+            // call sees as a bare connection failure ("Failed to fetch") with no message to show -
+            // exactly the case App.tsx's cloudReconnectQuery/recovery screen needs a real message
+            // for. (This isn't needed for most endpoints, which don't do their own I/O beyond a
+            // request-scoped EF query - opening a library is the unusual case that does.)
+            try
             {
-                return Results.NotFound();
-            }
+                var info = await libraryService.OpenLibraryByIdAsync(id, request?.Credential, ct);
+                if (info is null)
+                {
+                    return Results.NotFound();
+                }
 
-            var active = libraryService.Libraries.First(l => l.Id == libraryService.CurrentLibraryId);
-            return Results.Ok(new LibraryDto(active.Path, active.Id, active.Name, active.PeriodicalsEnabled, active.ProviderType));
+                var active = libraryService.Libraries.First(l => l.Id == libraryService.CurrentLibraryId);
+                return Results.Ok(new LibraryDto(active.Path, active.Id, active.Name, active.PeriodicalsEnabled, active.ProviderType));
+            }
+            catch (Exception ex)
+            {
+                return Results.Json(new { error = DescribeS3Error(ex) }, statusCode: StatusCodes.Status502BadGateway);
+            }
         });
 
         group.MapPut("/{id}/name", async (string id, RenameLibraryRequestDto request, ILibraryService libraryService, CancellationToken ct) =>
