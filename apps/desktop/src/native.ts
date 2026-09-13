@@ -4,6 +4,7 @@ import path from "path";
 import { pathToFileURL } from "url";
 import { gunzipSync } from "zlib";
 import JSZip from "jszip";
+import { connectGoogleDrive } from "./googleDriveAuth";
 
 const EBOOK_EXTENSIONS = new Set([".epub", ".pdf", ".docx", ".txt"]);
 
@@ -358,4 +359,12 @@ export function registerNativeHandlers(getWindow: () => BrowserWindow | null): v
     const id = sanitizedCredentialRefOrThrow(ref);
     await fs.rm(path.join(cloudCredentialsDir(), `${id}.enc`), { force: true });
   });
+
+  // Cloud: Phase 5 (#99) - the interactive Google Drive sign-in step (system browser + loopback
+  // listener) can only run here, never in the renderer or the .NET backend. Returns the token set
+  // straight to the renderer, same as OneDrive's connectOneDrive and S3's credential fields - it's
+  // responsible for handing them to the backend (to register/verify the library) and to
+  // saveCloudCredential (to persist them), rather than introducing a third credential-handling
+  // pattern.
+  ipcMain.handle("maktaba:connect-google-drive", () => connectGoogleDrive());
 }
