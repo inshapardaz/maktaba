@@ -30,32 +30,57 @@ public class StorageProviderFactory(
             var entry = libraryService.Libraries.FirstOrDefault(l => l.Id == libraryService.CurrentLibraryId);
             var providerType = entry?.ProviderType ?? "local";
 
-            return providerType switch
+            if (providerType == "local")
             {
-                "local" => local,
-                "s3" => GetOrCreateS3Provider(entry!),
-                _ => throw new NotSupportedException($"Storage provider \"{providerType}\" isn't implemented yet."),
-            };
+                return local;
+            }
+
+            if (!credentials.TryGet(entry!.Id, out var credential))
+            {
+                throw new InvalidOperationException(
+                    "This library's credentials haven't been supplied for this session yet - reopen it with its credential.");
+            }
+
+            return GetOrCreateS3Provider(entry.Id, providerType, entry.ProviderConfig ?? new Dictionary<string, string>(), credential);
         }
     }
 
-    private S3StorageProvider GetOrCreateS3Provider(LibraryRegistryEntry entry)
+    // The migration wizard (Cloud: Phase 3) needs a provider for a library that isn't registered
+    // under its new ProviderType yet - it's still "local" (or another cloud provider) in the
+    // registry until LibraryService.SwitchProviderAsync runs at the end of a successful migration.
+    // libraryId is deliberately the *same* id the library already has (migration never creates a
+    // new library, only changes where an existing one's files live) - see ICloudCacheManager, whose
+    // cache is keyed by libraryId, so the target's local cache mirror naturally lines up with
+    // whatever this library ends up being once the switch happens.
+    public IStorageProvider CreateForProvider(
+        string libraryId, string providerType, IReadOnlyDictionary<string, string> providerConfig, string credential)
     {
-        if (!credentials.TryGet(entry.Id, out var credential))
+        credentials.Set(libraryId, credential);
+        return providerType switch
         {
-            throw new InvalidOperationException(
-                "This library's S3 credentials haven't been supplied for this session yet - reopen it with its credential.");
+            "local" => local,
+            "s3" => GetOrCreateS3Provider(libraryId, providerType, providerConfig, credential),
+            _ => throw new NotSupportedException($"Storage provider \"{providerType}\" isn't implemented yet."),
+        };
+    }
+
+    private S3StorageProvider GetOrCreateS3Provider(
+        string libraryId, string providerType, IReadOnlyDictionary<string, string> providerConfig, string credential)
+    {
+        if (providerType != "s3")
+        {
+            throw new NotSupportedException($"Storage provider \"{providerType}\" isn't implemented yet.");
         }
 
         var credentialHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(credential)));
-        var key = (entry.Id, credentialHash);
+        var key = (libraryId, credentialHash);
         if (_s3Cache.TryGetValue(key, out var existing))
         {
             return existing;
         }
 
-        var options = S3ProviderOptions.FromConfig(entry.ProviderConfig ?? new Dictionary<string, string>(), credential);
-        var provider = new S3StorageProvider(entry.Id, options, cloudCacheManager);
+        var options = S3ProviderOptions.FromConfig(providerConfig, credential);
+        var provider = new S3StorageProvider(libraryId, options, cloudCacheManager);
         _s3Cache[key] = provider;
         return provider;
     }

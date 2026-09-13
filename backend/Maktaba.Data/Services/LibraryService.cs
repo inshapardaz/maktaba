@@ -172,6 +172,53 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
         return new LibraryInfo(entry.Path);
     }
 
+    public async Task<LibraryRegistryEntry?> SwitchProviderAsync(
+        string id, string providerType, IReadOnlyDictionary<string, string>? providerConfig, string? credential,
+        CancellationToken ct = default)
+    {
+        var index = _libraries.FindIndex(l => l.Id == id);
+        if (index < 0)
+        {
+            return null;
+        }
+
+        if (credential is not null)
+        {
+            _credentialCache.Set(id, credential);
+        }
+
+        var updated = _libraries[index] with
+        {
+            ProviderType = providerType,
+            ProviderConfig = providerConfig,
+            // CredentialRef mirrors OpenCloudLibraryAsync's own convention (the library's own id) -
+            // null for "local", which needs no credential at all.
+            CredentialRef = providerType == "local" ? null : id,
+            // Path is a synthetic display string for any non-local provider (see
+            // OpenCloudLibraryAsync) - only meaningful as a real folder for "local", and migrating
+            // *to* local isn't supported yet (no path to point it at), so this only ever produces a
+            // sensible value for a cloud target.
+            Path = providerType == "local" ? _libraries[index].Path : $"{providerType}://{_libraries[index].Name}",
+        };
+        _libraries[index] = updated;
+
+        if (CurrentLibraryId == id)
+        {
+            // The active library's storage just changed out from under itself - re-activate in
+            // place so LibraryRootPath/DatabasePath (and the schema-verified flag) track it. Safe
+            // to do unconditionally here: the migration wizard only calls this after a verified
+            // migration already copied everything (including metadata.db) to the new provider, so
+            // this pull is just confirming what's already there, not doing the real work.
+            await ActivateAsync(updated, ct);
+        }
+        else
+        {
+            SaveConfig();
+        }
+
+        return updated;
+    }
+
     public Task<LibraryRegistryEntry?> RenameAsync(string id, string name, CancellationToken ct = default)
     {
         var index = _libraries.FindIndex(l => l.Id == id);

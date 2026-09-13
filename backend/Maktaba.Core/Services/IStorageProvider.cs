@@ -58,4 +58,12 @@ public interface IStorageProviderFactory
 {
     /// <summary>The storage provider for the currently open library.</summary>
     IStorageProvider Current { get; }
+
+    /// <summary>Resolves (constructing and caching if needed) a provider for an arbitrary
+    /// provider type/config/credential, independent of the library registry - used by the
+    /// migration wizard to talk to a target that a library isn't actually registered under yet.
+    /// Also caches the credential (see ICloudCredentialCache) under <paramref name="libraryId"/>,
+    /// so it's already available once that library's registry entry is switched to match.</summary>
+    IStorageProvider CreateForProvider(
+        string libraryId, string providerType, IReadOnlyDictionary<string, string> providerConfig, string credential);
 }
