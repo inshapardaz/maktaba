@@ -5,11 +5,12 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Maktaba.Data.Services;
 
-public class PeriodicalService(MaktabaDbContext db, ILibraryPathProvider libraryPath) : IPeriodicalService
+public class PeriodicalService(MaktabaDbContext db, IStorageProviderFactory storageFactory) : IPeriodicalService
 {
+    private IStorageProvider Storage => storageFactory.Current;
+
     public async Task<Periodical> CreateAsync(PeriodicalEditRequest request, CancellationToken ct = default)
     {
-        var libraryRoot = libraryPath.LibraryRootPath!;
         var trimmed = request.Name.Trim();
 
         var periodical = new Periodical
@@ -36,11 +37,10 @@ public class PeriodicalService(MaktabaDbContext db, ILibraryPathProvider library
         await db.SaveChangesAsync(ct);
 
         var relativeFolder = LibraryPathBuilder.PeriodicalFolderPath(trimmed, periodical.Id);
-        var absoluteFolder = Path.Combine(libraryRoot, relativeFolder);
 
         try
         {
-            Directory.CreateDirectory(absoluteFolder);
+            await Storage.CreateDirectoryAsync(relativeFolder, ct);
             periodical.FolderPath = relativeFolder;
             await db.SaveChangesAsync(ct);
             await transaction.CommitAsync(ct);
@@ -48,9 +48,9 @@ public class PeriodicalService(MaktabaDbContext db, ILibraryPathProvider library
         }
         catch
         {
-            if (Directory.Exists(absoluteFolder))
+            if (await Storage.ExistsAsync(relativeFolder, ct))
             {
-                Directory.Delete(absoluteFolder, recursive: true);
+                await Storage.DeleteAsync(relativeFolder, recursive: true, ct);
             }
             throw;
         }
@@ -74,13 +74,8 @@ public class PeriodicalService(MaktabaDbContext db, ILibraryPathProvider library
         FolderMoveState? move = null;
         if (!string.Equals(oldFolderRelative, newFolderRelative, StringComparison.Ordinal))
         {
-            var libraryRoot = libraryPath.LibraryRootPath!;
-            var oldAbsolute = Path.Combine(libraryRoot, oldFolderRelative);
-            var newAbsolute = Path.Combine(libraryRoot, newFolderRelative);
-
-            Directory.CreateDirectory(Path.GetDirectoryName(newAbsolute)!);
-            Directory.Move(oldAbsolute, newAbsolute);
-            move = new FolderMoveState(oldAbsolute, newAbsolute);
+            await Storage.MoveAsync(oldFolderRelative, newFolderRelative, ct);
+            move = new FolderMoveState(oldFolderRelative, newFolderRelative);
 
             // The periodical's own folder move already brought every nested issue subfolder along
             // with it (Directory.Move on the parent), so only the DB-side path strings - not the
@@ -119,9 +114,11 @@ public class PeriodicalService(MaktabaDbContext db, ILibraryPathProvider library
         }
         catch
         {
-            if (move is { } m && Directory.Exists(m.NewAbsolute) && !Directory.Exists(m.OldAbsolute))
+            if (move is { } m &&
+                await Storage.ExistsAsync(m.NewRelative, ct) &&
+                !await Storage.ExistsAsync(m.OldRelative, ct))
             {
-                Directory.Move(m.NewAbsolute, m.OldAbsolute);
+                await Storage.MoveAsync(m.NewRelative, m.OldRelative, ct);
             }
             throw;
         }
@@ -144,7 +141,7 @@ public class PeriodicalService(MaktabaDbContext db, ILibraryPathProvider library
             return new PeriodicalDeleteResult(PeriodicalDeleteOutcome.HasIssues);
         }
 
-        var absoluteFolder = Path.Combine(libraryPath.LibraryRootPath!, periodical.FolderPath);
+        var absoluteFolder = await Storage.GetLocalPathAsync(periodical.FolderPath, ct);
 
         // Removing each issue Book row cascades to its BookAuthors/BookSeries/BookTags/BookFiles/
         // Identifiers/Bookmarks/Notes/ReadingProgress via their required FK to Book, same as a
@@ -169,26 +166,30 @@ public class PeriodicalService(MaktabaDbContext db, ILibraryPathProvider library
             return null;
         }
 
-        var libraryRoot = libraryPath.LibraryRootPath!;
-        var absoluteFolder = Path.Combine(libraryRoot, periodical.FolderPath);
-        Directory.CreateDirectory(absoluteFolder);
+        await Storage.CreateDirectoryAsync(periodical.FolderPath, ct);
+        var absoluteFolder = await Storage.GetLocalPathAsync(periodical.FolderPath, ct);
 
         // Remove any existing cover.* first so replacing a jpg cover with a png (or vice versa)
         // doesn't leave both sitting next to each other - CoverLocator.Find would then keep
         // serving whichever candidate it checks first, regardless of which one was just uploaded.
-        foreach (var existing in Directory.EnumerateFiles(absoluteFolder, "cover.*"))
+        await foreach (var entry in Storage.EnumerateAsync(periodical.FolderPath, ct))
         {
-            File.Delete(existing);
+            if (!entry.IsDirectory && Path.GetFileName(entry.RelativePath).StartsWith("cover.", StringComparison.Ordinal))
+            {
+                await Storage.DeleteAsync(entry.RelativePath, recursive: false, ct);
+            }
         }
 
         var extension = EbookFileHelpers.CoverExtensionFor(contentType);
+        var coverRelative = Path.Combine(periodical.FolderPath, $"cover.{extension}");
         await using (var fileStream = File.Create(Path.Combine(absoluteFolder, $"cover.{extension}")))
         {
             await content.CopyToAsync(fileStream, ct);
         }
+        await Storage.NotifyWrittenAsync(coverRelative, ct);
 
         return periodical;
     }
 
-    private readonly record struct FolderMoveState(string OldAbsolute, string NewAbsolute);
+    private readonly record struct FolderMoveState(string OldRelative, string NewRelative);
 }

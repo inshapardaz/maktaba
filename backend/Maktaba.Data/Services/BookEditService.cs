@@ -8,8 +8,14 @@ namespace Maktaba.Data.Services;
 public class BookEditService(
     MaktabaDbContext db,
     ILibraryPathProvider libraryPath,
+    IStorageProviderFactory storageFactory,
     IEnumerable<IBookMetadataExtractor> extractors) : IBookEditService
 {
+    // BookFolderRelocator.RelocateIfNeeded below still takes a raw library-root string rather than
+    // IStorageProvider - that's covered by the CoverLocator/AuthorImageLocator/EbookFileHelpers/
+    // BookFolderRelocator refactor task, not this one.
+    private IStorageProvider Storage => storageFactory.Current;
+
     public async Task<Book?> UpdateAsync(int bookId, BookEditRequest request, CancellationToken ct = default)
     {
         var book = await db.Books
@@ -118,19 +124,18 @@ public class BookEditService(
             return null;
         }
 
-        var root = libraryPath.LibraryRootPath!;
         var folderRelative = Path.GetDirectoryName(file.FilePath) ?? "";
-        var folderAbsolute = Path.Combine(root, folderRelative);
+        var folderAbsolute = await Storage.GetLocalPathAsync(folderRelative, ct);
         var extension = Path.GetExtension(file.FilePath);
         var newFileName = FileNaming.SanitizePathSegment(newName) + extension;
         var oldFileName = Path.GetFileName(file.FilePath);
 
         if (!string.Equals(newFileName, oldFileName, StringComparison.Ordinal))
         {
-            var oldAbsolute = Path.Combine(root, file.FilePath);
             var newAbsolute = EbookFileHelpers.GetUniqueFilePath(folderAbsolute, newFileName);
-            File.Move(oldAbsolute, newAbsolute);
-            file.FilePath = Path.Combine(folderRelative, Path.GetFileName(newAbsolute));
+            var newRelative = Path.Combine(folderRelative, Path.GetFileName(newAbsolute));
+            await Storage.MoveAsync(file.FilePath, newRelative, ct);
+            file.FilePath = newRelative;
         }
 
         file.IsCustomNamed = true;
@@ -159,11 +164,9 @@ public class BookEditService(
             throw new InvalidOperationException("Cannot delete a book's only file.");
         }
 
-        var root = libraryPath.LibraryRootPath!;
-        var absolutePath = Path.Combine(root, file.FilePath);
-        if (File.Exists(absolutePath))
+        if (await Storage.ExistsAsync(file.FilePath, ct))
         {
-            File.Delete(absolutePath);
+            await Storage.DeleteAsync(file.FilePath, recursive: false, ct);
         }
 
         db.BookFiles.Remove(file);
@@ -185,9 +188,8 @@ public class BookEditService(
             return null;
         }
 
-        var root = libraryPath.LibraryRootPath!;
-        var targetFolderAbsolute = Path.Combine(root, target.FolderPath);
-        Directory.CreateDirectory(targetFolderAbsolute);
+        await Storage.CreateDirectoryAsync(target.FolderPath, ct);
+        var targetFolderAbsolute = await Storage.GetLocalPathAsync(target.FolderPath, ct);
 
         // Only files the target doesn't already have (by content, not just format - a book can have
         // two files of the same format, e.g. a custom-named alternate) are brought over, so re-merging
@@ -200,20 +202,20 @@ public class BookEditService(
                 continue;
             }
 
-            var sourceAbsolute = Path.Combine(root, file.FilePath);
             var baseFileName = FileNaming.SanitizePathSegment(target.Title) + Path.GetExtension(file.FilePath);
             var destAbsolute = EbookFileHelpers.GetUniqueFilePath(targetFolderAbsolute, baseFileName);
+            var destRelative = Path.Combine(target.FolderPath, Path.GetFileName(destAbsolute));
 
-            if (File.Exists(sourceAbsolute))
+            if (await Storage.ExistsAsync(file.FilePath, ct))
             {
-                File.Move(sourceAbsolute, destAbsolute);
+                await Storage.MoveAsync(file.FilePath, destRelative, ct);
             }
 
             var mergedFile = new BookFile
             {
                 BookId = target.Id,
                 Format = file.Format,
-                FilePath = Path.Combine(target.FolderPath, Path.GetFileName(destAbsolute)),
+                FilePath = destRelative,
                 FileSizeBytes = File.Exists(destAbsolute) ? new FileInfo(destAbsolute).Length : file.FileSizeBytes,
                 ContentHash = file.ContentHash,
             };
@@ -238,8 +240,7 @@ public class BookEditService(
             return CoverExtractionOutcome.FileNotFound;
         }
 
-        var root = libraryPath.LibraryRootPath!;
-        var absolutePath = Path.Combine(root, file.FilePath);
+        var absolutePath = await Storage.GetLocalPathAsync(file.FilePath, ct);
         var extractor = extractors.FirstOrDefault(e => e.CanHandle(absolutePath));
         var metadata = extractor is not null ? await extractor.ExtractAsync(absolutePath, ct) : null;
 
@@ -248,18 +249,20 @@ public class BookEditService(
             return CoverExtractionOutcome.NoCoverInFile;
         }
 
-        var folderAbsolute = Path.Combine(root, book.FolderPath);
         foreach (var existing in CoverLocator.CoverFileNames)
         {
-            var existingPath = Path.Combine(folderAbsolute, existing);
-            if (File.Exists(existingPath))
+            var existingRelative = Path.Combine(book.FolderPath, existing);
+            if (await Storage.ExistsAsync(existingRelative, ct))
             {
-                File.Delete(existingPath);
+                await Storage.DeleteAsync(existingRelative, recursive: false, ct);
             }
         }
 
         var coverExtension = EbookFileHelpers.CoverExtensionFor(metadata.CoverContentType);
+        var coverRelative = Path.Combine(book.FolderPath, $"cover.{coverExtension}");
+        var folderAbsolute = await Storage.GetLocalPathAsync(book.FolderPath, ct);
         await File.WriteAllBytesAsync(Path.Combine(folderAbsolute, $"cover.{coverExtension}"), metadata.CoverImageBytes, ct);
+        await Storage.NotifyWrittenAsync(coverRelative, ct);
 
         return CoverExtractionOutcome.Extracted;
     }
