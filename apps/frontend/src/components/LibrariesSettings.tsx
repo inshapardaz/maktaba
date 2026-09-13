@@ -45,6 +45,7 @@ import { invalidateLibraryQueries } from "../queries";
 import { useRescan } from "../RescanContext";
 import { useLibrarySync } from "../LibrarySyncContext";
 import { EMPTY_S3_FIELDS, isS3FieldsComplete, S3CredentialFields, type S3FieldsValue } from "./S3CredentialFields";
+import { MigrationWizard } from "./MigrationWizard";
 
 // Provider names are proper nouns/brand names, not translated - same convention as file format
 // labels (EPUB/PDF/...) elsewhere in this app. Only "local" is reachable today; the rest land with
@@ -194,6 +195,7 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
   };
 
   const [s3ModalOpen, setS3ModalOpen] = useState(false);
+  const [migrationWizardOpen, setMigrationWizardOpen] = useState(false);
 
   const handleS3Connected = () => {
     setS3ModalOpen(false);
@@ -218,6 +220,14 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
       </Group>
 
       <S3ConnectModal opened={s3ModalOpen} onClose={() => setS3ModalOpen(false)} onConnected={handleS3Connected} />
+      <MigrationWizard
+        opened={migrationWizardOpen}
+        onClose={() => setMigrationWizardOpen(false)}
+        onActiveLibraryChanged={() => {
+          invalidateLibraries();
+          refreshActiveLibrary();
+        }}
+      />
 
       {addError && (
         <Alert color="red" icon={<IconAlertCircle size={18} />} title={t("settings.changeLibraryErrorTitle")}>
@@ -336,6 +346,18 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
                       aria-label={t("librariesSettings.resync")}
                     >
                       <IconRefresh size={14} />
+                    </ActionIcon>
+                  </Tooltip>
+                )}
+                {entry.isActive && entry.providerType === "local" && (
+                  <Tooltip label={t("librariesSettings.migrateToCloud")}>
+                    <ActionIcon
+                      variant="subtle"
+                      color="gray"
+                      onClick={() => setMigrationWizardOpen(true)}
+                      aria-label={t("librariesSettings.migrateToCloud")}
+                    >
+                      <IconCloud size={14} />
                     </ActionIcon>
                   </Tooltip>
                 )}
