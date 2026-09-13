@@ -196,4 +196,10 @@ contextBridge.exposeInMainWorld("maktaba", {
 
   deleteCloudCredential: (ref: string): Promise<void> =>
     ipcRenderer.invoke("maktaba:delete-cloud-credential", ref),
+
+  // Cloud: Phase 4 (#96) - runs the interactive OneDrive sign-in (opens the system browser,
+  // resolves once it redirects back to a temporary loopback listener). Rejects if the user closes
+  // the browser without completing sign-in, denies consent, or it times out.
+  connectOneDrive: (): Promise<{ accessToken: string; refreshToken: string; expiresAt: number }> =>
+    ipcRenderer.invoke("maktaba:connect-onedrive"),
 });

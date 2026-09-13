@@ -66,6 +66,7 @@ declare global {
       saveCloudCredential: (ref: string, secret: string) => Promise<void>;
       getCloudCredential: (ref: string) => Promise<string | null>;
       deleteCloudCredential: (ref: string) => Promise<void>;
+      connectOneDrive: () => Promise<{ accessToken: string; refreshToken: string; expiresAt: number }>;
     };
   }
 }

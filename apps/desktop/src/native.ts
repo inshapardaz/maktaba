@@ -4,6 +4,7 @@ import path from "path";
 import { pathToFileURL } from "url";
 import { gunzipSync } from "zlib";
 import JSZip from "jszip";
+import { connectOneDrive } from "./oneDriveAuth";
 
 const EBOOK_EXTENSIONS = new Set([".epub", ".pdf", ".docx", ".txt"]);
 
@@ -358,4 +359,11 @@ export function registerNativeHandlers(getWindow: () => BrowserWindow | null): v
     const id = sanitizedCredentialRefOrThrow(ref);
     await fs.rm(path.join(cloudCredentialsDir(), `${id}.enc`), { force: true });
   });
+
+  // Cloud: Phase 4 (#96) - the interactive OneDrive sign-in step (system browser + loopback
+  // listener) can only run here, never in the renderer or the .NET backend. Returns the token set
+  // straight to the renderer, same as S3's credential fields - it's responsible for handing them
+  // to the backend (to register/verify the library) and to saveCloudCredential (to persist them),
+  // exactly mirroring S3ConnectModal's connect flow rather than introducing a second pattern.
+  ipcMain.handle("maktaba:connect-onedrive", () => connectOneDrive());
 }
