@@ -273,6 +273,34 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
         // just returns DatabasePath) - CurrentLibraryId/LibraryRootPath are already set above, so
         // the factory resolves the right provider for the library being activated.
         var storage = _serviceProvider.GetRequiredService<IStorageProviderFactory>().Current;
+
+        if (entry.ProviderType != "local")
+        {
+            // Microsoft.Data.Sqlite defaults to WAL mode, which keeps a memory-mapped
+            // "{db}-shm" file (plus a "{db}-wal" journal) alongside metadata.db for as long as any
+            // connection - even a pooled one left over from earlier in this same process, e.g. a
+            // previous EnsureCurrentSchemaAsync probe - has it open. Overwriting metadata.db without
+            // releasing that first is exactly what turned "Access to the path is denied" from a
+            // transient, retryable failure (CloudCacheManager's own retry loop) into a persistent
+            // one no amount of retrying fixed: the lock was never going to release on its own. Only
+            // relevant for a cloud-backed library, whose PullDatabaseAsync is about to *replace* the
+            // local cache copy - for "local", PullDatabaseAsync never touches the file at all, and
+            // clearing pools/deleting WAL/SHM there would risk losing not-yet-checkpointed local
+            // writes for no reason.
+            SqliteConnection.ClearAllPools();
+            if (DatabasePath is { } dbPath)
+            {
+                foreach (var suffix in new[] { "-wal", "-shm" })
+                {
+                    var sidecarPath = dbPath + suffix;
+                    if (File.Exists(sidecarPath))
+                    {
+                        File.Delete(sidecarPath);
+                    }
+                }
+            }
+        }
+
         await storage.PullDatabaseAsync(ct);
 
         // SQLite needs the parent folder to already exist before it can create a new file there.
