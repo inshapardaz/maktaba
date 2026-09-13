@@ -51,7 +51,7 @@ public static class LibraryEndpoints
             }
             catch (Exception ex)
             {
-                return Results.BadRequest(new { error = $"Could not connect to this library: {ex.Message}" });
+                return Results.BadRequest(new { error = $"Could not connect to this library: {DescribeS3Error(ex)}" });
             }
 
             var active = libraryService.Libraries.First(l => l.Id == libraryService.CurrentLibraryId);
@@ -91,7 +91,7 @@ public static class LibraryEndpoints
             }
             catch (Exception ex)
             {
-                return Results.BadRequest(new { error = ex.Message });
+                return Results.BadRequest(new { error = DescribeS3Error(ex) });
             }
         });
 
@@ -216,4 +216,18 @@ public static class LibraryEndpoints
             return Results.Ok(new { bookCount });
         });
     }
+
+    // AmazonS3Exception.Message alone is often just a bare "Access Denied"/"Forbidden" with no
+    // indication of *why* - the ErrorCode/RequestId the AWS SDK actually gets back from the server
+    // are separate properties it doesn't fold into Message. Surfacing them is the difference between
+    // a user being able to tell "wrong region for this provider" apart from "wrong credentials"
+    // apart from "bucket policy denies this" apart from "IAM policy is missing ListBucket on the
+    // bucket ARN itself (only granted it on .../* for objects)" - all of which show up as the same
+    // unhelpful "Access Denied" otherwise.
+    private static string DescribeS3Error(Exception ex) => ex switch
+    {
+        Amazon.S3.AmazonS3Exception s3Ex => $"{s3Ex.Message} (S3 error code: {s3Ex.ErrorCode}, HTTP {(int)s3Ex.StatusCode}, request id: {s3Ex.RequestId})",
+        Amazon.Runtime.AmazonServiceException svcEx => $"{svcEx.Message} (HTTP {(int)svcEx.StatusCode}, request id: {svcEx.RequestId})",
+        _ => ex.Message,
+    };
 }

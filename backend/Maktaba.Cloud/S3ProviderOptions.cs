@@ -48,11 +48,24 @@ public record S3ProviderOptions(
     // default virtual-hosted style (https://bucket.host/key) - most non-AWS S3-compatible servers
     // don't do the DNS/TLS-cert setup virtual-hosted style needs. AuthenticationRegion still has to
     // be set for SigV4 request signing even against a non-AWS endpoint; most such providers accept
-    // any non-empty region string (MinIO in particular ignores it entirely).
-    public AmazonS3Config BuildClientConfig() =>
-        string.IsNullOrWhiteSpace(Endpoint)
-            ? new AmazonS3Config { RegionEndpoint = RegionEndpoint.GetBySystemName(Region) }
-            : new AmazonS3Config { ServiceURL = ToServiceUrl(Endpoint), ForcePathStyle = true, AuthenticationRegion = Region };
+    // any non-empty region string (MinIO in particular ignores it entirely) - but Cloudflare R2
+    // specifically *requires* the literal string "auto" for the signature to verify at all
+    // (https://developers.cloudflare.com/r2/api/s3/tokens/), regardless of what the user typed in
+    // the Region field - a mismatched region there is a signature failure R2 reports back as a
+    // plain, unhelpful "Access Denied", not a clearer "region mismatch" error.
+    public AmazonS3Config BuildClientConfig()
+    {
+        if (string.IsNullOrWhiteSpace(Endpoint))
+        {
+            return new AmazonS3Config { RegionEndpoint = RegionEndpoint.GetBySystemName(Region) };
+        }
+
+        var serviceUrl = ToServiceUrl(Endpoint);
+        var authRegion = serviceUrl.Contains(".r2.cloudflarestorage.com", StringComparison.OrdinalIgnoreCase)
+            ? "auto"
+            : Region;
+        return new AmazonS3Config { ServiceURL = serviceUrl, ForcePathStyle = true, AuthenticationRegion = authRegion };
+    }
 
     private static string ToServiceUrl(string endpoint) =>
         endpoint.Contains("://", StringComparison.Ordinal) ? endpoint : $"https://{endpoint}";
