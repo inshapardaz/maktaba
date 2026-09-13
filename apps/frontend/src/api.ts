@@ -302,22 +302,6 @@ export function resyncLibrary(id: string): Promise<{ bookCount: number }> {
   return request<{ bookCount: number }>(`/api/libraries/${id}/resync`, { method: "POST" });
 }
 
-// Cloud Sync Core: only meaningful for a cloud-backed library (see LibraryEntry.providerType) -
-// always Idle for a local one, since nothing ever reports sync activity for it.
-export interface SyncStatus {
-  state: "Idle" | "Syncing" | "Error";
-  lastSyncedAtUtc: string | null;
-  errorMessage: string | null;
-}
-
-export function getSyncStatus(): Promise<SyncStatus> {
-  return request<SyncStatus>("/api/libraries/sync-status");
-}
-
-export function syncNow(): Promise<void> {
-  return request<void>("/api/libraries/sync-now", { method: "POST" });
-}
-
 // The credential shape saved via window.maktaba.saveCloudCredential/getCloudCredential for an S3
 // library - see backend S3ProviderOptions.FromConfig, which expects exactly this JSON shape.
 export interface S3Credential {

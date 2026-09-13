@@ -29,7 +29,6 @@ import {
 } from "../icons";
 import {
   connectCloudLibrary,
-  getSyncStatus,
   listLibraries,
   openLibrary,
   openLibraryById,
@@ -37,7 +36,6 @@ import {
   removeLibrary,
   renameLibrary,
   setLibraryPeriodicalsEnabled,
-  syncNow,
   testS3Connection,
   type LibraryEntry,
   type S3Credential,
@@ -68,20 +66,6 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
   const queryClient = useQueryClient();
 
   const librariesQuery = useQuery({ queryKey: ["libraries"], queryFn: listLibraries });
-
-  // Cloud Sync Core: only meaningful once a non-local library exists (none do yet - S3 lands in a
-  // later phase), so this never polls at all for today's all-local libraries.
-  const hasCloudLibrary = librariesQuery.data?.some((l) => l.providerType !== "local") ?? false;
-  const syncStatusQuery = useQuery({
-    queryKey: ["librarySyncStatus"],
-    queryFn: getSyncStatus,
-    enabled: hasCloudLibrary,
-    refetchInterval: hasCloudLibrary ? 5000 : false,
-  });
-  const syncNowMutation = useMutation({
-    mutationFn: syncNow,
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["librarySyncStatus"] }),
-  });
 
   const [addBusy, setAddBusy] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
@@ -338,18 +322,20 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
                     </ActionIcon>
                   </Tooltip>
                 )}
-                <Tooltip label={t("librariesSettings.resync")}>
-                  <ActionIcon
-                    variant="subtle"
-                    color="gray"
-                    loading={rescan.libraryId === entry.id}
-                    disabled={rescan.isRunning && rescan.libraryId !== entry.id}
-                    onClick={() => handleResync(entry)}
-                    aria-label={t("librariesSettings.resync")}
-                  >
-                    <IconRefresh size={14} />
-                  </ActionIcon>
-                </Tooltip>
+                {entry.providerType === "local" && (
+                  <Tooltip label={t("librariesSettings.resync")}>
+                    <ActionIcon
+                      variant="subtle"
+                      color="gray"
+                      loading={rescan.libraryId === entry.id}
+                      disabled={rescan.isRunning && rescan.libraryId !== entry.id}
+                      onClick={() => handleResync(entry)}
+                      aria-label={t("librariesSettings.resync")}
+                    >
+                      <IconRefresh size={14} />
+                    </ActionIcon>
+                  </Tooltip>
+                )}
                 {confirmingRemoveId === entry.id ? (
                   <Group gap={4} wrap="nowrap">
                     <Button size="xs" color="red" loading={removeMutation.isPending} onClick={() => removeMutation.mutate(entry.id)}>
@@ -389,30 +375,6 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
                 onChange={(e) => periodicalsToggleMutation.mutate({ id: entry.id, enabled: e.currentTarget.checked })}
               />
             </Group>
-
-            {entry.isActive && entry.providerType !== "local" && syncStatusQuery.data && (
-              <Group justify="space-between">
-                <Text size="xs" c={syncStatusQuery.data.state === "Error" ? "red" : "dimmed"}>
-                  {syncStatusQuery.data.state === "Syncing" && t("librariesSettings.syncStatus.syncing")}
-                  {syncStatusQuery.data.state === "Error" &&
-                    t("librariesSettings.syncStatus.error", { message: syncStatusQuery.data.errorMessage ?? "" })}
-                  {syncStatusQuery.data.state === "Idle" &&
-                    (syncStatusQuery.data.lastSyncedAtUtc
-                      ? t("librariesSettings.syncStatus.synced", {
-                          time: new Date(syncStatusQuery.data.lastSyncedAtUtc).toLocaleTimeString(),
-                        })
-                      : t("librariesSettings.syncStatus.idle"))}
-                </Text>
-                <Button
-                  size="xs"
-                  variant="subtle"
-                  loading={syncNowMutation.isPending}
-                  onClick={() => syncNowMutation.mutate()}
-                >
-                  {t("librariesSettings.syncNow")}
-                </Button>
-              </Group>
-            )}
 
             {rescan.libraryId === entry.id && (
               <Stack gap={2}>
