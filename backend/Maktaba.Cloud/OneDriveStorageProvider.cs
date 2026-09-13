@@ -366,7 +366,10 @@ internal sealed class OneDriveTokenManager(HttpClient http, OneDriveProviderOpti
     // TODO(Cloud: Phase 4 #96/#97): must match oneDriveAuth.ts's CLIENT_ID once a real Azure AD app
     // registration exists - see that file's comment for the exact setup steps.
     private const string ClientId = "00000000-0000-0000-0000-000000000000";
-    private const string TokenEndpoint = "https://login.microsoftonline.com/common/oauth2/v2.0/token";
+    // /consumers/, not /common/ - CLIENT_ID's Azure AD app registration is "Personal Microsoft
+    // accounts only" (see oneDriveAuth.ts's matching comment), and /common/ against a
+    // consumers-only registration is a common source of "application not found" errors.
+    private const string TokenEndpoint = "https://login.microsoftonline.com/consumers/oauth2/v2.0/token";
     private const string Scopes = "offline_access Files.ReadWrite User.Read";
 
     private readonly SemaphoreSlim _refreshLock = new(1, 1);

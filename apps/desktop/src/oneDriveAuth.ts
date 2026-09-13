@@ -5,15 +5,19 @@ import { generatePkcePair, runOAuthLoopback } from "./oauthLoopback";
 // (client) ID before OneDrive support works - see docs/en/libraries.md's OneDrive setup notes
 // once written. One registration serves every Maktaba install (end users never register their own
 // app); it's a public client ("Mobile and desktop applications" platform, redirect URI
-// "http://localhost", no client secret needed - this flow uses PKCE instead), with the
-// "Accounts in any organizational directory and personal Microsoft accounts" multi-tenant option
-// so both OneDrive Personal and OneDrive for Business accounts can sign in against the same id.
+// "http://localhost", no client secret needed - this flow uses PKCE instead), registered as
+// "Personal Microsoft accounts only" - Maktaba targets OneDrive Personal, not OneDrive for
+// Business, so there's no need for the multi-tenant "any organizational directory" option (and
+// registering personal-only keeps the consent screen simpler for end users, and is what makes the
+// /consumers/ endpoint below the correct one rather than /common/).
 // Not a secret itself (client IDs are public by design), so hardcoding it here once known is fine.
 const CLIENT_ID = "00000000-0000-0000-0000-000000000000";
 
-// Multi-tenant + personal accounts endpoint (see CLIENT_ID's comment above).
-const AUTHORIZE_ENDPOINT = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize";
-const TOKEN_ENDPOINT = "https://login.microsoftonline.com/common/oauth2/v2.0/token";
+// /consumers/ (not /common/) since CLIENT_ID above is registered "Personal Microsoft accounts
+// only" - see that comment. Using /common/ against a consumers-only app registration is a common
+// source of "application not found in directory" errors.
+const AUTHORIZE_ENDPOINT = "https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize";
+const TOKEN_ENDPOINT = "https://login.microsoftonline.com/consumers/oauth2/v2.0/token";
 
 // offline_access is what makes the token response include a refresh_token - without it the user
 // would need to re-sign-in every ~60-90 minutes when the access token expires. Files.ReadWrite is
