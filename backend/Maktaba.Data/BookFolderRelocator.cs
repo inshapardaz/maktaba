@@ -1,5 +1,6 @@
 using Maktaba.Core.Entities;
 using Maktaba.Core.Naming;
+using Maktaba.Core.Services;
 
 namespace Maktaba.Data;
 
@@ -11,7 +12,7 @@ namespace Maktaba.Data;
 /// </summary>
 internal static class BookFolderRelocator
 {
-    public readonly record struct FolderMove(string OldAbsolute, string NewAbsolute);
+    public readonly record struct FolderMove(string OldRelative, string NewRelative);
 
     /// <summary>
     /// Renames/moves the book's on-disk folder (and its files) to match its current Title and
@@ -20,7 +21,8 @@ internal static class BookFolderRelocator
     /// matches. Mutates book.FolderPath and each file's FilePath in place; does not save changes.
     /// Callers must have .Include(b => b.Periodical) whenever a book might have PeriodicalId set.
     /// </summary>
-    public static FolderMove? RelocateIfNeeded(Book book, string oldFolderRelative, string libraryRoot)
+    public static async Task<FolderMove?> RelocateIfNeededAsync(
+        Book book, string oldFolderRelative, IStorageProvider storage, CancellationToken ct)
     {
         var newFolderRelative = book.Periodical is { } periodical
             ? LibraryPathBuilder.IssueFolderPath(periodical.Name, periodical.Id, book.Title, book.Id)
@@ -33,28 +35,31 @@ internal static class BookFolderRelocator
             return null;
         }
 
-        var oldAbsolute = Path.Combine(libraryRoot, oldFolderRelative);
-        var newAbsolute = Path.Combine(libraryRoot, newFolderRelative);
-
-        Directory.CreateDirectory(Path.GetDirectoryName(newAbsolute)!);
-        Directory.Move(oldAbsolute, newAbsolute);
+        await storage.MoveAsync(oldFolderRelative, newFolderRelative, ct);
         book.FolderPath = newFolderRelative;
 
         // Best-effort only: a cloud-synced library folder (OneDrive/Dropbox/etc.) can hold a brief
-        // lock on a directory it still considers "empty" from .NET's point of view, making
-        // Directory.Delete throw even though nothing is actually left in it. This step is pure
-        // cosmetic cleanup (removing a now-empty leftover author folder) - not required for
-        // correctness, since the book's own folder has already been moved above - so a failure here
-        // must not abort the whole rename/edit and leave DB and disk out of sync (this method
-        // wouldn't return its FolderMove, and the caller's rollback tracking would miss a move that
-        // in fact already succeeded). The empty folder is simply left behind for the user (or a
-        // later sync/retry) to clean up.
-        var oldAuthorFolder = Path.GetDirectoryName(oldAbsolute)!;
+        // lock on a directory it still considers "empty" from .NET's point of view, making a delete
+        // throw even though nothing is actually left in it. This step is pure cosmetic cleanup
+        // (removing a now-empty leftover author folder) - not required for correctness, since the
+        // book's own folder has already been moved above - so a failure here must not abort the
+        // whole rename/edit and leave DB and disk out of sync (this method wouldn't return its
+        // FolderMove, and the caller's rollback tracking would miss a move that in fact already
+        // succeeded). The empty folder is simply left behind for the user (or a later sync/retry) to
+        // clean up.
+        var oldParentRelative = Path.GetDirectoryName(oldFolderRelative) ?? "";
         try
         {
-            if (Directory.Exists(oldAuthorFolder) && Directory.EnumerateFileSystemEntries(oldAuthorFolder).Any() == false)
+            var hasEntries = false;
+            await foreach (var _ in storage.EnumerateAsync(oldParentRelative, ct))
             {
-                Directory.Delete(oldAuthorFolder);
+                hasEntries = true;
+                break;
+            }
+
+            if (!hasEntries && await storage.ExistsAsync(oldParentRelative, ct))
+            {
+                await storage.DeleteAsync(oldParentRelative, recursive: false, ct);
             }
         }
         catch (IOException)
@@ -66,6 +71,7 @@ internal static class BookFolderRelocator
             // Ignored - see comment above.
         }
 
+        var newFolderAbsolute = await storage.GetLocalPathAsync(newFolderRelative, ct);
         foreach (var file in book.Files)
         {
             var oldFileName = Path.GetFileName(file.FilePath);
@@ -81,12 +87,15 @@ internal static class BookFolderRelocator
                 continue;
             }
 
-            var oldFileAbsolute = Path.Combine(newAbsolute, oldFileName);
-            var newFileAbsolute = EbookFileHelpers.GetUniqueFilePath(newAbsolute, newFileName);
-            File.Move(oldFileAbsolute, newFileAbsolute);
-            file.FilePath = Path.Combine(newFolderRelative, Path.GetFileName(newFileAbsolute));
+            // The file already physically moved along with the folder above - this second move just
+            // renames it in place to match the book's new title.
+            var oldFileRelative = Path.Combine(newFolderRelative, oldFileName);
+            var newFileAbsolute = EbookFileHelpers.GetUniqueFilePath(newFolderAbsolute, newFileName);
+            var newFileRelative = Path.Combine(newFolderRelative, Path.GetFileName(newFileAbsolute));
+            await storage.MoveAsync(oldFileRelative, newFileRelative, ct);
+            file.FilePath = newFileRelative;
         }
 
-        return new FolderMove(oldAbsolute, newAbsolute);
+        return new FolderMove(oldFolderRelative, newFolderRelative);
     }
 }

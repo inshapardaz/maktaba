@@ -7,13 +7,9 @@ namespace Maktaba.Data.Services;
 
 public class BookEditService(
     MaktabaDbContext db,
-    ILibraryPathProvider libraryPath,
     IStorageProviderFactory storageFactory,
     IEnumerable<IBookMetadataExtractor> extractors) : IBookEditService
 {
-    // BookFolderRelocator.RelocateIfNeeded below still takes a raw library-root string rather than
-    // IStorageProvider - that's covered by the CoverLocator/AuthorImageLocator/EbookFileHelpers/
-    // BookFolderRelocator refactor task, not this one.
     private IStorageProvider Storage => storageFactory.Current;
 
     public async Task<Book?> UpdateAsync(int bookId, BookEditRequest request, CancellationToken ct = default)
@@ -97,7 +93,7 @@ public class BookEditService(
         book.VolumeNumber = book.Periodical is not null ? request.VolumeNumber : null;
         book.IssueDate = book.Periodical is not null ? request.IssueDate : null;
 
-        var move = BookFolderRelocator.RelocateIfNeeded(book, oldFolderRelative, libraryPath.LibraryRootPath!);
+        var move = await BookFolderRelocator.RelocateIfNeededAsync(book, oldFolderRelative, Storage, ct);
 
         try
         {
@@ -106,9 +102,11 @@ public class BookEditService(
         catch
         {
             // Best-effort rollback so disk and DB don't diverge if the save fails after the move.
-            if (move is { } m && Directory.Exists(m.NewAbsolute) && !Directory.Exists(m.OldAbsolute))
+            if (move is { } m &&
+                await Storage.ExistsAsync(m.NewRelative, ct) &&
+                !await Storage.ExistsAsync(m.OldRelative, ct))
             {
-                Directory.Move(m.NewAbsolute, m.OldAbsolute);
+                await Storage.MoveAsync(m.NewRelative, m.OldRelative, ct);
             }
             throw;
         }

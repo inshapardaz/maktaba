@@ -52,7 +52,7 @@ public static class AuthorEndpoints
             return image is { } found ? Results.File(found.FilePath, found.ContentType) : Results.NotFound();
         });
 
-        group.MapPost("/{id}/image", async (string id, IFormFile file, ILibraryPathProvider libraryPath, CancellationToken ct) =>
+        group.MapPost("/{id}/image", async (string id, IFormFile file, IStorageProviderFactory storageFactory, CancellationToken ct) =>
         {
             if (!IdCodec.TryDecode(id, out var authorId))
             {
@@ -64,20 +64,19 @@ public static class AuthorEndpoints
                 return Results.BadRequest(new { error = "Image must be a JPEG or PNG file." });
             }
 
-            var destination = AuthorImageLocator.Save(libraryPath.LibraryRootPath!, authorId, file.ContentType);
-            await using var fileStream = File.Create(destination);
-            await file.CopyToAsync(fileStream, ct);
+            await using var stream = file.OpenReadStream();
+            await AuthorImageLocator.SaveAsync(storageFactory.Current, authorId, file.ContentType, stream, ct);
             return Results.NoContent();
         }).DisableAntiforgery();
 
-        group.MapDelete("/{id}/image", (string id, ILibraryPathProvider libraryPath) =>
+        group.MapDelete("/{id}/image", async (string id, IStorageProviderFactory storageFactory, CancellationToken ct) =>
         {
             if (!IdCodec.TryDecode(id, out var authorId))
             {
                 return Results.NotFound();
             }
 
-            AuthorImageLocator.Delete(libraryPath.LibraryRootPath!, authorId);
+            await AuthorImageLocator.DeleteAsync(storageFactory.Current, authorId, ct);
             return Results.NoContent();
         });
     }

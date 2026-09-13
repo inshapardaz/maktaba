@@ -5,8 +5,10 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Maktaba.Data.Services;
 
-public class AuthorRenameService(MaktabaDbContext db, ILibraryPathProvider libraryPath) : IAuthorRenameService
+public class AuthorRenameService(MaktabaDbContext db, IStorageProviderFactory storageFactory) : IAuthorRenameService
 {
+    private IStorageProvider Storage => storageFactory.Current;
+
     public async Task<AuthorRenameResult> RenameAsync(int authorId, string newName, CancellationToken ct = default)
     {
         var trimmed = newName.Trim();
@@ -24,8 +26,6 @@ public class AuthorRenameService(MaktabaDbContext db, ILibraryPathProvider libra
         {
             return new AuthorRenameResult(AuthorRenameOutcome.NameConflict);
         }
-
-        var libraryRoot = libraryPath.LibraryRootPath!;
 
         var books = await db.Books
             .Include(b => b.BookAuthors).ThenInclude(ba => ba.Author)
@@ -51,7 +51,7 @@ public class AuthorRenameService(MaktabaDbContext db, ILibraryPathProvider libra
                     continue;
                 }
 
-                var move = BookFolderRelocator.RelocateIfNeeded(book, book.FolderPath, libraryRoot);
+                var move = await BookFolderRelocator.RelocateIfNeededAsync(book, book.FolderPath, Storage, ct);
                 if (move is { } m)
                 {
                     moves.Add(m);
@@ -67,9 +67,9 @@ public class AuthorRenameService(MaktabaDbContext db, ILibraryPathProvider libra
             // single-book rollback, extended to "undo everything moved so far").
             foreach (var move in moves)
             {
-                if (Directory.Exists(move.NewAbsolute) && !Directory.Exists(move.OldAbsolute))
+                if (await Storage.ExistsAsync(move.NewRelative, ct) && !await Storage.ExistsAsync(move.OldRelative, ct))
                 {
-                    Directory.Move(move.NewAbsolute, move.OldAbsolute);
+                    await Storage.MoveAsync(move.NewRelative, move.OldRelative, ct);
                 }
             }
             throw;
