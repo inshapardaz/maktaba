@@ -133,6 +133,24 @@ sync-to-cloud button - all only ever rendered for a non-local library, so a loca
 nothing new. See `docs/en/libraries.md`'s "Cloud libraries" section for the end-user-facing
 explanation of all of this.
 
+**Migration wizard** (`MigrationWizard.tsx`, Stepper: Target → Review → Migrate → Finish) moves the
+*active* library to a new provider - `ILibraryMigrationService`/`LibraryMigrationService`
+(`Maktaba.Data/Services/LibraryMigrationService.cs`) runs the copy as a background `Task.Run`,
+tracked via an in-memory `MigrationProgressSnapshot` polled the same way rescan progress is
+(`GET /api/libraries/migrate/status`). Walks every file via `IStorageProvider.EnumerateAsync`
+(recursing manually - it only ever returns one level), copies each via
+`GetLocalPathAsync`(source)+`NotifyWrittenAsync`(target) - deliberately built on `IStorageProvider`'s
+existing methods rather than adding a new "copy bytes" one. Resumable the same way
+`S3StorageProvider`'s own caching is: a file already present at the target
+(`IStorageProvider.ExistsAsync`, which checks the remote store, not just a local cache) is skipped.
+`metadata.db` is migrated separately via each provider's own `Pull`/`PushDatabaseAsync`, never as a
+plain file copy. Never touches the library registry until a verified migration's `CompleteAsync`
+runs (the wizard's Finish step) - `ILibraryService.SwitchProviderAsync` re-points the *same*
+library id at the new provider (so DB-only data survives untouched), and optionally deletes the
+old *local* folder (never a previous cloud source's remote objects - out of scope for a checkbox).
+`IStorageProviderFactory.CreateForProvider` is what makes an ad-hoc target provider possible before
+the library is actually registered under that provider type.
+
 ## IDs
 
 Every entity (`Book`, `Author`, `Series`, `Tag`, `BookFile`, `Identifier`, `Collection`) uses a

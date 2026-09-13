@@ -65,6 +65,26 @@ computer — open **Settings → Libraries** and click the cloud-upload icon nex
 Maktaba will confirm before briefly closing the library to sync it safely, then reopen it
 automatically.
 
+### Moving an existing local library to the cloud
+
+If you already have a library on your own computer and want to move it to cloud storage instead
+of starting a new one, open **Settings → Libraries**, make sure the library you want to move is
+the active one, and click **Migrate to cloud…**. A wizard walks you through it:
+
+1. **Target** — the same bucket/region/subfolder/server endpoint/credentials fields as connecting
+   a cloud library, with a **Test connection** step.
+2. **Review** — how many files will be copied. This step is a good moment to make sure you're on
+   a connection you're comfortable uploading your whole library over. You can close this window
+   at any point after starting — the migration keeps running in the background, and you can check
+   back on it later from the same **Migrate to cloud…** button.
+3. **Migrate** — a progress bar while your books, covers, and database copy over. Your original
+   library is never touched during this step, so if anything goes wrong (a dropped connection, for
+   example), nothing is lost — you can simply try again, and files already copied aren't copied a
+   second time.
+4. **Finish** — once everything's copied and verified, choose whether to keep the original local
+   copy as a backup (the default) or delete it, then confirm. Your library switches over to the
+   cloud immediately, keeping all your ratings, reading status, and tags exactly as they were.
+
 ### If a cloud library won't reconnect
 
 Occasionally Maktaba can't reach a cloud library when starting up — most often because of a
