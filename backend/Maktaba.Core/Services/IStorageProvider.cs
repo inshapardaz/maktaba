@@ -37,6 +37,16 @@ public interface IStorageProvider
 
     Task<bool> ExistsAsync(string relativePath, CancellationToken ct = default);
 
+    /// <summary>Like <see cref="ExistsAsync"/> but never trusts a cloud-backed provider's local
+    /// cache mirror - always confirms against the remote store itself. The migration wizard's
+    /// per-file resumability check needs this distinction: a target's cache can hold a file that
+    /// was copied into it locally but never actually confirmed pushed remotely (an interrupted or
+    /// retried migration), which <see cref="ExistsAsync"/>'s cache-first shortcut would otherwise
+    /// mistake for "already migrated" and skip re-uploading. Identical to
+    /// <see cref="ExistsAsync"/> for <see cref="LocalFileSystemProvider"/>, which has no cache to
+    /// be wrong about.</summary>
+    Task<bool> ExistsRemoteAsync(string relativePath, CancellationToken ct = default);
+
     /// <summary>Lists the immediate children of <paramref name="relativePath"/> (not recursive -
     /// callers recurse by enumerating a returned directory entry themselves).</summary>
     IAsyncEnumerable<StorageEntry> EnumerateAsync(string relativePath, CancellationToken ct = default);

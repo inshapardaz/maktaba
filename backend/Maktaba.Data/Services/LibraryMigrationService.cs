@@ -136,7 +136,7 @@ public class LibraryMigrationService(
             {
                 ct.ThrowIfCancellationRequested();
                 var relativePath = files[i];
-                await CopyFileIfNeededAsync(source, target, relativePath, ct);
+                await CopyFileIfNeededAsync(source, target, relativePath, logger, ct);
                 Report(MigrationState.Copying, i + 1, files.Count, relativePath);
             }
 
@@ -194,12 +194,16 @@ public class LibraryMigrationService(
         await target.PushDatabaseAsync(ct);
     }
 
-    private static async Task CopyFileIfNeededAsync(IStorageProvider source, IStorageProvider target, string relativePath, CancellationToken ct)
+    private static async Task CopyFileIfNeededAsync(
+        IStorageProvider source, IStorageProvider target, string relativePath, ILogger logger, CancellationToken ct)
     {
-        if (await target.ExistsAsync(relativePath, ct))
+        // Deliberately ExistsRemoteAsync, not ExistsAsync - a cloud target's local cache mirror can
+        // hold a file that was copied into it locally on a previous (interrupted or since-failed)
+        // migration attempt but never actually confirmed pushed to the remote store; trusting that
+        // cache here would silently skip re-uploading it forever.
+        if (await target.ExistsRemoteAsync(relativePath, ct))
         {
-            // Already migrated in a previous attempt - this is what makes a retried migration
-            // resumable instead of starting over from nothing.
+            logger.LogInformation("Migration: {Path} already present on target, skipping.", relativePath);
             return;
         }
 
@@ -213,6 +217,7 @@ public class LibraryMigrationService(
         }
 
         await target.NotifyWrittenAsync(relativePath, ct);
+        logger.LogInformation("Migration: uploaded {Path} to target.", relativePath);
     }
 
     private static bool PathsEqual(string a, string b) =>

@@ -140,13 +140,11 @@ public class S3StorageProvider(
         }
     }
 
-    public async Task<bool> ExistsAsync(string relativePath, CancellationToken ct = default)
-    {
-        if (cache.Exists(libraryId, relativePath))
-        {
-            return true;
-        }
+    public async Task<bool> ExistsAsync(string relativePath, CancellationToken ct = default) =>
+        cache.Exists(libraryId, relativePath) || await ExistsRemoteAsync(relativePath, ct);
 
+    public async Task<bool> ExistsRemoteAsync(string relativePath, CancellationToken ct = default)
+    {
         try
         {
             await _client.GetObjectMetadataAsync(options.Bucket, ToKey(relativePath), ct);

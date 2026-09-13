@@ -65,6 +65,8 @@ public class LocalFileSystemProvider(ILibraryPathProvider libraryPath) : IStorag
         return Task.FromResult(File.Exists(absolute) || Directory.Exists(absolute));
     }
 
+    public Task<bool> ExistsRemoteAsync(string relativePath, CancellationToken ct = default) => ExistsAsync(relativePath, ct);
+
     public async IAsyncEnumerable<StorageEntry> EnumerateAsync(
         string relativePath, [EnumeratorCancellation] CancellationToken ct = default)
     {
