@@ -422,17 +422,13 @@ public class GoogleDriveStorageProvider : IStorageProvider, IDisposable
 /// token keeps working until the user revokes access.</summary>
 internal sealed class GoogleDriveTokenManager(HttpClient http, GoogleDriveProviderOptions initial)
 {
-    // Must match googleDriveAuth.ts's MAKTABA_GOOGLE_CLIENT_ID/MAKTABA_GOOGLE_CLIENT_SECRET - see
-    // that file's comment for why these come from the environment rather than being hardcoded (kept
-    // out of this repo's git history, even though Google's own docs say a Desktop-app client secret
-    // isn't confidential in the way a web-server client's would be).
-    private static readonly string ClientId = RequiredEnv("MAKTABA_GOOGLE_CLIENT_ID");
-    private static readonly string ClientSecret = RequiredEnv("MAKTABA_GOOGLE_CLIENT_SECRET");
+    // Must match googleDriveAuth.ts's CLIENT_ID/CLIENT_SECRET - see that file's comment for why
+    // hardcoding this (rather than reading it from the environment, which only this developer's own
+    // machine would ever have set - useless for an actual end user's install) is the right call for
+    // a secret Google's own design expects to ship inside the distributed binary regardless.
+    private const string ClientId = "REDACTED";
+    private const string ClientSecret = "REDACTED";
     private const string TokenEndpoint = "https://oauth2.googleapis.com/token";
-
-    private static string RequiredEnv(string name) =>
-        Environment.GetEnvironmentVariable(name)
-            ?? throw new InvalidOperationException($"{name} is not set - Google Drive support needs it (see GoogleDriveTokenManager's comment).");
 
     private readonly SemaphoreSlim _refreshLock = new(1, 1);
     private string _accessToken = initial.AccessToken;
