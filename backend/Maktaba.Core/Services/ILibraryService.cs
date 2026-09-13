@@ -40,8 +40,24 @@ public interface ILibraryService
     /// </summary>
     Task<LibraryInfo> OpenAsync(string path, CancellationToken ct = default);
 
-    /// <summary>Switches to an already-registered library by id. Returns null if no such library is registered.</summary>
-    Task<LibraryInfo?> OpenLibraryByIdAsync(string id, CancellationToken ct = default);
+    /// <summary>Switches to an already-registered library by id. Returns null if no such library is
+    /// registered. <paramref name="credential"/> is required the first time a cloud-backed library is
+    /// opened in this process session (and any time it needs refreshing) - see ICloudCredentialCache;
+    /// omit it to reuse whatever credential (if any) is already cached for this library id.</summary>
+    Task<LibraryInfo?> OpenLibraryByIdAsync(string id, string? credential = null, CancellationToken ct = default);
+
+    /// <summary>
+    /// Registers and activates a brand-new cloud-backed library - the "connect a cloud library" flow
+    /// (S3/OneDrive/Google Drive/Nawishta), as opposed to <see cref="OpenAsync"/>'s "pick a local
+    /// folder" flow. <paramref name="credential"/> is cached (see ICloudCredentialCache) before
+    /// activation so the provider can pull its existing remote metadata.db, if any.
+    /// </summary>
+    Task<LibraryInfo> OpenCloudLibraryAsync(
+        string name,
+        string providerType,
+        IReadOnlyDictionary<string, string> providerConfig,
+        string credential,
+        CancellationToken ct = default);
 
     /// <summary>Renames a registered library's display name (does not touch its folder). Returns null if not found.</summary>
     Task<LibraryRegistryEntry?> RenameAsync(string id, string name, CancellationToken ct = default);

@@ -4,6 +4,7 @@
     <ProjectReference Include="..\Maktaba.Core\Maktaba.Core.csproj" />
     <ProjectReference Include="..\Maktaba.Data\Maktaba.Data.csproj" />
     <ProjectReference Include="..\Maktaba.Metadata\Maktaba.Metadata.csproj" />
+    <ProjectReference Include="..\Maktaba.Cloud\Maktaba.Cloud.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

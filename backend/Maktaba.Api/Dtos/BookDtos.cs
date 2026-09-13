@@ -175,6 +175,16 @@ public record SystemCapabilitiesDto(bool CalibreAvailable);
 
 public record OpenLibraryRequest(string Path);
 
+// Credential is the plaintext secret (the frontend decrypted via window.maktaba.getCloudCredential)
+// for a cloud-backed library - null/omitted when reopening a local library, or a cloud one whose
+// credential is already cached for this backend process session (see ICloudCredentialCache).
+public record OpenLibraryCredentialRequestDto(string? Credential);
+
+public record ConnectCloudLibraryRequestDto(
+    string Name, string ProviderType, Dictionary<string, string> ProviderConfig, string Credential);
+
+public record TestS3ConnectionRequestDto(string Bucket, string Region, string Prefix, string Credential);
+
 public record LibraryDto(string Path, string Id, string Name, bool PeriodicalsEnabled);
 
 public record LibraryEntryDto(string Id, string Name, string Path, bool IsActive, bool PeriodicalsEnabled, string ProviderType = "local");

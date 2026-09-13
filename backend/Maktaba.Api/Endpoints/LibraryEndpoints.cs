@@ -32,6 +32,65 @@ public static class LibraryEndpoints
             return Results.Ok(new LibraryDto(active.Path, active.Id, active.Name, active.PeriodicalsEnabled));
         });
 
+        // Registers and activates a brand-new cloud-backed library (S3 today; OneDrive/Google Drive/
+        // Nawishta land the same way in later phases) - the counterpart to POST /open's "pick a local
+        // folder" flow. The frontend decrypts the credential via window.maktaba.getCloudCredential
+        // (or collects it fresh from the connect form) and sends it here once; this backend caches it
+        // in memory only (see ICloudCredentialCache) and never writes it to config.json itself.
+        group.MapPost("/cloud", async (ConnectCloudLibraryRequestDto request, ILibraryService libraryService, CancellationToken ct) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.Name))
+            {
+                return Results.BadRequest(new { error = "Name is required." });
+            }
+
+            try
+            {
+                await libraryService.OpenCloudLibraryAsync(
+                    request.Name.Trim(), request.ProviderType, request.ProviderConfig, request.Credential, ct);
+            }
+            catch (Exception ex)
+            {
+                return Results.BadRequest(new { error = $"Could not connect to this library: {ex.Message}" });
+            }
+
+            var active = libraryService.Libraries.First(l => l.Id == libraryService.CurrentLibraryId);
+            return Results.Ok(new LibraryEntryDto(active.Id, active.Name, active.Path, true, active.PeriodicalsEnabled, active.ProviderType));
+        });
+
+        // "Test connection" for the S3 connect form - verifies the bucket/region/credentials work
+        // before the user commits to registering a library against them. Doesn't touch the library
+        // registry or ICloudCredentialCache at all.
+        group.MapPost("/test-s3-connection", async (TestS3ConnectionRequestDto request, CancellationToken ct) =>
+        {
+            try
+            {
+                var options = Maktaba.Cloud.S3ProviderOptions.FromConfig(
+                    new Dictionary<string, string>
+                    {
+                        [Maktaba.Cloud.S3ProviderOptions.BucketKey] = request.Bucket,
+                        [Maktaba.Cloud.S3ProviderOptions.RegionKey] = request.Region,
+                        [Maktaba.Cloud.S3ProviderOptions.PrefixKey] = request.Prefix,
+                    },
+                    request.Credential);
+
+                using var client = new Amazon.S3.AmazonS3Client(
+                    options.AccessKeyId, options.SecretAccessKey, Amazon.RegionEndpoint.GetBySystemName(options.Region));
+                await client.ListObjectsV2Async(new Amazon.S3.Model.ListObjectsV2Request
+                {
+                    BucketName = options.Bucket,
+                    Prefix = options.Prefix,
+                    MaxKeys = 1,
+                }, ct);
+
+                return Results.NoContent();
+            }
+            catch (Exception ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+        });
+
         // Polled by the frontend while a POST /{id}/resync below is still in flight (a separate HTTP
         // request, served concurrently by Kestrel on another thread) to render a progress bar.
         group.MapGet("/rescan/progress", (IRescanProgressTracker tracker) =>
@@ -80,9 +139,10 @@ public static class LibraryEndpoints
             return Results.Ok(entries);
         });
 
-        group.MapPost("/{id}/open", async (string id, ILibraryService libraryService, CancellationToken ct) =>
+        group.MapPost("/{id}/open", async (
+            string id, OpenLibraryCredentialRequestDto? request, ILibraryService libraryService, CancellationToken ct) =>
         {
-            var info = await libraryService.OpenLibraryByIdAsync(id, ct);
+            var info = await libraryService.OpenLibraryByIdAsync(id, request?.Credential, ct);
             if (info is null)
             {
                 return Results.NotFound();
@@ -141,7 +201,7 @@ public static class LibraryEndpoints
         {
             if (libraryService.CurrentLibraryId != id)
             {
-                var opened = await libraryService.OpenLibraryByIdAsync(id, ct);
+                var opened = await libraryService.OpenLibraryByIdAsync(id, credential: null, ct);
                 if (opened is null)
                 {
                     return Results.NotFound();

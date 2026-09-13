@@ -13,6 +13,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Maktaba.Metadata", "Maktaba
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Maktaba.Tests", "Maktaba.Tests\Maktaba.Tests.csproj", "{74B927EA-0828-4994-B3A4-B6BA80B6A233}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Maktaba.Cloud", "Maktaba.Cloud\Maktaba.Cloud.csproj", "{04AB6CDB-1C07-4D8D-BCCF-05A714D6459E}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -83,6 +85,18 @@ Global
 		{74B927EA-0828-4994-B3A4-B6BA80B6A233}.Release|x64.Build.0 = Release|Any CPU
 		{74B927EA-0828-4994-B3A4-B6BA80B6A233}.Release|x86.ActiveCfg = Release|Any CPU
 		{74B927EA-0828-4994-B3A4-B6BA80B6A233}.Release|x86.Build.0 = Release|Any CPU
+		{04AB6CDB-1C07-4D8D-BCCF-05A714D6459E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{04AB6CDB-1C07-4D8D-BCCF-05A714D6459E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{04AB6CDB-1C07-4D8D-BCCF-05A714D6459E}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{04AB6CDB-1C07-4D8D-BCCF-05A714D6459E}.Debug|x64.Build.0 = Debug|Any CPU
+		{04AB6CDB-1C07-4D8D-BCCF-05A714D6459E}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{04AB6CDB-1C07-4D8D-BCCF-05A714D6459E}.Debug|x86.Build.0 = Debug|Any CPU
+		{04AB6CDB-1C07-4D8D-BCCF-05A714D6459E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{04AB6CDB-1C07-4D8D-BCCF-05A714D6459E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{04AB6CDB-1C07-4D8D-BCCF-05A714D6459E}.Release|x64.ActiveCfg = Release|Any CPU
+		{04AB6CDB-1C07-4D8D-BCCF-05A714D6459E}.Release|x64.Build.0 = Release|Any CPU
+		{04AB6CDB-1C07-4D8D-BCCF-05A714D6459E}.Release|x86.ActiveCfg = Release|Any CPU
+		{04AB6CDB-1C07-4D8D-BCCF-05A714D6459E}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

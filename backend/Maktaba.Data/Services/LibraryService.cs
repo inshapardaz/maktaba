@@ -14,6 +14,7 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
     // IStorageProviderFactory itself depends on ILibraryService, which this class implements.
     private readonly IServiceProvider _serviceProvider;
     private readonly ICloudCacheManager _cloudCacheManager;
+    private readonly ICloudCredentialCache _credentialCache;
     private readonly string _configFilePath;
     private readonly List<LibraryRegistryEntry> _libraries = [];
     private readonly SemaphoreSlim _schemaCheckLock = new(1, 1);
@@ -45,10 +46,11 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
         }
     }
 
-    public LibraryService(IServiceProvider serviceProvider, ICloudCacheManager cloudCacheManager)
+    public LibraryService(IServiceProvider serviceProvider, ICloudCacheManager cloudCacheManager, ICloudCredentialCache credentialCache)
     {
         _serviceProvider = serviceProvider;
         _cloudCacheManager = cloudCacheManager;
+        _credentialCache = credentialCache;
 
         var appDataDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
@@ -124,7 +126,7 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
         return new LibraryInfo(fullPath);
     }
 
-    public async Task<LibraryInfo?> OpenLibraryByIdAsync(string id, CancellationToken ct = default)
+    public async Task<LibraryInfo?> OpenLibraryByIdAsync(string id, string? credential = null, CancellationToken ct = default)
     {
         var entry = _libraries.FirstOrDefault(l => l.Id == id);
         if (entry is null)
@@ -132,6 +134,25 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
             return null;
         }
 
+        if (credential is not null)
+        {
+            _credentialCache.Set(id, credential);
+        }
+
+        await ActivateAsync(entry, ct);
+        return new LibraryInfo(entry.Path);
+    }
+
+    public async Task<LibraryInfo> OpenCloudLibraryAsync(
+        string name, string providerType, IReadOnlyDictionary<string, string> providerConfig, string credential,
+        CancellationToken ct = default)
+    {
+        var entry = new LibraryRegistryEntry(
+            Guid.NewGuid().ToString("N"), name, Path: $"{providerType}://{name}",
+            ProviderType: providerType, ProviderConfig: providerConfig);
+        _libraries.Add(entry);
+
+        _credentialCache.Set(entry.Id, credential);
         await ActivateAsync(entry, ct);
         return new LibraryInfo(entry.Path);
     }
@@ -220,7 +241,12 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
 
     private async Task ActivateAsync(LibraryRegistryEntry entry, CancellationToken ct)
     {
-        Directory.CreateDirectory(entry.Path);
+        // entry.Path is a real local folder only for "local" - a cloud entry's Path is a synthetic
+        // display string (see OpenCloudLibraryAsync), never a filesystem path to create.
+        if (entry.ProviderType == "local")
+        {
+            Directory.CreateDirectory(entry.Path);
+        }
 
         LibraryRootPath = entry.Path;
         CurrentLibraryId = entry.Id;
