@@ -1,4 +1,4 @@
-import { app, ipcMain, dialog, shell, protocol, net, BrowserWindow } from "electron";
+import { app, ipcMain, dialog, shell, protocol, net, safeStorage, BrowserWindow } from "electron";
 import { promises as fs } from "fs";
 import path from "path";
 import { pathToFileURL } from "url";
@@ -50,6 +50,27 @@ export function registerStarDictProtocol(): void {
 // on the renderer side), but they end up directly in a filesystem path below - guarded here anyway
 // so a coding mistake upstream can never turn into a path-traversal write/read.
 const LANGUAGE_CODE_PATTERN = /^[a-zA-Z][a-zA-Z0-9-]{0,15}$/;
+
+// Cloud Sync Core: cloud storage provider secrets (S3 access key/secret, OAuth refresh tokens) -
+// an app-wide store, same reasoning as StarDict dictionaries above (not library data, never goes
+// through the Maktaba.Api sidecar), but encrypted at rest via Electron's safeStorage (OS keychain
+// on mac, DPAPI on Windows, libsecret on Linux) since these are actual secrets, unlike a
+// dictionary file. Only an opaque "credential ref" (see Maktaba.Core's LibraryRegistryEntry.
+// CredentialRef) ever reaches config.json/the backend - the secret itself lives only in one of
+// these encrypted files, keyed by that ref.
+function cloudCredentialsDir(): string {
+  return path.join(app.getPath("userData"), "CloudCredentials");
+}
+
+// A credential ref is caller-generated (the renderer, when connecting a new cloud library) and
+// used directly as a filename below - validated on principle before touching the filesystem, same
+// guard as sanitizedLanguageOrThrow just below for StarDict language names.
+function sanitizedCredentialRefOrThrow(ref: string): string {
+  if (!/^[A-Za-z0-9_-]+$/.test(ref)) {
+    throw new Error(`Invalid credential reference: ${ref}`);
+  }
+  return ref;
+}
 
 function sanitizedLanguageOrThrow(language: string): string {
   if (!LANGUAGE_CODE_PATTERN.test(language)) {
@@ -309,5 +330,32 @@ export function registerNativeHandlers(getWindow: () => BrowserWindow | null): v
 
     const toUrl = (name: string) => `stardict://${lang}/${encodeURIComponent(name)}`;
     return { ifoUrl: toUrl(ifoName), idxUrl: toUrl(idxName), dictUrl: toUrl(dictName) };
+  });
+
+  ipcMain.handle("maktaba:save-cloud-credential", async (_event, ref: string, secret: string) => {
+    const id = sanitizedCredentialRefOrThrow(ref);
+    if (!safeStorage.isEncryptionAvailable()) {
+      throw new Error("OS-level credential encryption isn't available on this machine.");
+    }
+
+    await fs.mkdir(cloudCredentialsDir(), { recursive: true });
+    const encrypted = safeStorage.encryptString(secret);
+    await fs.writeFile(path.join(cloudCredentialsDir(), `${id}.enc`), encrypted);
+  });
+
+  ipcMain.handle("maktaba:get-cloud-credential", async (_event, ref: string) => {
+    const id = sanitizedCredentialRefOrThrow(ref);
+    try {
+      const encrypted = await fs.readFile(path.join(cloudCredentialsDir(), `${id}.enc`));
+      return safeStorage.decryptString(encrypted);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw error;
+    }
+  });
+
+  ipcMain.handle("maktaba:delete-cloud-credential", async (_event, ref: string) => {
+    const id = sanitizedCredentialRefOrThrow(ref);
+    await fs.rm(path.join(cloudCredentialsDir(), `${id}.enc`), { force: true });
   });
 }

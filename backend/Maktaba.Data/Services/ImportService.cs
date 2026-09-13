@@ -8,18 +8,16 @@ namespace Maktaba.Data.Services;
 
 public class ImportService(
     MaktabaDbContext db,
-    ILibraryPathProvider libraryPath,
+    IStorageProviderFactory storageFactory,
     IEnumerable<IBookMetadataExtractor> extractors) : IImportService
 {
+    private IStorageProvider Storage => storageFactory.Current;
+
     public async Task<Book> ImportFileAsync(
         string sourceFilePath,
         ImportDuplicateResolution resolution = ImportDuplicateResolution.Auto,
         CancellationToken ct = default)
     {
-        // MaktabaDbContext (a constructor dependency) already requires an open library to have been
-        // constructed, so LibraryRootPath is guaranteed non-null by the time this method runs.
-        var libraryRoot = libraryPath.LibraryRootPath!;
-
         var extractor = extractors.FirstOrDefault(e => e.CanHandle(sourceFilePath))
             ?? throw new NotSupportedException($"Unsupported ebook file type: {Path.GetExtension(sourceFilePath)}");
 
@@ -85,25 +83,26 @@ public class ImportService(
         db.Books.Add(book);
         await db.SaveChangesAsync(ct);
 
-        var authorFolderSegment = FileNaming.SanitizePathSegment(
-            authors.Count > 0 ? authors[0].SortName : "Unknown Author");
-        var bookFolderSegment = FileNaming.SanitizePathSegment($"{title} ({IdCodec.Encode(book.Id)})");
-        var relativeFolder = Path.Combine(authorFolderSegment, bookFolderSegment);
-        var absoluteFolder = Path.Combine(libraryRoot, relativeFolder);
+        var relativeFolder = LibraryPathBuilder.BookFolderPath(
+            authors.Count > 0 ? authors[0].SortName : null, title, book.Id);
 
-        Directory.CreateDirectory(absoluteFolder);
+        await Storage.CreateDirectoryAsync(relativeFolder, ct);
         try
         {
+            var absoluteFolder = await Storage.GetLocalPathAsync(relativeFolder, ct);
             var destFileName = FileNaming.SanitizePathSegment(title) +
                 Path.GetExtension(sourceFilePath).ToLowerInvariant();
             var destFilePath = Path.Combine(absoluteFolder, destFileName);
             File.Copy(sourceFilePath, destFilePath, overwrite: false);
+            await Storage.NotifyWrittenAsync(Path.Combine(relativeFolder, destFileName), ct);
 
             if (metadata.CoverImageBytes is { Length: > 0 })
             {
                 var coverExtension = EbookFileHelpers.CoverExtensionFor(metadata.CoverContentType);
+                var coverRelative = Path.Combine(relativeFolder, $"cover.{coverExtension}");
                 await File.WriteAllBytesAsync(
                     Path.Combine(absoluteFolder, $"cover.{coverExtension}"), metadata.CoverImageBytes, ct);
+                await Storage.NotifyWrittenAsync(coverRelative, ct);
             }
 
             book.FolderPath = relativeFolder;
@@ -123,7 +122,7 @@ public class ImportService(
         catch
         {
             // Transaction rolls back (undoing the book insert) on dispose since it was never committed.
-            Directory.Delete(absoluteFolder, recursive: true);
+            await Storage.DeleteAsync(relativeFolder, recursive: true, ct);
             throw;
         }
     }
@@ -189,20 +188,21 @@ public class ImportService(
     private async Task<Book> MergeFileIntoExistingBookAsync(
         Book existingBook, string sourceFilePath, BookFormat format, string contentHash, CancellationToken ct)
     {
-        var libraryRoot = libraryPath.LibraryRootPath!;
-        var folderAbsolute = Path.Combine(libraryRoot, existingBook.FolderPath);
-        Directory.CreateDirectory(folderAbsolute);
+        await Storage.CreateDirectoryAsync(existingBook.FolderPath, ct);
+        var folderAbsolute = await Storage.GetLocalPathAsync(existingBook.FolderPath, ct);
 
         var baseFileName = FileNaming.SanitizePathSegment(existingBook.Title) +
             Path.GetExtension(sourceFilePath).ToLowerInvariant();
         var destFilePath = EbookFileHelpers.GetUniqueFilePath(folderAbsolute, baseFileName);
         File.Copy(sourceFilePath, destFilePath, overwrite: false);
+        var destRelative = Path.Combine(existingBook.FolderPath, Path.GetFileName(destFilePath));
+        await Storage.NotifyWrittenAsync(destRelative, ct);
 
         db.BookFiles.Add(new BookFile
         {
             BookId = existingBook.Id,
             Format = format,
-            FilePath = Path.Combine(existingBook.FolderPath, Path.GetFileName(destFilePath)),
+            FilePath = destRelative,
             FileSizeBytes = new FileInfo(destFilePath).Length,
             ContentHash = contentHash,
         });

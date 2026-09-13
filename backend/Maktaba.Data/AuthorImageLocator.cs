@@ -1,4 +1,5 @@
 using Maktaba.Core.Ids;
+using Maktaba.Core.Services;
 
 namespace Maktaba.Data;
 
@@ -19,6 +20,12 @@ public static class AuthorImageLocator
         (".png", "image/png"),
     ];
 
+    // Deliberately synchronous and takes a raw local root rather than IStorageProvider - it's called
+    // per-author inside synchronous list projections across several endpoints (BookEndpoints,
+    // BrowseEndpoints), and for a cloud-backed library it only reports true for an image that's
+    // already present in the local cache mirror. Making list views cloud-accurate would need a
+    // DB-backed "has image" flag instead of a filesystem probe - out of scope for this pass; see the
+    // matching note on CoverLocator.
     public static (string FilePath, string ContentType)? Find(string libraryRoot, int authorId)
     {
         var sqid = IdCodec.Encode(authorId);
@@ -34,35 +41,47 @@ public static class AuthorImageLocator
         return null;
     }
 
-    public static string Save(string libraryRoot, int authorId, string contentType)
+    public static async Task SaveAsync(
+        IStorageProvider storage, int authorId, string contentType, Stream content, CancellationToken ct)
     {
-        var folder = Path.Combine(libraryRoot, FolderName);
-        Directory.CreateDirectory(folder);
+        await storage.CreateDirectoryAsync(FolderName, ct);
 
         // Remove any existing image of a different extension first, same reasoning as
         // PeriodicalService.SaveCoverAsync - otherwise a jpg->png re-upload leaves both behind.
         var sqid = IdCodec.Encode(authorId);
-        foreach (var file in Directory.EnumerateFiles(folder, $"{sqid}.*"))
+        await foreach (var entry in storage.EnumerateAsync(FolderName, ct))
         {
-            File.Delete(file);
+            if (!entry.IsDirectory && Path.GetFileNameWithoutExtension(entry.RelativePath) == sqid)
+            {
+                await storage.DeleteAsync(entry.RelativePath, recursive: false, ct);
+            }
         }
 
         var extension = contentType == "image/png" ? ".png" : ".jpg";
-        return Path.Combine(folder, sqid + extension);
+        var relative = Path.Combine(FolderName, sqid + extension);
+        var absolute = await storage.GetLocalPathAsync(relative, ct);
+        await using (var fileStream = File.Create(absolute))
+        {
+            await content.CopyToAsync(fileStream, ct);
+        }
+
+        await storage.NotifyWrittenAsync(relative, ct);
     }
 
-    public static void Delete(string libraryRoot, int authorId)
+    public static async Task DeleteAsync(IStorageProvider storage, int authorId, CancellationToken ct)
     {
-        var folder = Path.Combine(libraryRoot, FolderName);
-        if (!Directory.Exists(folder))
+        if (!await storage.ExistsAsync(FolderName, ct))
         {
             return;
         }
 
         var sqid = IdCodec.Encode(authorId);
-        foreach (var file in Directory.EnumerateFiles(folder, $"{sqid}.*"))
+        await foreach (var entry in storage.EnumerateAsync(FolderName, ct))
         {
-            File.Delete(file);
+            if (!entry.IsDirectory && Path.GetFileNameWithoutExtension(entry.RelativePath) == sqid)
+            {
+                await storage.DeleteAsync(entry.RelativePath, recursive: false, ct);
+            }
         }
     }
 }

@@ -4,7 +4,22 @@ public record LibraryInfo(string Path);
 
 /// <summary>A library the user has opened at least once, kept in the app-wide registry (see
 /// LibraryService) regardless of whether it's the one currently active.</summary>
-public record LibraryRegistryEntry(string Id, string Name, string Path, bool PeriodicalsEnabled = true);
+/// <param name="ProviderType">"local" | "s3" | "onedrive" | "googledrive" | "nawishta". Defaults to
+/// "local" so an entry loaded from a pre-cloud-support config.json (missing the field entirely)
+/// deserializes exactly as it always has - see the cloud storage epic's non-breaking-changes
+/// requirement.</param>
+/// <param name="ProviderConfig">Provider-specific, non-secret settings only (e.g. S3's bucket/
+/// region/prefix, Nawishta's server URL/remote library id) - never a secret. Null for "local".</param>
+/// <param name="CredentialRef">Opaque key into the OS-backed credential store (see the Cloud Sync
+/// Core credential-store task) - never the secret itself. Null for "local".</param>
+public record LibraryRegistryEntry(
+    string Id,
+    string Name,
+    string Path,
+    bool PeriodicalsEnabled = true,
+    string ProviderType = "local",
+    IReadOnlyDictionary<string, string>? ProviderConfig = null,
+    string? CredentialRef = null);
 
 public interface ILibraryService
 {
@@ -25,8 +40,24 @@ public interface ILibraryService
     /// </summary>
     Task<LibraryInfo> OpenAsync(string path, CancellationToken ct = default);
 
-    /// <summary>Switches to an already-registered library by id. Returns null if no such library is registered.</summary>
-    Task<LibraryInfo?> OpenLibraryByIdAsync(string id, CancellationToken ct = default);
+    /// <summary>Switches to an already-registered library by id. Returns null if no such library is
+    /// registered. <paramref name="credential"/> is required the first time a cloud-backed library is
+    /// opened in this process session (and any time it needs refreshing) - see ICloudCredentialCache;
+    /// omit it to reuse whatever credential (if any) is already cached for this library id.</summary>
+    Task<LibraryInfo?> OpenLibraryByIdAsync(string id, string? credential = null, CancellationToken ct = default);
+
+    /// <summary>
+    /// Registers and activates a brand-new cloud-backed library - the "connect a cloud library" flow
+    /// (S3/OneDrive/Google Drive/Nawishta), as opposed to <see cref="OpenAsync"/>'s "pick a local
+    /// folder" flow. <paramref name="credential"/> is cached (see ICloudCredentialCache) before
+    /// activation so the provider can pull its existing remote metadata.db, if any.
+    /// </summary>
+    Task<LibraryInfo> OpenCloudLibraryAsync(
+        string name,
+        string providerType,
+        IReadOnlyDictionary<string, string> providerConfig,
+        string credential,
+        CancellationToken ct = default);
 
     /// <summary>Renames a registered library's display name (does not touch its folder). Returns null if not found.</summary>
     Task<LibraryRegistryEntry?> RenameAsync(string id, string name, CancellationToken ct = default);

@@ -183,4 +183,17 @@ contextBridge.exposeInMainWorld("maktaba", {
   // handler (see native.ts's registerStarDictProtocol) rather than crossing the IPC boundary.
   getStarDictDictionaryUrls: (language: string): Promise<{ ifoUrl: string; idxUrl: string; dictUrl: string } | null> =>
     ipcRenderer.invoke("maktaba:get-stardict-dictionary-urls", language),
+
+  // Cloud storage provider secrets (S3 access key/secret, OAuth refresh tokens), encrypted at rest
+  // via Electron's safeStorage - see native.ts's cloudCredentialsDir. ref is an opaque id the
+  // caller generates and persists as the library registry entry's CredentialRef; the secret itself
+  // never round-trips through config.json or the backend, only this ref does.
+  saveCloudCredential: (ref: string, secret: string): Promise<void> =>
+    ipcRenderer.invoke("maktaba:save-cloud-credential", ref, secret),
+
+  getCloudCredential: (ref: string): Promise<string | null> =>
+    ipcRenderer.invoke("maktaba:get-cloud-credential", ref),
+
+  deleteCloudCredential: (ref: string): Promise<void> =>
+    ipcRenderer.invoke("maktaba:delete-cloud-credential", ref),
 });

@@ -1,16 +1,33 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AppShell, Box, Center, Loader, MantineProvider, Overlay, Pagination, Text, Group, type MantineThemeOverride } from "@mantine/core";
+import {
+  Alert,
+  AppShell,
+  Box,
+  Button,
+  Center,
+  Loader,
+  MantineProvider,
+  Modal,
+  Overlay,
+  Pagination,
+  Stack,
+  Text,
+  Group,
+  type MantineThemeOverride,
+} from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { IconUpload } from "./icons";
+import { IconAlertCircle, IconUpload } from "./icons";
 import {
   getBook,
   getCurrentLibrary,
   listBooks,
+  reopenCloudLibrary,
   updateBook,
   updateBookStatus,
   type BookEditRequest,
   type BookFilters,
+  type S3Credential,
 } from "./api";
 import { isBookDrag } from "./bookDrag";
 import type { TranslationKey } from "./i18n/translations";
@@ -39,6 +56,7 @@ import { ImportStatusBar, IMPORT_STATUS_BAR_HEIGHT } from "./components/ImportSt
 import { RescanStatusBar, RESCAN_STATUS_BAR_HEIGHT } from "./components/RescanStatusBar";
 import { OnboardingTour } from "./components/OnboardingTour";
 import { SettingsScreen, type SettingsTab } from "./components/SettingsScreen";
+import { LibrariesSettings } from "./components/LibrariesSettings";
 import { UpdateNotifier } from "./components/UpdateNotifier";
 import { invalidateLibraryQueries } from "./queries";
 import { useDebounced } from "./useDebounced";
@@ -49,6 +67,7 @@ import { createWhiteTheme } from "./theme";
 import { ReaderLauncherProvider, type ReaderRequest } from "./ReaderLauncherContext";
 import { useImportQueue } from "./ImportContext";
 import { useRescan } from "./RescanContext";
+import { useLibrarySync } from "./LibrarySyncContext";
 import { getStoredAutoTagMode, getStoredReaderEngine, getStoredReaderOpenMode } from "./readerSettings";
 import { getStoredShowIssuesInGrid } from "./periodicalSettings";
 import {
@@ -144,6 +163,7 @@ function App() {
   const queryClient = useQueryClient();
   const importQueue = useImportQueue();
   const rescan = useRescan();
+  const librarySync = useLibrarySync();
   const { appTheme, darkChrome } = useAppTheme();
   const { themeColor, customColorHex } = useThemeColor();
   // Issue #63: only meaningful under the White theme (Organic already has its own fixed --app-
@@ -346,6 +366,30 @@ function App() {
     queryFn: getCurrentLibrary,
   });
 
+  // The backend only marks a cloud-backed library "active" from its registry on startup (see
+  // LibraryService.LoadConfig) - it can't actually pull/serve it until its credential is
+  // re-supplied, since ICloudCredentialCache is in-memory only and cleared on every backend
+  // restart (the backend has no way to decrypt the Electron-side safeStorage copy itself). This
+  // fetches that credential and re-opens the library with it before any other query - booksQuery
+  // included - is allowed to fire against it; without this gate, a fresh backend process throws a
+  // 500 on the very first request for a cloud library reopened this way.
+  const needsCloudReconnect = libraryQuery.data?.providerType !== undefined && libraryQuery.data.providerType !== "local";
+  const cloudReconnectQuery = useQuery({
+    queryKey: ["cloudReconnect", libraryQuery.data?.id],
+    queryFn: async () => {
+      const id = libraryQuery.data!.id;
+      const credentialJson = await window.maktaba.getCloudCredential(id);
+      if (!credentialJson) {
+        throw new Error(t("app.cloudReconnectMissingCredential"));
+      }
+      await reopenCloudLibrary(id, JSON.parse(credentialJson) as S3Credential);
+      return true;
+    },
+    enabled: needsCloudReconnect,
+    retry: false,
+    staleTime: Infinity,
+  });
+
   // Falls back off the Periodicals view if this library's setting (Settings -> Libraries) gets
   // toggled off while it's the one currently showing, or a different library (with the feature
   // off) is switched to while it was showing - stale local UI state, not persisted.
@@ -356,10 +400,38 @@ function App() {
     }
   }, [libraryQuery.data, mainView]);
 
+  // Surfaced as a toast (not inline UI) since the sync that failed could have been started from
+  // Settings, which may well be closed again by the time it finishes - see LibrarySyncContext.
+  useEffect(() => {
+    if (librarySync.error) {
+      notifications.show({ color: "red", title: t("app.syncFailedTitle"), message: librarySync.error });
+      librarySync.dismissError();
+    }
+  }, [librarySync.error, librarySync, t]);
+
+  // The blocking "Syncing to cloud…" page (AppShell.Main below) is normal page content, not a
+  // modal, so it renders *behind* the Settings modal (where the "Sync to cloud now" button lives)
+  // if Settings is left open - the confirmation popup itself is a Modal so it can stack above
+  // Settings via zIndex, but the page that follows it can't the same way. Closing Settings the
+  // moment syncing actually starts is what makes that page visible.
+  useEffect(() => {
+    if (librarySync.isSyncing) {
+      setSettingsOpen(false);
+    }
+  }, [librarySync.isSyncing]);
+
+  // A cloud-backed library isn't actually usable until cloudReconnectQuery above has succeeded -
+  // see its comment. Also false for the whole duration of a manual cloud sync (LibrarySyncContext)
+  // - the backend clears its SQLite connection pool as part of that, so no query here should be
+  // allowed to open a fresh database connection until it's done. hasLibrary (used throughout the
+  // rest of this component) is computed here, ahead of booksQuery, so both gate on the exact same
+  // condition.
+  const hasLibrary = !!libraryQuery.data && (!needsCloudReconnect || cloudReconnectQuery.isSuccess) && !librarySync.isSyncing;
+
   const booksQuery = useQuery({
     queryKey: ["books", filters],
     queryFn: () => listBooks(filters),
-    enabled: !!libraryQuery.data,
+    enabled: hasLibrary,
     placeholderData: (previousData) => previousData,
   });
 
@@ -699,7 +771,6 @@ function App() {
     });
   };
 
-  const hasLibrary = !!libraryQuery.data;
   const showImportBar =
     importQueue.isMinimized && (importQueue.isProcessing || importQueue.isResolving || importQueue.summary.conflicted > 0);
   // Settings shows its own inline resync progress (LibrariesSettings.tsx) while it's open, so this
@@ -737,6 +808,27 @@ function App() {
       }
     >
       <UpdateNotifier />
+      <Modal
+        opened={librarySync.confirming}
+        onClose={librarySync.cancel}
+        title={t("app.syncConfirmTitle")}
+        centered
+        // The "Sync to cloud now" button that triggers this lives inside the Settings modal, whose
+        // own Mantine z-index is the library default (200) - without an explicit, higher value
+        // here, this confirm popup can render *behind* Settings depending on mount/portal order,
+        // which is exactly what was reported.
+        zIndex={300}
+      >
+        <Stack gap="md">
+          <Text size="sm">{t("app.syncConfirmMessage")}</Text>
+          <Group justify="flex-end">
+            <Button variant="default" onClick={librarySync.cancel}>
+              {t("common.cancel")}
+            </Button>
+            <Button onClick={librarySync.confirm}>{t("common.confirm")}</Button>
+          </Group>
+        </Stack>
+      </Modal>
       <OnboardingTour
         opened={tourOpen}
         onClose={() => setTourOpen(false)}
@@ -777,7 +869,7 @@ function App() {
                 canGoForward={canGoForward}
                 onGoBack={goBack}
                 onGoForward={goForward}
-                actionsHidden={!!inlineReader}
+                actionsHidden={!!inlineReader || librarySync.isSyncing}
               />
               {showImportBar && <ImportStatusBar />}
               {showRescanBar && <RescanStatusBar />}
@@ -819,8 +911,30 @@ function App() {
           )}
 
           <AppShell.Main style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
-            {libraryQuery.isLoading ? (
+            {librarySync.isSyncing ? (
+              <LoadingContent message={t("app.syncingToCloud")} />
+            ) : libraryQuery.isLoading || (needsCloudReconnect && cloudReconnectQuery.isLoading) ? (
               <LoadingContent message={t("app.loading")} />
+            ) : needsCloudReconnect && cloudReconnectQuery.isError ? (
+              // The library that was active last time couldn't be reopened (a network problem, a
+              // stale/revoked credential, a backend-side error, ...) - rather than leaving the user
+              // stuck behind a bare error with only a Retry button, this is the same library list
+              // Settings -> Libraries offers, so a different (working) library is always one click
+              // away without needing Settings to be reachable at all first.
+              <Box style={{ flex: 1, overflow: "auto" }} p="xl">
+                <Stack gap="lg" maw={640} mx="auto">
+                  <Alert color="red" icon={<IconAlertCircle size={18} />} title={t("app.cloudReconnectFailedTitle")}>
+                    {cloudReconnectQuery.error instanceof Error ? cloudReconnectQuery.error.message : String(cloudReconnectQuery.error)}
+                  </Alert>
+                  <Group>
+                    <Button onClick={() => void cloudReconnectQuery.refetch()}>{t("backend.retry")}</Button>
+                  </Group>
+                  <Text size="sm" fw={600}>
+                    {t("app.cloudReconnectPickAnother")}
+                  </Text>
+                  <LibrariesSettings onActiveLibraryChanged={handleLibraryChanged} />
+                </Stack>
+              </Box>
             ) : !hasLibrary ? (
               <LibraryPicker
                 onOpened={(_path, filesToImport) => {

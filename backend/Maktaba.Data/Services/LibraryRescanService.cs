@@ -9,10 +9,23 @@ namespace Maktaba.Data.Services;
 
 public partial class LibraryRescanService(
     MaktabaDbContext db,
-    ILibraryPathProvider libraryPath,
+    IStorageProviderFactory storageFactory,
     IEnumerable<IBookMetadataExtractor> extractors,
     IRescanProgressTracker progress) : ILibraryRescanService
 {
+    private IStorageProvider Storage => storageFactory.Current;
+
+    private static async Task<List<StorageEntry>> ListAsync(IStorageProvider storage, string relativePath, CancellationToken ct)
+    {
+        var result = new List<StorageEntry>();
+        await foreach (var entry in storage.EnumerateAsync(relativePath, ct))
+        {
+            result.Add(entry);
+        }
+
+        return result;
+    }
+
     // The trailing "(...)" is expected to be a sqid (see IdCodec) - actual validity is checked by
     // trying to decode it, rather than matching the sqid alphabet/length here, since both are
     // implementation details of the shared encoder rather than something worth duplicating in a regex.
@@ -94,36 +107,46 @@ public partial class LibraryRescanService(
 
     public async Task<int> RescanAsync(CancellationToken ct = default)
     {
-        var libraryRoot = libraryPath.LibraryRootPath!;
-
         // Flattened up front (rather than the nested author/book enumeration this used to be) so the
         // total is known before the loop starts - GET /api/libraries/rescan/progress reports against
         // this total while the rescan below is still running on the request thread that called us.
         // "Periodicals" (see Periodical.cs/BookFolderRelocator) and "AuthorImages" (see
         // AuthorImageLocator, issue #28) are reserved top-level folder names - excluded from the
         // author-folder walk below since neither holds author-organized book folders.
-        var topLevelDirs = Directory.EnumerateDirectories(libraryRoot).ToList();
+        var topLevelDirs = (await ListAsync(Storage, "", ct)).Where(e => e.IsDirectory).ToList();
         var periodicalsRoot = topLevelDirs.FirstOrDefault(
-            d => string.Equals(Path.GetFileName(d), "Periodicals", StringComparison.Ordinal));
+            d => string.Equals(Path.GetFileName(d.RelativePath), "Periodicals", StringComparison.Ordinal));
 
-        var bookDirs = topLevelDirs
-            .Where(d => d != periodicalsRoot && !string.Equals(Path.GetFileName(d), "AuthorImages", StringComparison.Ordinal))
-            .SelectMany(Directory.EnumerateDirectories)
+        var authorDirs = topLevelDirs
+            .Where(d => d != periodicalsRoot && !string.Equals(Path.GetFileName(d.RelativePath), "AuthorImages", StringComparison.Ordinal))
             .ToList();
 
-        var periodicalFolderEntries = (periodicalsRoot is not null ? Directory.EnumerateDirectories(periodicalsRoot) : Enumerable.Empty<string>())
-            .Select(dir =>
+        var bookDirs = new List<string>();
+        foreach (var authorDir in authorDirs)
+        {
+            bookDirs.AddRange((await ListAsync(Storage, authorDir.RelativePath, ct))
+                .Where(e => e.IsDirectory).Select(e => e.RelativePath));
+        }
+
+        var periodicalFolderEntries = new List<(string Dir, int Id, string Title)>();
+        if (periodicalsRoot is not null)
+        {
+            foreach (var entry in (await ListAsync(Storage, periodicalsRoot.RelativePath, ct)).Where(e => e.IsDirectory))
             {
-                var match = BookFolderPattern().Match(Path.GetFileName(dir));
-                var decoded = match.Success && IdCodec.TryDecode(match.Groups["id"].Value, out var id) ? id : (int?)null;
-                return (Dir: dir, Id: decoded, Title: match.Success ? match.Groups["title"].Value : "");
-            })
-            .Where(e => e.Id is not null)
-            .ToList();
+                var match = BookFolderPattern().Match(Path.GetFileName(entry.RelativePath));
+                if (match.Success && IdCodec.TryDecode(match.Groups["id"].Value, out var id))
+                {
+                    periodicalFolderEntries.Add((entry.RelativePath, id, match.Groups["title"].Value));
+                }
+            }
+        }
 
-        var issueDirs = periodicalFolderEntries
-            .SelectMany(e => Directory.EnumerateDirectories(e.Dir).Select(issueDir => (IssueDir: issueDir, PeriodicalId: e.Id!.Value)))
-            .ToList();
+        var issueDirs = new List<(string IssueDir, int PeriodicalId)>();
+        foreach (var entry in periodicalFolderEntries)
+        {
+            issueDirs.AddRange((await ListAsync(Storage, entry.Dir, ct))
+                .Where(e => e.IsDirectory).Select(e => (e.RelativePath, entry.Id)));
+        }
 
         progress.Start(bookDirs.Count + issueDirs.Count);
         try
@@ -170,8 +193,8 @@ public partial class LibraryRescanService(
             // just-created Tag rows earlier in this same loop - see the book loop's own comment.
             foreach (var entry in periodicalFolderEntries)
             {
-                var periodicalId = entry.Id!.Value;
-                var relativeFolder = Path.GetRelativePath(libraryRoot, entry.Dir);
+                var periodicalId = entry.Id;
+                var relativeFolder = entry.Dir;
                 var periodical = previousPeriodicalStates.TryGetValue(periodicalId, out var previousPeriodical)
                     ? new Periodical
                     {
@@ -210,7 +233,7 @@ public partial class LibraryRescanService(
 
             var importedCount = 0;
 
-            var recoveredPeriodicalIds = periodicalFolderEntries.Select(e => e.Id!.Value).ToHashSet();
+            var recoveredPeriodicalIds = periodicalFolderEntries.Select(e => e.Id).ToHashSet();
 
             var workItems = bookDirs
                 .Select(d => (Dir: d, PeriodicalId: (int?)null))
@@ -224,7 +247,7 @@ public partial class LibraryRescanService(
                 var (bookDir, structuralPeriodicalId) = workItems[i];
                 try
                 {
-                    if (await TryIndexBookFolderAsync(libraryRoot, bookDir, structuralPeriodicalId, recoveredPeriodicalIds, previousStates, ct))
+                    if (await TryIndexBookFolderAsync(bookDir, structuralPeriodicalId, recoveredPeriodicalIds, previousStates, ct))
                     {
                         importedCount++;
 
@@ -373,26 +396,25 @@ public partial class LibraryRescanService(
     }
 
     private async Task<bool> TryIndexBookFolderAsync(
-        string libraryRoot, string bookDir, int? structuralPeriodicalId, IReadOnlySet<int> recoveredPeriodicalIds,
+        string relativeFolder, int? structuralPeriodicalId, IReadOnlySet<int> recoveredPeriodicalIds,
         IReadOnlyDictionary<int, PreviousBookState> previousStates, CancellationToken ct)
     {
-        var match = BookFolderPattern().Match(Path.GetFileName(bookDir));
+        var match = BookFolderPattern().Match(Path.GetFileName(relativeFolder));
         if (!match.Success || !IdCodec.TryDecode(match.Groups["id"].Value, out var bookId))
         {
             // Not one of our own "{Title} ({BookId})" folders - skip (see ILibraryRescanService docs).
             return false;
         }
 
-        var ebookFiles = Directory.EnumerateFiles(bookDir)
-            .Where(f => extractors.Any(e => e.CanHandle(f)))
+        var ebookFiles = (await ListAsync(Storage, relativeFolder, ct))
+            .Where(e => !e.IsDirectory && extractors.Any(x => x.CanHandle(e.RelativePath)))
+            .Select(e => e.RelativePath)
             .ToList();
 
         if (ebookFiles.Count == 0)
         {
             return false;
         }
-
-        var relativeFolder = Path.GetRelativePath(libraryRoot, bookDir);
 
         // issue #15: a book id already present before this rescan keeps its existing metadata
         // untouched (built straight from previousStates, no file extraction) - only a genuinely
@@ -401,15 +423,16 @@ public partial class LibraryRescanService(
             ? await BuildExistingBookAsync(bookId, relativeFolder, previous, recoveredPeriodicalIds, ct)
             : null;
 
-        foreach (var filePath in ebookFiles)
+        foreach (var fileRelative in ebookFiles)
         {
-            var hash = await EbookFileHelpers.ComputeSha256Async(filePath, ct);
-            var format = EbookFileHelpers.DetectFormat(filePath);
+            var fileAbsolute = await Storage.GetLocalPathAsync(fileRelative, ct);
+            var hash = await EbookFileHelpers.ComputeSha256Async(fileAbsolute, ct);
+            var format = EbookFileHelpers.DetectFormat(fileAbsolute);
 
             if (book is null)
             {
-                var extractor = extractors.First(e => e.CanHandle(filePath));
-                var metadata = await extractor.ExtractAsync(filePath, ct);
+                var extractor = extractors.First(e => e.CanHandle(fileAbsolute));
+                var metadata = await extractor.ExtractAsync(fileAbsolute, ct);
                 book = await BuildNewBookAsync(bookId, relativeFolder, metadata, structuralPeriodicalId, ct);
             }
 
@@ -417,8 +440,8 @@ public partial class LibraryRescanService(
             {
                 BookId = bookId,
                 Format = format,
-                FilePath = Path.Combine(relativeFolder, Path.GetFileName(filePath)),
-                FileSizeBytes = new FileInfo(filePath).Length,
+                FilePath = fileRelative,
+                FileSizeBytes = new FileInfo(fileAbsolute).Length,
                 ContentHash = hash,
             });
         }

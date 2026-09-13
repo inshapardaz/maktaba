@@ -13,7 +13,7 @@ public static class BrowseEndpoints
 {
     public static void MapBrowseEndpoints(this WebApplication app)
     {
-        app.MapGet("/api/authors", async (MaktabaDbContext db, ILibraryPathProvider libraryPath) =>
+        app.MapGet("/api/authors", async (MaktabaDbContext db, IStorageProviderFactory storageFactory, CancellationToken ct) =>
         {
             // IdCodec.Encode can't be translated to SQL, so the raw int id is projected first and
             // encoded afterwards, in memory.
@@ -23,7 +23,7 @@ public static class BrowseEndpoints
                 .Select(a => new { a.Id, a.Name, Count = a.BookAuthors.Count })
                 .ToListAsync();
 
-            var root = libraryPath.LibraryRootPath!;
+            var root = await storageFactory.Current.GetLocalPathAsync("", ct);
             var result = authors.Select(a => new BrowseGroupDto(
                 IdCodec.Encode(a.Id), a.Name, a.Count, AuthorImageLocator.Find(root, a.Id) is not null)).ToList();
 

@@ -107,6 +107,10 @@ export interface LibraryInfo {
   // Per-library preference (Settings -> Libraries) - hides the Periodicals sidebar section and the
   // book-edit form's Periodical fieldset when off, without touching this library's own data.
   periodicalsEnabled: boolean;
+  // "local" | "s3" | ... - see LibraryEntry.providerType. App.tsx uses this on startup: a
+  // cloud-backed active library needs its credential re-supplied every fresh backend process
+  // (see ICloudCredentialCache), since the backend can't decrypt it itself.
+  providerType: string;
 }
 
 export interface BrowseGroup {
@@ -253,6 +257,10 @@ export interface LibraryEntry {
   path: string;
   isActive: boolean;
   periodicalsEnabled: boolean;
+  // "local" | "s3" | "onedrive" | "googledrive" | "nawishta" - only "local" exists today (S3 lands
+  // in a later phase). Defaults to "local" so this stays optional for anyone building against an
+  // older backend response shape.
+  providerType: string;
 }
 
 // Every library the user has ever opened - only one (isActive) is the one every other request
@@ -262,7 +270,9 @@ export function listLibraries(): Promise<LibraryEntry[]> {
 }
 
 export function openLibraryById(id: string): Promise<LibraryInfo> {
-  return request<LibraryInfo>(`/api/libraries/${id}/open`, { method: "POST" });
+  // Explicit {} body (rather than none) so the backend's optional credential DTO always has real
+  // JSON to bind against - see reopenCloudLibrary for the credential-carrying version of this call.
+  return request<LibraryInfo>(`/api/libraries/${id}/open`, { method: "POST", body: JSON.stringify({}) });
 }
 
 export function renameLibrary(id: string, name: string): Promise<LibraryEntry> {
@@ -294,6 +304,54 @@ export function removeLibrary(id: string): Promise<void> {
 // in the Libraries list, not just the currently active one.
 export function resyncLibrary(id: string): Promise<{ bookCount: number }> {
   return request<{ bookCount: number }>(`/api/libraries/${id}/resync`, { method: "POST" });
+}
+
+// The credential shape saved via window.maktaba.saveCloudCredential/getCloudCredential for an S3
+// library - see backend S3ProviderOptions.FromConfig, which expects exactly this JSON shape.
+export interface S3Credential {
+  accessKeyId: string;
+  secretAccessKey: string;
+}
+
+// endpoint: leave empty to talk to Amazon S3 itself, or a bare host (optionally with a port, e.g.
+// "s3.example.com" or "play.min.io:9000") to point at any other S3-compatible provider (MinIO,
+// Backblaze B2, DigitalOcean Spaces, Cloudflare R2, a self-hosted object store, ...) - see backend
+// S3ProviderOptions.Endpoint, which turns this into a full URL itself.
+export function testS3Connection(
+  bucket: string, region: string, prefix: string, credential: S3Credential, endpoint?: string,
+): Promise<void> {
+  return request<void>("/api/libraries/test-s3-connection", {
+    method: "POST",
+    body: JSON.stringify({
+      bucket, region, prefix, credential: JSON.stringify(credential), endpoint: endpoint || null,
+    }),
+  });
+}
+
+export function connectCloudLibrary(
+  name: string, providerType: string, providerConfig: Record<string, string>, credential: S3Credential,
+): Promise<LibraryEntry> {
+  return request<LibraryEntry>("/api/libraries/cloud", {
+    method: "POST",
+    body: JSON.stringify({ name, providerType, providerConfig, credential: JSON.stringify(credential) }),
+  });
+}
+
+// Re-supplies a cloud library's credential to the backend for this process session - needed once
+// per backend restart (see ICloudCredentialCache), not on every switch within the same session.
+export function reopenCloudLibrary(id: string, credential: S3Credential): Promise<LibraryInfo> {
+  return request<LibraryInfo>(`/api/libraries/${id}/open`, {
+    method: "POST",
+    body: JSON.stringify({ credential: JSON.stringify(credential) }),
+  });
+}
+
+// Pushes the current library's local metadata.db to its cloud provider immediately, rather than
+// waiting for the backend's periodic heartbeat - see CloudSyncLifecycleService. A no-op for a
+// local library; only meaningful (and only ever surfaced in the UI) for the active library when
+// it's cloud-backed.
+export function syncNow(): Promise<void> {
+  return request<void>("/api/libraries/sync-now", { method: "POST" });
 }
 
 export function listBooks(filters: BookFilters = {}): Promise<PagedBooks> {

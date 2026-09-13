@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Maktaba.Data.Services;
 
-public class BookRemovalService(MaktabaDbContext db, ILibraryPathProvider libraryPath) : IBookRemovalService
+public class BookRemovalService(MaktabaDbContext db, IStorageProviderFactory storageFactory) : IBookRemovalService
 {
     public async Task<BookRemovalResult?> RemoveAsync(int bookId, CancellationToken ct = default)
     {
@@ -13,7 +13,7 @@ public class BookRemovalService(MaktabaDbContext db, ILibraryPathProvider librar
             return null;
         }
 
-        var absoluteFolderPath = Path.Combine(libraryPath.LibraryRootPath!, book.FolderPath);
+        var absoluteFolderPath = await storageFactory.Current.GetLocalPathAsync(book.FolderPath, ct);
 
         // BookAuthor/BookSeries/BookTag/BookFile/Identifier rows cascade-delete via their required FK to Book.
         db.Books.Remove(book);

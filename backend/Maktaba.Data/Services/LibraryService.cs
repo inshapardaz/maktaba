@@ -2,6 +2,7 @@ using System.Text.Json;
 using Maktaba.Core.Services;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Maktaba.Data.Services;
 
@@ -9,6 +10,11 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
 {
     private const string DatabaseFileName = "metadata.db";
 
+    // Resolved lazily (not constructor-injected) to avoid a circular dependency:
+    // IStorageProviderFactory itself depends on ILibraryService, which this class implements.
+    private readonly IServiceProvider _serviceProvider;
+    private readonly ICloudCacheManager _cloudCacheManager;
+    private readonly ICloudCredentialCache _credentialCache;
     private readonly string _configFilePath;
     private readonly List<LibraryRegistryEntry> _libraries = [];
     private readonly SemaphoreSlim _schemaCheckLock = new(1, 1);
@@ -20,11 +26,32 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
 
     public IReadOnlyList<LibraryRegistryEntry> Libraries => _libraries;
 
-    public string? DatabasePath =>
-        LibraryRootPath is null ? null : Path.Combine(LibraryRootPath, DatabaseFileName);
-
-    public LibraryService()
+    // For a local library this is unchanged: Path.Combine(LibraryRootPath, "metadata.db"). For a
+    // cloud-backed one, metadata.db lives in the local cache mirror instead - the same local path
+    // that provider's own PullDatabaseAsync downloads it to (see ICloudCacheManager), not under
+    // LibraryRootPath at all (which for a cloud library isn't a real local folder in the same sense).
+    public string? DatabasePath
     {
+        get
+        {
+            if (LibraryRootPath is null)
+            {
+                return null;
+            }
+
+            var entry = _libraries.FirstOrDefault(l => l.Id == CurrentLibraryId);
+            return entry is null || entry.ProviderType == "local"
+                ? Path.Combine(LibraryRootPath, DatabaseFileName)
+                : _cloudCacheManager.GetLocalPath(entry.Id, DatabaseFileName);
+        }
+    }
+
+    public LibraryService(IServiceProvider serviceProvider, ICloudCacheManager cloudCacheManager, ICloudCredentialCache credentialCache)
+    {
+        _serviceProvider = serviceProvider;
+        _cloudCacheManager = cloudCacheManager;
+        _credentialCache = credentialCache;
+
         var appDataDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "Maktaba");
@@ -67,10 +94,17 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
                 lastLibraryId = migrated.Id;
             }
 
+            // The local existence check below only makes sense for "local" - entryToOpen.Path is a
+            // synthetic display string ("s3://...") for a cloud entry, never a real folder, so
+            // Directory.Exists/File.Exists would always be false and silently leave *no* library
+            // open at all (not even falling back to a different one) - this is exactly what made
+            // every registered library appear to "vanish" after restarting with a cloud library
+            // last active. A cloud entry is always considered valid to mark active here; whether it
+            // can actually be *used* yet depends on its credential being re-supplied this session
+            // (see ICloudCredentialCache) - the frontend does that right after startup, since this
+            // constructor has no way to prompt for one itself.
             var entryToOpen = _libraries.FirstOrDefault(l => l.Id == lastLibraryId) ?? _libraries.FirstOrDefault();
-            if (entryToOpen is not null &&
-                Directory.Exists(entryToOpen.Path) &&
-                File.Exists(Path.Combine(entryToOpen.Path, DatabaseFileName)))
+            if (entryToOpen is not null && IsValidToAutoOpen(entryToOpen))
             {
                 LibraryRootPath = entryToOpen.Path;
                 CurrentLibraryId = entryToOpen.Id;
@@ -82,6 +116,10 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
             // the user will be prompted to open one again.
         }
     }
+
+    private static bool IsValidToAutoOpen(LibraryRegistryEntry entry) =>
+        entry.ProviderType != "local" ||
+        (Directory.Exists(entry.Path) && File.Exists(Path.Combine(entry.Path, DatabaseFileName)));
 
     public async Task<LibraryInfo> OpenAsync(string path, CancellationToken ct = default)
     {
@@ -99,7 +137,7 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
         return new LibraryInfo(fullPath);
     }
 
-    public async Task<LibraryInfo?> OpenLibraryByIdAsync(string id, CancellationToken ct = default)
+    public async Task<LibraryInfo?> OpenLibraryByIdAsync(string id, string? credential = null, CancellationToken ct = default)
     {
         var entry = _libraries.FirstOrDefault(l => l.Id == id);
         if (entry is null)
@@ -107,6 +145,29 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
             return null;
         }
 
+        if (credential is not null)
+        {
+            _credentialCache.Set(id, credential);
+        }
+
+        await ActivateAsync(entry, ct);
+        return new LibraryInfo(entry.Path);
+    }
+
+    public async Task<LibraryInfo> OpenCloudLibraryAsync(
+        string name, string providerType, IReadOnlyDictionary<string, string> providerConfig, string credential,
+        CancellationToken ct = default)
+    {
+        var id = Guid.NewGuid().ToString("N");
+        // CredentialRef is just this library's own id - simplest possible opaque key, and one the
+        // frontend already has on hand (no separate id-generation step needed when it calls
+        // window.maktaba.saveCloudCredential after a successful connect).
+        var entry = new LibraryRegistryEntry(
+            id, name, Path: $"{providerType}://{name}",
+            ProviderType: providerType, ProviderConfig: providerConfig, CredentialRef: id);
+        _libraries.Add(entry);
+
+        _credentialCache.Set(entry.Id, credential);
         await ActivateAsync(entry, ct);
         return new LibraryInfo(entry.Path);
     }
@@ -195,11 +256,60 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
 
     private async Task ActivateAsync(LibraryRegistryEntry entry, CancellationToken ct)
     {
-        Directory.CreateDirectory(entry.Path);
+        // entry.Path is a real local folder only for "local" - a cloud entry's Path is a synthetic
+        // display string (see OpenCloudLibraryAsync), never a filesystem path to create.
+        if (entry.ProviderType == "local")
+        {
+            Directory.CreateDirectory(entry.Path);
+        }
 
         LibraryRootPath = entry.Path;
         CurrentLibraryId = entry.Id;
         _schemaVerified = false;
+
+        // Cloud Sync Core: pull the remote copy of metadata.db (if any) into the local cache before
+        // EF ever opens it, so an existing cloud library's DB isn't shadowed by a freshly-created
+        // empty one below. A no-op for a local library (LocalFileSystemProvider.PullDatabaseAsync
+        // just returns DatabasePath) - CurrentLibraryId/LibraryRootPath are already set above, so
+        // the factory resolves the right provider for the library being activated.
+        var storage = _serviceProvider.GetRequiredService<IStorageProviderFactory>().Current;
+
+        if (entry.ProviderType != "local")
+        {
+            // Microsoft.Data.Sqlite defaults to WAL mode, which keeps a memory-mapped
+            // "{db}-shm" file (plus a "{db}-wal" journal) alongside metadata.db for as long as any
+            // connection - even a pooled one left over from earlier in this same process, e.g. a
+            // previous EnsureCurrentSchemaAsync probe - has it open. Overwriting metadata.db without
+            // releasing that first is exactly what turned "Access to the path is denied" from a
+            // transient, retryable failure (CloudCacheManager's own retry loop) into a persistent
+            // one no amount of retrying fixed: the lock was never going to release on its own. Only
+            // relevant for a cloud-backed library, whose PullDatabaseAsync is about to *replace* the
+            // local cache copy - for "local", PullDatabaseAsync never touches the file at all, and
+            // clearing pools/deleting WAL/SHM there would risk losing not-yet-checkpointed local
+            // writes for no reason.
+            SqliteConnection.ClearAllPools();
+            if (DatabasePath is { } dbPath)
+            {
+                foreach (var suffix in new[] { "-wal", "-shm" })
+                {
+                    var sidecarPath = dbPath + suffix;
+                    if (File.Exists(sidecarPath))
+                    {
+                        File.Delete(sidecarPath);
+                    }
+                }
+            }
+        }
+
+        await storage.PullDatabaseAsync(ct);
+
+        // SQLite needs the parent folder to already exist before it can create a new file there.
+        // For "local" that's entry.Path itself (already created above). For a cloud library it's the
+        // local cache mirror folder - PullDatabaseAsync only creates it when a remote metadata.db
+        // actually exists to download; a brand-new library (nothing pushed yet) leaves it missing,
+        // which made EnsureCreatedAsync below fail with "SQLite Error 14: unable to open database
+        // file" the first time anyone connected to a fresh bucket/prefix.
+        Directory.CreateDirectory(Path.GetDirectoryName(DatabasePath)!);
 
         using var db = MaktabaDbContextFactory.Create(this);
         await db.Database.EnsureCreatedAsync(ct);

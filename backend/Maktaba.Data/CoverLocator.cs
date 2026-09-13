@@ -11,6 +11,12 @@ public static class CoverLocator
 
     public static readonly IReadOnlyList<string> CoverFileNames = CoverCandidates.Select(c => c.FileName).ToArray();
 
+    // Deliberately synchronous and takes a raw local root rather than IStorageProvider - it's called
+    // per-book inside synchronous list projections across several endpoints (BookEndpoints,
+    // PeriodicalEndpoints), and for a cloud-backed library it only reports a cover as present if it's
+    // already in the local cache mirror. Making list views cloud-accurate would need a DB-backed
+    // "has cover" flag instead of a filesystem probe - out of scope for this pass; see the matching
+    // note on AuthorImageLocator.
     /// <param name="bookFolderRelativePath">A <c>Book.FolderPath</c> value, relative to the library root.</param>
     public static (string FilePath, string ContentType)? Find(string libraryRoot, string bookFolderRelativePath)
     {

@@ -13,9 +13,9 @@ public static class PeriodicalEndpoints
     {
         var group = app.MapGroup("/api/periodicals");
 
-        group.MapGet("", async (MaktabaDbContext db, ILibraryPathProvider libraryPath) =>
+        group.MapGet("", async (MaktabaDbContext db, IStorageProviderFactory storageFactory, CancellationToken ct) =>
         {
-            var root = libraryPath.LibraryRootPath!;
+            var root = await storageFactory.Current.GetLocalPathAsync("", ct);
 
             var periodicals = await db.Periodicals
                 .OrderBy(p => p.SortName)
@@ -49,7 +49,7 @@ public static class PeriodicalEndpoints
 
         group.MapPost("", async (
             CreatePeriodicalRequestDto request, MaktabaDbContext db, IPeriodicalService periodicalService,
-            ILibraryPathProvider libraryPath, CancellationToken ct) =>
+            IStorageProviderFactory storageFactory, CancellationToken ct) =>
         {
             var name = request.Name?.Trim();
             if (string.IsNullOrEmpty(name))
@@ -65,7 +65,7 @@ public static class PeriodicalEndpoints
             // Same "create is really upsert-by-name" semantics as CollectionEndpoints - a repeated
             // quick-add of the same periodical name (e.g. from the sidebar) resolves to the one
             // existing row instead of creating a duplicate.
-            var root = libraryPath.LibraryRootPath!;
+            var root = await storageFactory.Current.GetLocalPathAsync("", ct);
             var existing = await db.Periodicals
                 .Where(p => p.Name.ToLower() == name.ToLower())
                 .Select(p => new
@@ -102,14 +102,14 @@ public static class PeriodicalEndpoints
             return Results.Created($"/api/periodicals/{dto.Id}", dto);
         });
 
-        group.MapGet("/{id}", async (string id, MaktabaDbContext db, ILibraryPathProvider libraryPath) =>
+        group.MapGet("/{id}", async (string id, MaktabaDbContext db, IStorageProviderFactory storageFactory, CancellationToken ct) =>
         {
             if (!IdCodec.TryDecode(id, out var periodicalId))
             {
                 return Results.NotFound();
             }
 
-            var root = libraryPath.LibraryRootPath!;
+            var root = await storageFactory.Current.GetLocalPathAsync("", ct);
 
             var periodical = await db.Periodicals
                 .Where(p => p.Id == periodicalId)
@@ -141,7 +141,7 @@ public static class PeriodicalEndpoints
 
         group.MapPut("/{id}", async (
             string id, UpdatePeriodicalRequestDto request, IPeriodicalService periodicalService,
-            ILibraryPathProvider libraryPath, CancellationToken ct) =>
+            IStorageProviderFactory storageFactory, CancellationToken ct) =>
         {
             if (!IdCodec.TryDecode(id, out var periodicalId))
             {
@@ -168,7 +168,7 @@ public static class PeriodicalEndpoints
                 return Results.NotFound();
             }
 
-            var root = libraryPath.LibraryRootPath!;
+            var root = await storageFactory.Current.GetLocalPathAsync("", ct);
             return Results.Ok(new PeriodicalDto(
                 IdCodec.Encode(periodical.Id), periodical.Name, periodical.Description, periodical.Frequency.ToString(),
                 periodical.Language, periodical.Publisher, periodical.Editor,
@@ -197,14 +197,14 @@ public static class PeriodicalEndpoints
             };
         });
 
-        group.MapGet("/{id}/cover", async (string id, MaktabaDbContext db, ILibraryPathProvider libraryPath) =>
+        group.MapGet("/{id}/cover", async (string id, MaktabaDbContext db, IStorageProviderFactory storageFactory, CancellationToken ct) =>
         {
             if (!IdCodec.TryDecode(id, out var periodicalId))
             {
                 return Results.NotFound();
             }
 
-            var root = libraryPath.LibraryRootPath!;
+            var root = await storageFactory.Current.GetLocalPathAsync("", ct);
 
             var folderPath = await db.Periodicals
                 .Where(p => p.Id == periodicalId)

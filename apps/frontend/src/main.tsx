@@ -17,6 +17,7 @@ import { BackendGate } from "./components/BackendGate";
 import { HelpWindow } from "./components/HelpWindow";
 import { ImportProvider } from "./ImportContext";
 import { RescanProvider } from "./RescanContext";
+import { LibrarySyncProvider } from "./LibrarySyncContext";
 import App from "./App.tsx";
 
 const queryClient = new QueryClient();
@@ -90,7 +91,9 @@ createRoot(document.getElementById("root")!).render(
                   ) : (
                     <ImportProvider>
                       <RescanProvider>
-                        <App />
+                        <LibrarySyncProvider>
+                          <App />
+                        </LibrarySyncProvider>
                       </RescanProvider>
                     </ImportProvider>
                   )}

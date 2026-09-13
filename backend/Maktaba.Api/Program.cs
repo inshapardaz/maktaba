@@ -26,6 +26,13 @@ builder.Services.AddSingleton<LibraryService>();
 builder.Services.AddSingleton<ILibraryService>(sp => sp.GetRequiredService<LibraryService>());
 builder.Services.AddSingleton<ILibraryPathProvider>(sp => sp.GetRequiredService<LibraryService>());
 
+builder.Services.AddSingleton<LocalFileSystemProvider>();
+builder.Services.AddSingleton<IStorageProviderFactory, StorageProviderFactory>();
+builder.Services.AddSingleton<ICloudCacheManager, CloudCacheManager>();
+builder.Services.AddSingleton<ISyncStatusTracker, SyncStatusTracker>();
+builder.Services.AddSingleton<ICloudCredentialCache, CloudCredentialCache>();
+builder.Services.AddHostedService<Maktaba.Api.CloudSyncLifecycleService>();
+
 builder.Services.AddScoped(sp => MaktabaDbContextFactory.Create(sp.GetRequiredService<ILibraryPathProvider>()));
 
 builder.Services.AddSingleton<IBookMetadataExtractor, EpubMetadataExtractor>();

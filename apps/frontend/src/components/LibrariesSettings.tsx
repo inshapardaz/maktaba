@@ -6,6 +6,8 @@ import {
   Badge,
   Button,
   Group,
+  Modal,
+  PasswordInput,
   Progress,
   Stack,
   Switch,
@@ -17,6 +19,8 @@ import {
   IconAlertCircle,
   IconBooks,
   IconCheck,
+  IconCloud,
+  IconCloudUpload,
   IconFolderOpen,
   IconPencil,
   IconPlus,
@@ -25,6 +29,7 @@ import {
   IconX,
 } from "../icons";
 import {
+  connectCloudLibrary,
   listLibraries,
   openLibrary,
   openLibraryById,
@@ -32,11 +37,24 @@ import {
   removeLibrary,
   renameLibrary,
   setLibraryPeriodicalsEnabled,
+  testS3Connection,
   type LibraryEntry,
+  type S3Credential,
 } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
 import { invalidateLibraryQueries } from "../queries";
 import { useRescan } from "../RescanContext";
+import { useLibrarySync } from "../LibrarySyncContext";
+
+// Provider names are proper nouns/brand names, not translated - same convention as file format
+// labels (EPUB/PDF/...) elsewhere in this app. Only "local" is reachable today; the rest land with
+// their own phases (S3 first).
+const PROVIDER_LABELS: Record<string, string> = {
+  s3: "Amazon S3",
+  onedrive: "OneDrive",
+  googledrive: "Google Drive",
+  nawishta: "Nawishta",
+};
 
 interface LibrariesSettingsProps {
   // Called whenever the ACTIVE library's identity or contents actually changed (switched to a
@@ -60,6 +78,7 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
   const [confirmingRemoveId, setConfirmingRemoveId] = useState<string | null>(null);
 
   const rescan = useRescan();
+  const librarySync = useLibrarySync();
 
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -174,16 +193,31 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
     renameMutation.mutate({ id, name: trimmed });
   };
 
+  const [s3ModalOpen, setS3ModalOpen] = useState(false);
+
+  const handleS3Connected = () => {
+    setS3ModalOpen(false);
+    invalidateLibraries();
+    refreshActiveLibrary();
+  };
+
   return (
     <Stack gap="md">
       <Group justify="space-between">
         <Text size="sm" c="dimmed">
           {t("librariesSettings.description")}
         </Text>
-        <Button size="sm" leftSection={<IconPlus size={14} />} onClick={() => void handleAdd()} loading={addBusy}>
-          {t("librariesSettings.addLibrary")}
-        </Button>
+        <Group gap="xs">
+          <Button size="sm" variant="default" leftSection={<IconCloud size={14} />} onClick={() => setS3ModalOpen(true)}>
+            {t("librariesSettings.connectS3")}
+          </Button>
+          <Button size="sm" leftSection={<IconPlus size={14} />} onClick={() => void handleAdd()} loading={addBusy}>
+            {t("librariesSettings.addLibrary")}
+          </Button>
+        </Group>
       </Group>
+
+      <S3ConnectModal opened={s3ModalOpen} onClose={() => setS3ModalOpen(false)} onConnected={handleS3Connected} />
 
       {addError && (
         <Alert color="red" icon={<IconAlertCircle size={18} />} title={t("settings.changeLibraryErrorTitle")}>
@@ -255,6 +289,11 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
                       {t("librariesSettings.active")}
                     </Badge>
                   )}
+                  {entry.providerType !== "local" && (
+                    <Badge size="xs" variant="outline" color="gray">
+                      {PROVIDER_LABELS[entry.providerType] ?? entry.providerType}
+                    </Badge>
+                  )}
                 </Group>
               )}
 
@@ -274,28 +313,45 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
                     <IconPencil size={14} />
                   </ActionIcon>
                 </Tooltip>
-                <Tooltip label={t("librariesSettings.changeFolder")}>
-                  <ActionIcon
-                    variant="subtle"
-                    color="gray"
-                    onClick={() => void handleRelocate(entry.id)}
-                    aria-label={t("librariesSettings.changeFolder")}
-                  >
-                    <IconFolderOpen size={14} />
-                  </ActionIcon>
-                </Tooltip>
-                <Tooltip label={t("librariesSettings.resync")}>
-                  <ActionIcon
-                    variant="subtle"
-                    color="gray"
-                    loading={rescan.libraryId === entry.id}
-                    disabled={rescan.isRunning && rescan.libraryId !== entry.id}
-                    onClick={() => handleResync(entry)}
-                    aria-label={t("librariesSettings.resync")}
-                  >
-                    <IconRefresh size={14} />
-                  </ActionIcon>
-                </Tooltip>
+                {entry.providerType === "local" && (
+                  <Tooltip label={t("librariesSettings.changeFolder")}>
+                    <ActionIcon
+                      variant="subtle"
+                      color="gray"
+                      onClick={() => void handleRelocate(entry.id)}
+                      aria-label={t("librariesSettings.changeFolder")}
+                    >
+                      <IconFolderOpen size={14} />
+                    </ActionIcon>
+                  </Tooltip>
+                )}
+                {entry.providerType === "local" && (
+                  <Tooltip label={t("librariesSettings.resync")}>
+                    <ActionIcon
+                      variant="subtle"
+                      color="gray"
+                      loading={rescan.libraryId === entry.id}
+                      disabled={rescan.isRunning && rescan.libraryId !== entry.id}
+                      onClick={() => handleResync(entry)}
+                      aria-label={t("librariesSettings.resync")}
+                    >
+                      <IconRefresh size={14} />
+                    </ActionIcon>
+                  </Tooltip>
+                )}
+                {entry.isActive && entry.providerType !== "local" && (
+                  <Tooltip label={t("librariesSettings.syncNow")}>
+                    <ActionIcon
+                      variant="subtle"
+                      color="gray"
+                      loading={librarySync.isSyncing}
+                      onClick={librarySync.requestSync}
+                      aria-label={t("librariesSettings.syncNow")}
+                    >
+                      <IconCloudUpload size={14} />
+                    </ActionIcon>
+                  </Tooltip>
+                )}
                 {confirmingRemoveId === entry.id ? (
                   <Group gap={4} wrap="nowrap">
                     <Button size="xs" color="red" loading={removeMutation.isPending} onClick={() => removeMutation.mutate(entry.id)}>
@@ -354,5 +410,151 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
         ))}
       </Stack>
     </Stack>
+  );
+}
+
+interface S3ConnectModalProps {
+  opened: boolean;
+  onClose: () => void;
+  onConnected: () => void;
+}
+
+// Amazon S3 connect form (Cloud: Phase 2) - Test connection verifies the bucket/region/credentials
+// work before Connect commits to registering a library against them. On success, the credential is
+// saved encrypted (window.maktaba.saveCloudCredential, keyed by the new library's own id - see
+// LibraryService.OpenCloudLibraryAsync's CredentialRef) so a later app launch can re-supply it
+// without asking the user to retype it every time.
+function S3ConnectModal({ opened, onClose, onConnected }: S3ConnectModalProps) {
+  const { t } = useLanguage();
+  const [name, setName] = useState("");
+  const [bucket, setBucket] = useState("");
+  const [region, setRegion] = useState("us-east-1");
+  const [prefix, setPrefix] = useState("");
+  const [endpoint, setEndpoint] = useState("");
+  const [accessKeyId, setAccessKeyId] = useState("");
+  const [secretAccessKey, setSecretAccessKey] = useState("");
+  const [testResult, setTestResult] = useState<"success" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const credential: S3Credential = { accessKeyId, secretAccessKey };
+  const canSubmit = name.trim().length > 0 && bucket.trim().length > 0 && region.trim().length > 0 &&
+    accessKeyId.length > 0 && secretAccessKey.length > 0;
+
+  const testMutation = useMutation({
+    mutationFn: () => testS3Connection(bucket.trim(), region.trim(), prefix.trim(), credential, endpoint.trim()),
+    onSuccess: () => {
+      setTestResult("success");
+      setError(null);
+    },
+    onError: (err) => {
+      setTestResult(null);
+      setError(err instanceof Error ? err.message : String(err));
+    },
+  });
+
+  const connectMutation = useMutation({
+    mutationFn: async () => {
+      const providerConfig: Record<string, string> = { bucket: bucket.trim(), region: region.trim(), prefix: prefix.trim() };
+      if (endpoint.trim()) {
+        providerConfig.endpoint = endpoint.trim();
+      }
+      const entry = await connectCloudLibrary(name.trim(), "s3", providerConfig, credential);
+      await window.maktaba.saveCloudCredential(entry.id, JSON.stringify(credential));
+      return entry;
+    },
+    onSuccess: () => {
+      reset();
+      onConnected();
+    },
+    onError: (err) => setError(err instanceof Error ? err.message : String(err)),
+  });
+
+  const reset = () => {
+    setName("");
+    setBucket("");
+    setRegion("us-east-1");
+    setPrefix("");
+    setEndpoint("");
+    setAccessKeyId("");
+    setSecretAccessKey("");
+    setTestResult(null);
+    setError(null);
+  };
+
+  return (
+    <Modal
+      opened={opened}
+      onClose={() => {
+        reset();
+        onClose();
+      }}
+      title={t("librariesSettings.connectS3")}
+    >
+      <Stack gap="sm">
+        <TextInput
+          label={t("librariesSettings.s3Name")}
+          value={name}
+          onChange={(e) => setName(e.currentTarget.value)}
+        />
+        <TextInput
+          label={t("librariesSettings.s3Bucket")}
+          value={bucket}
+          onChange={(e) => setBucket(e.currentTarget.value)}
+        />
+        <TextInput
+          label={t("librariesSettings.s3Region")}
+          value={region}
+          onChange={(e) => setRegion(e.currentTarget.value)}
+        />
+        <TextInput
+          label={t("librariesSettings.s3Prefix")}
+          placeholder={t("librariesSettings.s3PrefixPlaceholder")}
+          value={prefix}
+          onChange={(e) => setPrefix(e.currentTarget.value)}
+        />
+        <TextInput
+          label={t("librariesSettings.s3Endpoint")}
+          description={t("librariesSettings.s3EndpointDescription")}
+          placeholder={t("librariesSettings.s3EndpointPlaceholder")}
+          value={endpoint}
+          onChange={(e) => setEndpoint(e.currentTarget.value)}
+        />
+        <TextInput
+          label={t("librariesSettings.s3AccessKey")}
+          value={accessKeyId}
+          onChange={(e) => setAccessKeyId(e.currentTarget.value)}
+        />
+        <PasswordInput
+          label={t("librariesSettings.s3SecretKey")}
+          value={secretAccessKey}
+          onChange={(e) => setSecretAccessKey(e.currentTarget.value)}
+        />
+
+        {error && (
+          <Alert color="red" icon={<IconAlertCircle size={18} />}>
+            {error}
+          </Alert>
+        )}
+        {testResult === "success" && (
+          <Alert color="green" icon={<IconCheck size={18} />}>
+            {t("librariesSettings.s3TestSuccess")}
+          </Alert>
+        )}
+
+        <Group justify="flex-end">
+          <Button
+            variant="default"
+            disabled={!canSubmit}
+            loading={testMutation.isPending}
+            onClick={() => testMutation.mutate()}
+          >
+            {t("librariesSettings.s3TestConnection")}
+          </Button>
+          <Button disabled={!canSubmit} loading={connectMutation.isPending} onClick={() => connectMutation.mutate()}>
+            {t("librariesSettings.s3Connect")}
+          </Button>
+        </Group>
+      </Stack>
+    </Modal>
   );
 }

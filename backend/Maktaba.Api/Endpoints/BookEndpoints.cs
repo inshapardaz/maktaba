@@ -58,7 +58,7 @@ public static class BookEndpoints
 
         group.MapGet("", async (
             MaktabaDbContext db,
-            ILibraryPathProvider libraryPath,
+            IStorageProviderFactory storageFactory,
             string? search,
             string? authorId,
             string? seriesId,
@@ -74,9 +74,10 @@ public static class BookEndpoints
             string? sortKey,
             string? sortDirection,
             int? page,
-            int? pageSize) =>
+            int? pageSize,
+            CancellationToken ct) =>
         {
-            var root = libraryPath.LibraryRootPath!;
+            var root = await storageFactory.Current.GetLocalPathAsync("", ct);
 
             var query = db.Books
                 .Include(b => b.BookAuthors).ThenInclude(ba => ba.Author)
@@ -241,9 +242,10 @@ public static class BookEndpoints
         // frontend still applies its own ReadingStatus == "Reading" filter defensively, but every
         // row from here now already satisfies it.
         group.MapGet("/continue-reading", async (
-            MaktabaDbContext db, ILibraryPathProvider libraryPath, int? limit, bool? includeIssues) =>
+            MaktabaDbContext db, IStorageProviderFactory storageFactory, int? limit, bool? includeIssues, CancellationToken ct) =>
         {
-            var root = libraryPath.LibraryRootPath!;
+            var storage = storageFactory.Current;
+            var root = await storage.GetLocalPathAsync("", ct);
 
             var query = db.Books
                 .Where(b => b.ReadingStatus == ReadingStatus.Reading)
@@ -263,30 +265,32 @@ public static class BookEndpoints
                 .Where(rp => bookIds.Contains(rp.BookId))
                 .ToDictionaryAsync(rp => rp.BookId);
 
-            var dtos = books
-                .Select(book =>
-                {
-                    var progress = progressByBookId.GetValueOrDefault(book.Id);
-                    // Same "prefer Epub" rule BookDetailPanel/openReader uses on the frontend - the
-                    // resume button opens whichever format this feed reports without a second round trip.
-                    var file = book.Files.FirstOrDefault(f => f.Format == BookFormat.Epub) ?? book.Files.FirstOrDefault();
-
-                    return new ContinueReadingBookDto(
-                        IdCodec.Encode(book.Id),
-                        book.Title,
-                        book.BookAuthors.OrderBy(ba => ba.Order).Select(ba => ba.Author.Name).ToArray(),
-                        BuildAuthorRefs(book.BookAuthors, root),
-                        CoverLocator.Find(root, book.FolderPath) is not null,
-                        CoverLocator.GetVersion(root, book.FolderPath),
-                        book.ReadingStatus.ToString(),
-                        (file?.Format ?? BookFormat.Epub).ToString(),
-                        file is not null ? Path.Combine(root, file.FilePath) : "",
-                        progress?.Percentage ?? 0,
-                        progress?.UpdatedAt ?? book.DateAdded);
-                })
-                .OrderByDescending(dto => dto.UpdatedAt)
+            var candidates = books
+                .OrderByDescending(book => progressByBookId.GetValueOrDefault(book.Id)?.UpdatedAt ?? book.DateAdded)
                 .Take(limit is > 0 ? limit.Value : 20)
                 .ToList();
+
+            var dtos = new List<ContinueReadingBookDto>();
+            foreach (var book in candidates)
+            {
+                var progress = progressByBookId.GetValueOrDefault(book.Id);
+                // Same "prefer Epub" rule BookDetailPanel/openReader uses on the frontend - the
+                // resume button opens whichever format this feed reports without a second round trip.
+                var file = book.Files.FirstOrDefault(f => f.Format == BookFormat.Epub) ?? book.Files.FirstOrDefault();
+
+                dtos.Add(new ContinueReadingBookDto(
+                    IdCodec.Encode(book.Id),
+                    book.Title,
+                    book.BookAuthors.OrderBy(ba => ba.Order).Select(ba => ba.Author.Name).ToArray(),
+                    BuildAuthorRefs(book.BookAuthors, root),
+                    CoverLocator.Find(root, book.FolderPath) is not null,
+                    CoverLocator.GetVersion(root, book.FolderPath),
+                    book.ReadingStatus.ToString(),
+                    (file?.Format ?? BookFormat.Epub).ToString(),
+                    file is not null ? await storage.GetLocalPathAsync(file.FilePath, ct) : "",
+                    progress?.Percentage ?? 0,
+                    progress?.UpdatedAt ?? book.DateAdded));
+            }
 
             return Results.Ok(dtos);
         });
@@ -296,9 +300,9 @@ public static class BookEndpoints
         // books with a ReadingProgress row, so a freshly imported library (nothing opened yet) would
         // show nothing there even though there's plenty to display here.
         group.MapGet("/recently-added", async (
-            MaktabaDbContext db, ILibraryPathProvider libraryPath, int? limit, bool? includeIssues) =>
+            MaktabaDbContext db, IStorageProviderFactory storageFactory, int? limit, bool? includeIssues, CancellationToken ct) =>
         {
-            var root = libraryPath.LibraryRootPath!;
+            var root = await storageFactory.Current.GetLocalPathAsync("", ct);
 
             var query = db.Books
                 .Include(b => b.BookAuthors).ThenInclude(ba => ba.Author)
@@ -351,14 +355,15 @@ public static class BookEndpoints
             return Results.Ok(dtos);
         });
 
-        group.MapGet("/{id}", async (string id, MaktabaDbContext db, ILibraryPathProvider libraryPath) =>
+        group.MapGet("/{id}", async (string id, MaktabaDbContext db, IStorageProviderFactory storageFactory, CancellationToken ct) =>
         {
             if (!IdCodec.TryDecode(id, out var bookId))
             {
                 return Results.NotFound();
             }
 
-            var root = libraryPath.LibraryRootPath!;
+            var storage = storageFactory.Current;
+            var root = await storage.GetLocalPathAsync("", ct);
 
             var book = await db.Books
                 .Include(b => b.BookAuthors).ThenInclude(ba => ba.Author)
@@ -382,6 +387,13 @@ public static class BookEndpoints
             var percentage = await db.ReadingProgress.Where(rp => rp.BookId == bookId).Select(rp => (double?)rp.Percentage).FirstOrDefaultAsync();
             var expectedTotalSeconds = ReadingTimeEstimator.EstimateTotalSeconds(secondsRead, percentage ?? 0);
 
+            var fileDtos = new List<BookFileDto>();
+            foreach (var f in book.Files)
+            {
+                fileDtos.Add(new BookFileDto(
+                    IdCodec.Encode(f.Id), f.Format.ToString(), f.FileSizeBytes, await storage.GetLocalPathAsync(f.FilePath, ct), f.ContentHash));
+            }
+
             var dto = new BookDetailDto(
                 id,
                 book.Title,
@@ -402,8 +414,7 @@ public static class BookEndpoints
                 series?.SeriesIndex,
                 book.BookTags.Select(bt => bt.Tag.Name).ToArray(),
                 book.Identifiers.Select(i => new IdentifierDto(i.Scheme, i.Value)).ToArray(),
-                book.Files.Select(f => new BookFileDto(
-                    IdCodec.Encode(f.Id), f.Format.ToString(), f.FileSizeBytes, Path.Combine(root, f.FilePath), f.ContentHash)).ToArray(),
+                fileDtos.ToArray(),
                 CoverLocator.Find(root, book.FolderPath) is not null,
                 CoverLocator.GetVersion(root, book.FolderPath),
                 book.ReadingStatus.ToString(),
@@ -423,14 +434,14 @@ public static class BookEndpoints
             return Results.Ok(dto);
         });
 
-        group.MapGet("/{id}/cover", async (string id, MaktabaDbContext db, ILibraryPathProvider libraryPath) =>
+        group.MapGet("/{id}/cover", async (string id, MaktabaDbContext db, IStorageProviderFactory storageFactory, CancellationToken ct) =>
         {
             if (!IdCodec.TryDecode(id, out var bookId))
             {
                 return Results.NotFound();
             }
 
-            var root = libraryPath.LibraryRootPath!;
+            var root = await storageFactory.Current.GetLocalPathAsync("", ct);
 
             var folderPath = await db.Books
                 .Where(b => b.Id == bookId)
@@ -448,7 +459,7 @@ public static class BookEndpoints
                 : Results.NotFound();
         });
 
-        group.MapGet("/{id}/file", async (string id, string? format, MaktabaDbContext db, ILibraryPathProvider libraryPath) =>
+        group.MapGet("/{id}/file", async (string id, string? format, MaktabaDbContext db, IStorageProviderFactory storageFactory, CancellationToken ct) =>
         {
             if (!IdCodec.TryDecode(id, out var bookId))
             {
@@ -460,12 +471,10 @@ public static class BookEndpoints
                 return Results.BadRequest(new { error = "Invalid or missing format." });
             }
 
-            var root = libraryPath.LibraryRootPath!;
-
             var file = await db.Books
                 .Where(b => b.Id == bookId)
                 .SelectMany(b => b.Files)
-                .FirstOrDefaultAsync(f => f.Format == parsedFormat);
+                .FirstOrDefaultAsync(f => f.Format == parsedFormat, ct);
 
             if (file is null)
             {
@@ -481,13 +490,14 @@ public static class BookEndpoints
                 _ => "application/octet-stream",
             };
 
-            return Results.File(Path.Combine(root, file.FilePath), contentType);
+            var localPath = await storageFactory.Current.GetLocalPathAsync(file.FilePath, ct);
+            return Results.File(localPath, contentType);
         });
 
         // Docx/Txt have no reader qari understands natively - ReaderOverlay.tsx feeds this plain
         // text to qari as a Markdown source instead of fetching the raw file like Epub/Pdf do.
         group.MapGet("/{id}/text", async (
-            string id, string? format, MaktabaDbContext db, ILibraryPathProvider libraryPath,
+            string id, string? format, MaktabaDbContext db, IStorageProviderFactory storageFactory,
             IEnumerable<IBookTextContentExtractor> textExtractors, CancellationToken ct) =>
         {
             if (!IdCodec.TryDecode(id, out var bookId))
@@ -500,8 +510,6 @@ public static class BookEndpoints
                 return Results.BadRequest(new { error = "Invalid or missing format." });
             }
 
-            var root = libraryPath.LibraryRootPath!;
-
             var file = await db.Books
                 .Where(b => b.Id == bookId)
                 .SelectMany(b => b.Files)
@@ -512,7 +520,7 @@ public static class BookEndpoints
                 return Results.NotFound();
             }
 
-            var absolutePath = Path.Combine(root, file.FilePath);
+            var absolutePath = await storageFactory.Current.GetLocalPathAsync(file.FilePath, ct);
             var extractor = textExtractors.FirstOrDefault(e => e.CanHandle(absolutePath));
             if (extractor is null)
             {
@@ -599,7 +607,7 @@ public static class BookEndpoints
             string id,
             ConvertBookRequestDto request,
             IBookConversionService conversionService,
-            ILibraryPathProvider libraryPath,
+            IStorageProviderFactory storageFactory,
             CancellationToken ct) =>
         {
             if (!IdCodec.TryDecode(id, out var bookId))
@@ -613,12 +621,12 @@ public static class BookEndpoints
             }
 
             var result = await conversionService.ConvertAsync(bookId, targetFormat, ct);
-            var root = libraryPath.LibraryRootPath!;
 
             return result.Outcome switch
             {
                 BookConversionOutcome.Converted => Results.Ok(new BookFileDto(
-                    IdCodec.Encode(result.File!.Id), result.File.Format.ToString(), result.File.FileSizeBytes, Path.Combine(root, result.File.FilePath), result.File.ContentHash)),
+                    IdCodec.Encode(result.File!.Id), result.File.Format.ToString(), result.File.FileSizeBytes,
+                    await storageFactory.Current.GetLocalPathAsync(result.File.FilePath, ct), result.File.ContentHash)),
                 BookConversionOutcome.BookNotFound => Results.NotFound(),
                 BookConversionOutcome.AlreadyHasFormat => Results.Conflict(
                     new { error = $"This book already has a {targetFormat} file." }),
@@ -644,7 +652,7 @@ public static class BookEndpoints
             string id,
             AddBookFileRequest request,
             IImportService importService,
-            ILibraryPathProvider libraryPath,
+            IStorageProviderFactory storageFactory,
             CancellationToken ct) =>
         {
             if (!IdCodec.TryDecode(id, out var bookId))
@@ -652,6 +660,9 @@ public static class BookEndpoints
                 return Results.NotFound();
             }
 
+            // request.FilePath is a source file the user picked from anywhere on their own disk (via
+            // the OS file dialog, see native.ts), not a library-relative path - it's never resolved
+            // through IStorageProvider.
             if (string.IsNullOrWhiteSpace(request.FilePath) || !File.Exists(request.FilePath))
             {
                 return Results.BadRequest(new { error = "File not found." });
@@ -666,9 +677,9 @@ public static class BookEndpoints
                 }
 
                 var addedFile = book.Files[^1];
-                var root = libraryPath.LibraryRootPath!;
+                var localPath = await storageFactory.Current.GetLocalPathAsync(addedFile.FilePath, ct);
                 return Results.Ok(new BookFileDto(
-                    IdCodec.Encode(addedFile.Id), addedFile.Format.ToString(), addedFile.FileSizeBytes, Path.Combine(root, addedFile.FilePath), addedFile.ContentHash));
+                    IdCodec.Encode(addedFile.Id), addedFile.Format.ToString(), addedFile.FileSizeBytes, localPath, addedFile.ContentHash));
             }
             catch (NotSupportedException ex)
             {
@@ -682,7 +693,7 @@ public static class BookEndpoints
         // IsCustomNamed check for how this survives a later title/author edit.
         group.MapPatch("/{id}/files/{fileId}/name", async (
             string id, string fileId, RenameBookFileRequestDto request, IBookEditService editService,
-            ILibraryPathProvider libraryPath, CancellationToken ct) =>
+            IStorageProviderFactory storageFactory, CancellationToken ct) =>
         {
             if (!IdCodec.TryDecode(id, out var bookId) || !IdCodec.TryDecode(fileId, out var bookFileId))
             {
@@ -701,8 +712,8 @@ public static class BookEndpoints
                 return Results.NotFound();
             }
 
-            var root = libraryPath.LibraryRootPath!;
-            return Results.Ok(new BookFileDto(fileId, file.Format.ToString(), file.FileSizeBytes, Path.Combine(root, file.FilePath), file.ContentHash));
+            var localPath = await storageFactory.Current.GetLocalPathAsync(file.FilePath, ct);
+            return Results.Ok(new BookFileDto(fileId, file.Format.ToString(), file.FileSizeBytes, localPath, file.ContentHash));
         });
 
         // Issue #66: re-extracts the cover image embedded in one of the book's own attached files and

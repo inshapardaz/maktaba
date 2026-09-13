@@ -175,9 +175,22 @@ public record SystemCapabilitiesDto(bool CalibreAvailable);
 
 public record OpenLibraryRequest(string Path);
 
-public record LibraryDto(string Path, string Id, string Name, bool PeriodicalsEnabled);
+// Credential is the plaintext secret (the frontend decrypted via window.maktaba.getCloudCredential)
+// for a cloud-backed library - null/omitted when reopening a local library, or a cloud one whose
+// credential is already cached for this backend process session (see ICloudCredentialCache).
+public record OpenLibraryCredentialRequestDto(string? Credential);
 
-public record LibraryEntryDto(string Id, string Name, string Path, bool IsActive, bool PeriodicalsEnabled);
+public record ConnectCloudLibraryRequestDto(
+    string Name, string ProviderType, Dictionary<string, string> ProviderConfig, string Credential);
+
+// Endpoint is null/omitted to talk to Amazon S3 itself, or a bare host (optionally with a port) to
+// point at any other S3-compatible provider (MinIO, Backblaze B2, DigitalOcean Spaces, Cloudflare
+// R2, ...) - see S3ProviderOptions.Endpoint.
+public record TestS3ConnectionRequestDto(string Bucket, string Region, string Prefix, string Credential, string? Endpoint = null);
+
+public record LibraryDto(string Path, string Id, string Name, bool PeriodicalsEnabled, string ProviderType = "local");
+
+public record LibraryEntryDto(string Id, string Name, string Path, bool IsActive, bool PeriodicalsEnabled, string ProviderType = "local");
 
 public record RenameLibraryRequestDto(string Name);
 
@@ -186,6 +199,8 @@ public record RelocateLibraryRequestDto(string Path);
 public record SetPeriodicalsEnabledRequestDto(bool Enabled);
 
 public record RescanProgressDto(bool IsRunning, int Processed, int Total, string? CurrentBook);
+
+public record SyncStatusDto(string State, DateTimeOffset? LastSyncedAtUtc, string? ErrorMessage);
 
 public record BrowseGroupDto(string Id, string Name, int BookCount, bool HasImage = false);
 
