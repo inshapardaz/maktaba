@@ -195,7 +195,7 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
   };
 
   const [s3ModalOpen, setS3ModalOpen] = useState(false);
-  const [migrationWizardOpen, setMigrationWizardOpen] = useState(false);
+  const [migratingLibraryId, setMigratingLibraryId] = useState<string | null>(null);
 
   const handleS3Connected = () => {
     setS3ModalOpen(false);
@@ -221,8 +221,9 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
 
       <S3ConnectModal opened={s3ModalOpen} onClose={() => setS3ModalOpen(false)} onConnected={handleS3Connected} />
       <MigrationWizard
-        opened={migrationWizardOpen}
-        onClose={() => setMigrationWizardOpen(false)}
+        opened={migratingLibraryId !== null}
+        libraryId={migratingLibraryId ?? ""}
+        onClose={() => setMigratingLibraryId(null)}
         onActiveLibraryChanged={() => {
           invalidateLibraries();
           refreshActiveLibrary();
@@ -354,7 +355,7 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
                     <ActionIcon
                       variant="subtle"
                       color="gray"
-                      onClick={() => setMigrationWizardOpen(true)}
+                      onClick={() => setMigratingLibraryId(entry.id)}
                       aria-label={t("librariesSettings.migrateToCloud")}
                     >
                       <IconCloud size={14} />

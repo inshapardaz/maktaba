@@ -17,6 +17,9 @@ import { EMPTY_S3_FIELDS, isS3FieldsComplete, S3CredentialFields, type S3FieldsV
 
 interface MigrationWizardProps {
   opened: boolean;
+  // The library being migrated - needed to save its cloud credential under the right ref once the
+  // migration completes (see completeMutation below). Ignored while opened is false.
+  libraryId: string;
   onClose: () => void;
   // Same "the active library's identity changed" callback LibrariesSettings.tsx already uses -
   // migration always operates on the active library, and finishing one changes its provider.
@@ -26,7 +29,7 @@ interface MigrationWizardProps {
 // Mantine Stepper flow (Cloud: Phase 3) - reuses S3CredentialFields (the same six inputs the S3
 // connect form uses) since a migration target is configured exactly the same way a fresh cloud
 // library connection is, just without a name (the library keeps its existing one).
-export function MigrationWizard({ opened, onClose, onActiveLibraryChanged }: MigrationWizardProps) {
+export function MigrationWizard({ opened, libraryId, onClose, onActiveLibraryChanged }: MigrationWizardProps) {
   const { t } = useLanguage();
   const queryClient = useQueryClient();
 
@@ -109,7 +112,14 @@ export function MigrationWizard({ opened, onClose, onActiveLibraryChanged }: Mig
   const cancelMutation = useMutation({ mutationFn: cancelMigration });
 
   const completeMutation = useMutation({
-    mutationFn: () => completeMigration(deleteSource),
+    mutationFn: async () => {
+      await completeMigration(deleteSource);
+      // Same as S3ConnectModal's connect flow - the backend only ever holds this credential
+      // transiently (cleared every restart, see ICloudCredentialCache), so without saving it here
+      // too, the very next app startup's cloudReconnectQuery finds nothing to reconnect this
+      // library with.
+      await window.maktaba.saveCloudCredential(libraryId, JSON.stringify(credential));
+    },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["libraries"] });
       invalidateLibraryQueries(queryClient);
