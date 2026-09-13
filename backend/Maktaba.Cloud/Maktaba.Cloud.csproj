@@ -6,6 +6,7 @@
 
   <ItemGroup>
     <PackageReference Include="AWSSDK.S3" Version="4.0.103.2" />
+    <PackageReference Include="Microsoft.Graph" Version="6.6.0" />
   </ItemGroup>
 
   <PropertyGroup>

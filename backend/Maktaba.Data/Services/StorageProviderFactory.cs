@@ -17,11 +17,14 @@ public class StorageProviderFactory(
     ICloudCacheManager cloudCacheManager,
     ICloudCredentialCache credentials) : IStorageProviderFactory
 {
-    // Keyed by (libraryId, credential hash) rather than just libraryId, so a freshly-supplied
-    // credential (the frontend re-opening with a new/changed one) naturally produces a fresh
-    // S3StorageProvider instead of needing an explicit cache-invalidation call - a stale entry here
-    // is just never looked up again once the credential in ICloudCredentialCache changes.
-    private readonly Dictionary<(string LibraryId, string CredentialHash), S3StorageProvider> _s3Cache = [];
+    // Keyed by (libraryId, providerType, credential hash) rather than just libraryId, so a
+    // freshly-supplied credential (the frontend re-opening with a new/changed one) naturally
+    // produces a fresh provider instead of needing an explicit cache-invalidation call - a stale
+    // entry here is just never looked up again once the credential in ICloudCredentialCache
+    // changes. providerType is part of the key too (not just libraryId+hash) so a library that's
+    // been migrated from one cloud provider to another can't accidentally reuse a cached instance
+    // built for the old one.
+    private readonly Dictionary<(string LibraryId, string ProviderType, string CredentialHash), IStorageProvider> _cloudCache = [];
 
     public IStorageProvider Current
     {
@@ -41,7 +44,7 @@ public class StorageProviderFactory(
                     "This library's credentials haven't been supplied for this session yet - reopen it with its credential.");
             }
 
-            return GetOrCreateS3Provider(entry.Id, providerType, entry.ProviderConfig ?? new Dictionary<string, string>(), credential);
+            return GetOrCreateCloudProvider(entry.Id, providerType, entry.ProviderConfig ?? new Dictionary<string, string>(), credential);
         }
     }
 
@@ -53,43 +56,42 @@ public class StorageProviderFactory(
     // cache is keyed by libraryId, so the target's local cache mirror naturally lines up with
     // whatever this library ends up being once the switch happens.
     //
-    // Deliberately bypasses _s3Cache (unlike Current, below): a migration target is a one-off,
-    // and the same libraryId+credential can legitimately point at a *different* bucket/prefix
-    // across retries (e.g. the user picks a different bucket the second time around, or retries
+    // Deliberately bypasses _cloudCache (unlike Current, below): a migration target is a one-off,
+    // and the same libraryId+credential can legitimately point at a *different* bucket/folder
+    // across retries (e.g. the user picks a different target the second time around, or retries
     // migration after fixing something) - satisfying that from a cache keyed only on
-    // (libraryId, credentialHash) would silently keep using whichever bucket/prefix was configured
-    // on the *first* call this backend process ever made for that pair, ignoring the new
-    // providerConfig entirely.
+    // (libraryId, providerType, credentialHash) would silently keep using whichever config was
+    // supplied on the *first* call this backend process ever made for that combination, ignoring
+    // the new providerConfig entirely.
     public IStorageProvider CreateForProvider(
         string libraryId, string providerType, IReadOnlyDictionary<string, string> providerConfig, string credential)
     {
         credentials.Set(libraryId, credential);
-        return providerType switch
+        return BuildProvider(libraryId, providerType, providerConfig, credential);
+    }
+
+    private IStorageProvider BuildProvider(
+        string libraryId, string providerType, IReadOnlyDictionary<string, string> providerConfig, string credential) =>
+        providerType switch
         {
             "local" => local,
             "s3" => new S3StorageProvider(libraryId, S3ProviderOptions.FromConfig(providerConfig, credential), cloudCacheManager),
+            "onedrive" => new OneDriveStorageProvider(libraryId, OneDriveProviderOptions.FromConfig(providerConfig, credential), cloudCacheManager),
             _ => throw new NotSupportedException($"Storage provider \"{providerType}\" isn't implemented yet."),
         };
-    }
 
-    private S3StorageProvider GetOrCreateS3Provider(
+    private IStorageProvider GetOrCreateCloudProvider(
         string libraryId, string providerType, IReadOnlyDictionary<string, string> providerConfig, string credential)
     {
-        if (providerType != "s3")
-        {
-            throw new NotSupportedException($"Storage provider \"{providerType}\" isn't implemented yet.");
-        }
-
         var credentialHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(credential)));
-        var key = (libraryId, credentialHash);
-        if (_s3Cache.TryGetValue(key, out var existing))
+        var key = (libraryId, providerType, credentialHash);
+        if (_cloudCache.TryGetValue(key, out var existing))
         {
             return existing;
         }
 
-        var options = S3ProviderOptions.FromConfig(providerConfig, credential);
-        var provider = new S3StorageProvider(libraryId, options, cloudCacheManager);
-        _s3Cache[key] = provider;
+        var provider = BuildProvider(libraryId, providerType, providerConfig, credential);
+        _cloudCache[key] = provider;
         return provider;
     }
 }
