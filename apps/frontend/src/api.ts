@@ -352,7 +352,7 @@ export function connectCloudLibrary<TCredential>(
 
 // Re-supplies a cloud library's credential to the backend for this process session - needed once
 // per backend restart (see ICloudCredentialCache), not on every switch within the same session.
-export function reopenCloudLibrary(id: string, credential: S3Credential): Promise<LibraryInfo> {
+export function reopenCloudLibrary<TCredential>(id: string, credential: TCredential): Promise<LibraryInfo> {
   return request<LibraryInfo>(`/api/libraries/${id}/open`, {
     method: "POST",
     body: JSON.stringify({ credential: JSON.stringify(credential) }),

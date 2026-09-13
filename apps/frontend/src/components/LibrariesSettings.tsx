@@ -704,27 +704,49 @@ interface ReconnectModalProps {
 
 // Re-supplies an already-registered cloud library's credential - needed after rotating an access
 // key with the storage provider, or to recover a library whose saved credential is missing/invalid
-// (see docs/en/libraries.md's "If a cloud library won't reconnect"). Unlike S3ConnectModal, this
-// only asks for the access key/secret - bucket/region/prefix/endpoint are already on the registry
-// entry and aren't being changed here.
+// (see docs/en/libraries.md's "If a cloud library won't reconnect"). Branches on providerType: S3
+// asks for the access key/secret again (bucket/region/prefix/endpoint are already on the registry
+// entry and aren't being changed here); an OAuth-based provider like Google Drive instead offers a
+// "Sign in again" button, the same interactive flow ConnectModal's own sign-in step uses - there's
+// no typed secret to re-enter for those.
 function ReconnectModal({ entry, onClose, onReconnected }: ReconnectModalProps) {
   const { t } = useLanguage();
   const [accessKeyId, setAccessKeyId] = useState("");
   const [secretAccessKey, setSecretAccessKey] = useState("");
+  const [googleTokens, setGoogleTokens] = useState<GoogleDriveCredential | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const isGoogleDrive = entry?.providerType === "googledrive";
 
   const reset = () => {
     setAccessKeyId("");
     setSecretAccessKey("");
+    setGoogleTokens(null);
     setError(null);
   };
+
+  const googleSignInMutation = useMutation({
+    mutationFn: () => window.maktaba.connectGoogleDrive(),
+    onSuccess: (result) => {
+      setGoogleTokens(result);
+      setError(null);
+    },
+    onError: (err) => {
+      setGoogleTokens(null);
+      setError(err instanceof Error ? err.message : String(err));
+    },
+  });
 
   const reconnectMutation = useMutation({
     mutationFn: async () => {
       if (!entry) {
         return;
       }
-      const credential: S3Credential = { accessKeyId, secretAccessKey };
+      const credential: S3Credential | GoogleDriveCredential | null = isGoogleDrive
+        ? googleTokens
+        : { accessKeyId, secretAccessKey };
+      if (!credential) {
+        throw new Error("Sign in with Google first.");
+      }
       await reopenCloudLibrary(entry.id, credential);
       await window.maktaba.saveCloudCredential(entry.id, JSON.stringify(credential));
     },
@@ -735,7 +757,9 @@ function ReconnectModal({ entry, onClose, onReconnected }: ReconnectModalProps) 
     onError: (err) => setError(err instanceof Error ? err.message : String(err)),
   });
 
-  const canSubmit = accessKeyId.trim().length > 0 && secretAccessKey.length > 0;
+  const canSubmit = isGoogleDrive
+    ? googleTokens !== null
+    : accessKeyId.trim().length > 0 && secretAccessKey.length > 0;
 
   return (
     <Modal
@@ -750,16 +774,35 @@ function ReconnectModal({ entry, onClose, onReconnected }: ReconnectModalProps) 
         <Text size="sm" c="dimmed">
           {t("librariesSettings.reconnectDescription")}
         </Text>
-        <TextInput
-          label={t("librariesSettings.s3AccessKey")}
-          value={accessKeyId}
-          onChange={(e) => setAccessKeyId(e.currentTarget.value)}
-        />
-        <PasswordInput
-          label={t("librariesSettings.s3SecretKey")}
-          value={secretAccessKey}
-          onChange={(e) => setSecretAccessKey(e.currentTarget.value)}
-        />
+        {isGoogleDrive ? (
+          googleTokens ? (
+            <Alert color="green" icon={<IconCheck size={18} />}>
+              {t("librariesSettings.googleDriveSignedIn")}
+            </Alert>
+          ) : (
+            <Button
+              variant="default"
+              leftSection={<IconExternalLink size={14} />}
+              loading={googleSignInMutation.isPending}
+              onClick={() => googleSignInMutation.mutate()}
+            >
+              {t("librariesSettings.googleDriveSignIn")}
+            </Button>
+          )
+        ) : (
+          <>
+            <TextInput
+              label={t("librariesSettings.s3AccessKey")}
+              value={accessKeyId}
+              onChange={(e) => setAccessKeyId(e.currentTarget.value)}
+            />
+            <PasswordInput
+              label={t("librariesSettings.s3SecretKey")}
+              value={secretAccessKey}
+              onChange={(e) => setSecretAccessKey(e.currentTarget.value)}
+            />
+          </>
+        )}
 
         {error && (
           <Alert color="red" icon={<IconAlertCircle size={18} />}>
