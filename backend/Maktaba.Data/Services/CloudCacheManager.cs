@@ -24,8 +24,50 @@ public class CloudCacheManager : ICloudCacheManager
     {
         var path = GetLocalPath(libraryId, relativePath);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        await using var fileStream = File.Create(path);
-        await content.CopyToAsync(fileStream, ct);
+
+        // Written to a temp file and swapped in with File.Move(..., overwrite: true) rather than
+        // File.Create-ing the real path directly, for two reasons: a failed/cancelled download
+        // never leaves a partially-written, corrupt file at the real path, and the real path is
+        // only briefly touched (the move itself) rather than held open for the whole download -
+        // narrowing the window for a transient external lock (antivirus scanning a just-written
+        // file, a not-yet-exited previous process, Explorer's thumbnail/preview handler, ...) to
+        // collide with it. The move itself can still transiently fail the same way (Windows file
+        // sharing is stricter than POSIX), so it gets a short retry - this is exactly what surfaced
+        // as an unhandled 500 on library reconnect: the very first pull of an existing metadata.db.
+        var tempPath = path + $".tmp-{Guid.NewGuid():N}";
+        try
+        {
+            await using (var fileStream = File.Create(tempPath))
+            {
+                await content.CopyToAsync(fileStream, ct);
+            }
+
+            await MoveWithRetryAsync(tempPath, path, ct);
+        }
+        finally
+        {
+            if (File.Exists(tempPath))
+            {
+                File.Delete(tempPath);
+            }
+        }
+    }
+
+    private static async Task MoveWithRetryAsync(string tempPath, string destPath, CancellationToken ct)
+    {
+        const int maxAttempts = 5;
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                File.Move(tempPath, destPath, overwrite: true);
+                return;
+            }
+            catch (IOException) when (attempt < maxAttempts)
+            {
+                await Task.Delay(200 * attempt, ct);
+            }
+        }
     }
 
     public void Delete(string libraryId, string relativePath, bool recursive = false)

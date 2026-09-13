@@ -56,6 +56,7 @@ import { ImportStatusBar, IMPORT_STATUS_BAR_HEIGHT } from "./components/ImportSt
 import { RescanStatusBar, RESCAN_STATUS_BAR_HEIGHT } from "./components/RescanStatusBar";
 import { OnboardingTour } from "./components/OnboardingTour";
 import { SettingsScreen, type SettingsTab } from "./components/SettingsScreen";
+import { LibrariesSettings } from "./components/LibrariesSettings";
 import { UpdateNotifier } from "./components/UpdateNotifier";
 import { invalidateLibraryQueries } from "./queries";
 import { useDebounced } from "./useDebounced";
@@ -899,14 +900,25 @@ function App() {
             ) : libraryQuery.isLoading || (needsCloudReconnect && cloudReconnectQuery.isLoading) ? (
               <LoadingContent message={t("app.loading")} />
             ) : needsCloudReconnect && cloudReconnectQuery.isError ? (
-              <Center style={{ flex: 1 }}>
-                <Stack align="center" gap="md" maw={420}>
+              // The library that was active last time couldn't be reopened (a network problem, a
+              // stale/revoked credential, a backend-side error, ...) - rather than leaving the user
+              // stuck behind a bare error with only a Retry button, this is the same library list
+              // Settings -> Libraries offers, so a different (working) library is always one click
+              // away without needing Settings to be reachable at all first.
+              <Box style={{ flex: 1, overflow: "auto" }} p="xl">
+                <Stack gap="lg" maw={640} mx="auto">
                   <Alert color="red" icon={<IconAlertCircle size={18} />} title={t("app.cloudReconnectFailedTitle")}>
                     {cloudReconnectQuery.error instanceof Error ? cloudReconnectQuery.error.message : String(cloudReconnectQuery.error)}
                   </Alert>
-                  <Button onClick={() => void cloudReconnectQuery.refetch()}>{t("backend.retry")}</Button>
+                  <Group>
+                    <Button onClick={() => void cloudReconnectQuery.refetch()}>{t("backend.retry")}</Button>
+                  </Group>
+                  <Text size="sm" fw={600}>
+                    {t("app.cloudReconnectPickAnother")}
+                  </Text>
+                  <LibrariesSettings onActiveLibraryChanged={handleLibraryChanged} />
                 </Stack>
-              </Center>
+              </Box>
             ) : !hasLibrary ? (
               <LibraryPicker
                 onOpened={(_path, filesToImport) => {
