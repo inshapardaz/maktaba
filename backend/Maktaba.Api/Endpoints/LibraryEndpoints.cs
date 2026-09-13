@@ -146,6 +146,42 @@ public static class LibraryEndpoints
             }
         });
 
+        // Migration wizard (Cloud: Phase 3) - copies the active library to a new provider in the
+        // background; the frontend polls /migrate/status the same way it polls /rescan/progress.
+        group.MapPost("/migrate/start", (StartMigrationRequestDto request, ILibraryMigrationService migrationService) =>
+        {
+            try
+            {
+                migrationService.Start(new MigrationTarget(request.ProviderType, request.ProviderConfig, request.Credential));
+                return Results.Accepted();
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.Conflict(new { error = ex.Message });
+            }
+        });
+
+        group.MapGet("/migrate/status", (ILibraryMigrationService migrationService) =>
+        {
+            var snapshot = migrationService.Snapshot;
+            return Results.Ok(new MigrationStatusDto(
+                snapshot.State.ToString(), snapshot.Processed, snapshot.Total, snapshot.CurrentFile, snapshot.ErrorMessage));
+        });
+
+        group.MapPost("/migrate/cancel", (ILibraryMigrationService migrationService) =>
+        {
+            migrationService.Cancel();
+            return Results.NoContent();
+        });
+
+        // The wizard's "Finish" step - only succeeds once /migrate/status reports "Verified".
+        group.MapPost("/migrate/complete", async (
+            CompleteMigrationRequestDto request, ILibraryMigrationService migrationService, CancellationToken ct) =>
+        {
+            var completed = await migrationService.CompleteAsync(request.DeleteSource, ct);
+            return completed ? Results.NoContent() : Results.Conflict(new { error = "No verified migration is ready to complete." });
+        });
+
         // Every library the user has ever opened - only one (IsActive) is the one every other
         // endpoint actually reads/writes through at a time; see docs/SPEC.md and LibraryService.
         group.MapGet("", (ILibraryService libraryService) =>
