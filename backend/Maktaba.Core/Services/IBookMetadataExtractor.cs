@@ -16,7 +16,15 @@ public record ExtractedBookMetadata(
     int? PageCount = null
 );
 
-/// <summary>Extracts metadata and a cover image from a single ebook file. One implementation per format.</summary>
+/// <summary>
+/// Extracts metadata and a cover image from a single ebook file. One implementation per format.
+/// <paramref name="filePath"/> (here and on <see cref="IBookTextContentExtractor"/>) is always a
+/// plain local path, never a remote URI or stream - deliberately, per the "local cache mirror"
+/// design: every caller resolves a library-relative path to a local path via
+/// IStorageProvider.GetLocalPathAsync first (ImportService, BookEditService.ExtractCoverAsync,
+/// LibraryRescanService), so extractors - including EpubMetadataExtractor's VersOne.Epub.EpubReader,
+/// which only supports reading from a local path - never need a streaming/remote-aware overload.
+/// </summary>
 public interface IBookMetadataExtractor
 {
     bool CanHandle(string filePath);
