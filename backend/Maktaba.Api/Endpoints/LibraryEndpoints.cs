@@ -148,6 +148,13 @@ public static class LibraryEndpoints
 
         // Migration wizard (Cloud: Phase 3) - copies the active library to a new provider in the
         // background; the frontend polls /migrate/status the same way it polls /rescan/progress.
+        // /migrate/preview backs the wizard's "Review" step - a plain listing, no downloads.
+        group.MapGet("/migrate/preview", async (ILibraryMigrationService migrationService, CancellationToken ct) =>
+        {
+            var fileCount = await migrationService.CountSourceFilesAsync(ct);
+            return Results.Ok(new { fileCount });
+        });
+
         group.MapPost("/migrate/start", (StartMigrationRequestDto request, ILibraryMigrationService migrationService) =>
         {
             try

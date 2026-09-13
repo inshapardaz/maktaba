@@ -65,6 +65,12 @@ public class LibraryMigrationService(
         }
     }
 
+    public async Task<int> CountSourceFilesAsync(CancellationToken ct = default)
+    {
+        var files = await EnumerateAllFilesAsync(storageFactory.Current, ct);
+        return files.Count;
+    }
+
     public async Task<bool> CompleteAsync(bool deleteSource, CancellationToken ct = default)
     {
         IStorageProvider target;

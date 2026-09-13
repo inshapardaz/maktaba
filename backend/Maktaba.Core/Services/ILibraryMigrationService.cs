@@ -41,6 +41,13 @@ public interface ILibraryMigrationService
     /// is running.</summary>
     void Cancel();
 
+    /// <summary>Counts the active library's files without downloading any of them (a plain listing,
+    /// same as the walk Start will do) - for the wizard's "Review" step. Deliberately doesn't total
+    /// up file sizes: getting a size for a cloud-backed source file without downloading it isn't
+    /// something IStorageProvider exposes (StorageEntry carries no size), so a byte-accurate total
+    /// would defeat the point of a lightweight preview.</summary>
+    Task<int> CountSourceFilesAsync(CancellationToken ct = default);
+
     /// <summary>
     /// After a successful (Verified) migration: switches the active library's registry entry to the
     /// new provider (see ILibraryService.SwitchProviderAsync), and - only when
