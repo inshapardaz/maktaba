@@ -326,16 +326,18 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
                     <IconPencil size={14} />
                   </ActionIcon>
                 </Tooltip>
-                <Tooltip label={t("librariesSettings.changeFolder")}>
-                  <ActionIcon
-                    variant="subtle"
-                    color="gray"
-                    onClick={() => void handleRelocate(entry.id)}
-                    aria-label={t("librariesSettings.changeFolder")}
-                  >
-                    <IconFolderOpen size={14} />
-                  </ActionIcon>
-                </Tooltip>
+                {entry.providerType === "local" && (
+                  <Tooltip label={t("librariesSettings.changeFolder")}>
+                    <ActionIcon
+                      variant="subtle"
+                      color="gray"
+                      onClick={() => void handleRelocate(entry.id)}
+                      aria-label={t("librariesSettings.changeFolder")}
+                    >
+                      <IconFolderOpen size={14} />
+                    </ActionIcon>
+                  </Tooltip>
+                )}
                 <Tooltip label={t("librariesSettings.resync")}>
                   <ActionIcon
                     variant="subtle"
