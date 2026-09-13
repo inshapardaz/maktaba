@@ -328,8 +328,21 @@ export function testS3Connection(
   });
 }
 
-export function connectCloudLibrary(
-  name: string, providerType: string, providerConfig: Record<string, string>, credential: S3Credential,
+// The credential shape saved via window.maktaba.saveCloudCredential/getCloudCredential for a
+// Google Drive library, and returned by window.maktaba.connectGoogleDrive() - see backend
+// GoogleDriveProviderOptions.FromConfig, which expects exactly this JSON shape.
+export interface GoogleDriveCredential {
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: number;
+}
+
+// Generic over the credential shape (S3Credential, GoogleDriveCredential, ...) since this endpoint
+// only ever JSON.stringifies it into an opaque string the backend deserializes per providerType -
+// see LibraryEndpoints' "/cloud" handler and ILibraryService.OpenCloudLibraryAsync, neither of
+// which know or care about a specific provider's credential shape.
+export function connectCloudLibrary<TCredential>(
+  name: string, providerType: string, providerConfig: Record<string, string>, credential: TCredential,
 ): Promise<LibraryEntry> {
   return request<LibraryEntry>("/api/libraries/cloud", {
     method: "POST",

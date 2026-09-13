@@ -21,6 +21,7 @@ import {
   IconCheck,
   IconCloud,
   IconCloudUpload,
+  IconExternalLink,
   IconFolderOpen,
   IconKey,
   IconPencil,
@@ -40,6 +41,7 @@ import {
   reopenCloudLibrary,
   setLibraryPeriodicalsEnabled,
   testS3Connection,
+  type GoogleDriveCredential,
   type LibraryEntry,
   type S3Credential,
 } from "../api";
@@ -198,11 +200,18 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
   };
 
   const [s3ModalOpen, setS3ModalOpen] = useState(false);
+  const [googleModalOpen, setGoogleModalOpen] = useState(false);
   const [migratingLibraryId, setMigratingLibraryId] = useState<string | null>(null);
   const [reconnectingEntry, setReconnectingEntry] = useState<LibraryEntry | null>(null);
 
   const handleS3Connected = () => {
     setS3ModalOpen(false);
+    invalidateLibraries();
+    refreshActiveLibrary();
+  };
+
+  const handleGoogleDriveConnected = () => {
+    setGoogleModalOpen(false);
     invalidateLibraries();
     refreshActiveLibrary();
   };
@@ -217,6 +226,9 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
           <Button size="sm" variant="default" leftSection={<IconCloud size={14} />} onClick={() => setS3ModalOpen(true)}>
             {t("librariesSettings.connectS3")}
           </Button>
+          <Button size="sm" variant="default" leftSection={<IconCloud size={14} />} onClick={() => setGoogleModalOpen(true)}>
+            {t("librariesSettings.connectGoogleDrive")}
+          </Button>
           <Button size="sm" leftSection={<IconPlus size={14} />} onClick={() => void handleAdd()} loading={addBusy}>
             {t("librariesSettings.addLibrary")}
           </Button>
@@ -224,6 +236,7 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
       </Group>
 
       <S3ConnectModal opened={s3ModalOpen} onClose={() => setS3ModalOpen(false)} onConnected={handleS3Connected} />
+      <GoogleDriveConnectModal opened={googleModalOpen} onClose={() => setGoogleModalOpen(false)} onConnected={handleGoogleDriveConnected} />
       <MigrationWizard
         opened={migratingLibraryId !== null}
         libraryId={migratingLibraryId ?? ""}
@@ -557,6 +570,121 @@ function S3ConnectModal({ opened, onClose, onConnected }: S3ConnectModalProps) {
           >
             {t("librariesSettings.s3TestConnection")}
           </Button>
+          <Button disabled={!canSubmit} loading={connectMutation.isPending} onClick={() => connectMutation.mutate()}>
+            {t("librariesSettings.s3Connect")}
+          </Button>
+        </Group>
+      </Stack>
+    </Modal>
+  );
+}
+
+interface GoogleDriveConnectModalProps {
+  opened: boolean;
+  onClose: () => void;
+  onConnected: () => void;
+}
+
+// Google Drive connect form (Cloud: Phase 5) - unlike S3's typed-in access key/secret, the
+// credential here only ever comes from window.maktaba.connectGoogleDrive()'s interactive sign-in
+// (opens the system browser, waits for the OAuth redirect - see oauthLoopback.ts/googleDriveAuth.ts),
+// so this form has nothing to "test" ahead of time the way S3ConnectModal's Test Connection does -
+// a successful sign-in already proves the credential works. Folder is optional (root of My Drive
+// otherwise), matching S3's optional subfolder-within-bucket field.
+function GoogleDriveConnectModal({ opened, onClose, onConnected }: GoogleDriveConnectModalProps) {
+  const { t } = useLanguage();
+  const [name, setName] = useState("");
+  const [folder, setFolder] = useState("");
+  const [tokens, setTokens] = useState<GoogleDriveCredential | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const canSubmit = name.trim().length > 0 && tokens !== null;
+
+  const signInMutation = useMutation({
+    mutationFn: () => window.maktaba.connectGoogleDrive(),
+    onSuccess: (result) => {
+      setTokens(result);
+      setError(null);
+    },
+    onError: (err) => {
+      setTokens(null);
+      setError(err instanceof Error ? err.message : String(err));
+    },
+  });
+
+  const connectMutation = useMutation({
+    mutationFn: async () => {
+      if (!tokens) {
+        throw new Error("Sign in with Google first.");
+      }
+
+      const providerConfig: Record<string, string> = {};
+      if (folder.trim()) {
+        providerConfig.folder = folder.trim();
+      }
+
+      const entry = await connectCloudLibrary(name.trim(), "googledrive", providerConfig, tokens);
+      await window.maktaba.saveCloudCredential(entry.id, JSON.stringify(tokens));
+      return entry;
+    },
+    onSuccess: () => {
+      reset();
+      onConnected();
+    },
+    onError: (err) => setError(err instanceof Error ? err.message : String(err)),
+  });
+
+  const reset = () => {
+    setName("");
+    setFolder("");
+    setTokens(null);
+    setError(null);
+  };
+
+  return (
+    <Modal
+      opened={opened}
+      onClose={() => {
+        reset();
+        onClose();
+      }}
+      title={t("librariesSettings.connectGoogleDrive")}
+    >
+      <Stack gap="sm">
+        <TextInput
+          label={t("librariesSettings.googleDriveName")}
+          value={name}
+          onChange={(e) => setName(e.currentTarget.value)}
+        />
+        <TextInput
+          label={t("librariesSettings.googleDriveFolder")}
+          placeholder={t("librariesSettings.googleDriveFolderPlaceholder")}
+          value={folder}
+          onChange={(e) => setFolder(e.currentTarget.value)}
+        />
+
+        {tokens ? (
+          <Alert color="green" icon={<IconCheck size={18} />}>
+            {t("librariesSettings.googleDriveSignedIn")}
+          </Alert>
+        ) : (
+          <Button
+            variant="default"
+            leftSection={<IconExternalLink size={14} />}
+            loading={signInMutation.isPending}
+            onClick={() => signInMutation.mutate()}
+          >
+            {t("librariesSettings.googleDriveSignIn")}
+          </Button>
+        )}
+
+        {error && (
+          <Alert color="red" icon={<IconAlertCircle size={18} />}>
+            {error}
+          </Alert>
+        )}
+
+        <Group justify="flex-end">
           <Button disabled={!canSubmit} loading={connectMutation.isPending} onClick={() => connectMutation.mutate()}>
             {t("librariesSettings.s3Connect")}
           </Button>
