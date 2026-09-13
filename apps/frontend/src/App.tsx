@@ -409,6 +409,17 @@ function App() {
     }
   }, [librarySync.error, librarySync, t]);
 
+  // The blocking "Syncing to cloud…" page (AppShell.Main below) is normal page content, not a
+  // modal, so it renders *behind* the Settings modal (where the "Sync to cloud now" button lives)
+  // if Settings is left open - the confirmation popup itself is a Modal so it can stack above
+  // Settings via zIndex, but the page that follows it can't the same way. Closing Settings the
+  // moment syncing actually starts is what makes that page visible.
+  useEffect(() => {
+    if (librarySync.isSyncing) {
+      setSettingsOpen(false);
+    }
+  }, [librarySync.isSyncing]);
+
   // A cloud-backed library isn't actually usable until cloudReconnectQuery above has succeeded -
   // see its comment. Also false for the whole duration of a manual cloud sync (LibrarySyncContext)
   // - the backend clears its SQLite connection pool as part of that, so no query here should be
@@ -802,6 +813,11 @@ function App() {
         onClose={librarySync.cancel}
         title={t("app.syncConfirmTitle")}
         centered
+        // The "Sync to cloud now" button that triggers this lives inside the Settings modal, whose
+        // own Mantine z-index is the library default (200) - without an explicit, higher value
+        // here, this confirm popup can render *behind* Settings depending on mount/portal order,
+        // which is exactly what was reported.
+        zIndex={300}
       >
         <Stack gap="md">
           <Text size="sm">{t("app.syncConfirmMessage")}</Text>
