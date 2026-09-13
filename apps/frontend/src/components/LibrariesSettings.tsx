@@ -7,6 +7,7 @@ import {
   Button,
   Group,
   Modal,
+  PasswordInput,
   Progress,
   Stack,
   Switch,
@@ -21,6 +22,7 @@ import {
   IconCloud,
   IconCloudUpload,
   IconFolderOpen,
+  IconKey,
   IconPencil,
   IconPlus,
   IconRefresh,
@@ -35,6 +37,7 @@ import {
   relocateLibrary,
   removeLibrary,
   renameLibrary,
+  reopenCloudLibrary,
   setLibraryPeriodicalsEnabled,
   testS3Connection,
   type LibraryEntry,
@@ -196,6 +199,7 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
 
   const [s3ModalOpen, setS3ModalOpen] = useState(false);
   const [migratingLibraryId, setMigratingLibraryId] = useState<string | null>(null);
+  const [reconnectingEntry, setReconnectingEntry] = useState<LibraryEntry | null>(null);
 
   const handleS3Connected = () => {
     setS3ModalOpen(false);
@@ -225,6 +229,15 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
         libraryId={migratingLibraryId ?? ""}
         onClose={() => setMigratingLibraryId(null)}
         onActiveLibraryChanged={() => {
+          invalidateLibraries();
+          refreshActiveLibrary();
+        }}
+      />
+      <ReconnectModal
+        entry={reconnectingEntry}
+        onClose={() => setReconnectingEntry(null)}
+        onReconnected={() => {
+          setReconnectingEntry(null);
           invalidateLibraries();
           refreshActiveLibrary();
         }}
@@ -372,6 +385,18 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
                       aria-label={t("librariesSettings.syncNow")}
                     >
                       <IconCloudUpload size={14} />
+                    </ActionIcon>
+                  </Tooltip>
+                )}
+                {entry.providerType !== "local" && (
+                  <Tooltip label={t("librariesSettings.reconnect")}>
+                    <ActionIcon
+                      variant="subtle"
+                      color="gray"
+                      onClick={() => setReconnectingEntry(entry)}
+                      aria-label={t("librariesSettings.reconnect")}
+                    >
+                      <IconKey size={14} />
                     </ActionIcon>
                   </Tooltip>
                 )}
@@ -534,6 +559,89 @@ function S3ConnectModal({ opened, onClose, onConnected }: S3ConnectModalProps) {
           </Button>
           <Button disabled={!canSubmit} loading={connectMutation.isPending} onClick={() => connectMutation.mutate()}>
             {t("librariesSettings.s3Connect")}
+          </Button>
+        </Group>
+      </Stack>
+    </Modal>
+  );
+}
+
+interface ReconnectModalProps {
+  // null = closed. Kept as the whole entry (not just an id) so the modal can show the library's
+  // name without a separate lookup, and so closing it doesn't need to clear a second piece of state.
+  entry: LibraryEntry | null;
+  onClose: () => void;
+  onReconnected: () => void;
+}
+
+// Re-supplies an already-registered cloud library's credential - needed after rotating an access
+// key with the storage provider, or to recover a library whose saved credential is missing/invalid
+// (see docs/en/libraries.md's "If a cloud library won't reconnect"). Unlike S3ConnectModal, this
+// only asks for the access key/secret - bucket/region/prefix/endpoint are already on the registry
+// entry and aren't being changed here.
+function ReconnectModal({ entry, onClose, onReconnected }: ReconnectModalProps) {
+  const { t } = useLanguage();
+  const [accessKeyId, setAccessKeyId] = useState("");
+  const [secretAccessKey, setSecretAccessKey] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const reset = () => {
+    setAccessKeyId("");
+    setSecretAccessKey("");
+    setError(null);
+  };
+
+  const reconnectMutation = useMutation({
+    mutationFn: async () => {
+      if (!entry) {
+        return;
+      }
+      const credential: S3Credential = { accessKeyId, secretAccessKey };
+      await reopenCloudLibrary(entry.id, credential);
+      await window.maktaba.saveCloudCredential(entry.id, JSON.stringify(credential));
+    },
+    onSuccess: () => {
+      reset();
+      onReconnected();
+    },
+    onError: (err) => setError(err instanceof Error ? err.message : String(err)),
+  });
+
+  const canSubmit = accessKeyId.trim().length > 0 && secretAccessKey.length > 0;
+
+  return (
+    <Modal
+      opened={entry !== null}
+      onClose={() => {
+        reset();
+        onClose();
+      }}
+      title={entry ? t("librariesSettings.reconnectTitle", { name: entry.name }) : ""}
+    >
+      <Stack gap="sm">
+        <Text size="sm" c="dimmed">
+          {t("librariesSettings.reconnectDescription")}
+        </Text>
+        <TextInput
+          label={t("librariesSettings.s3AccessKey")}
+          value={accessKeyId}
+          onChange={(e) => setAccessKeyId(e.currentTarget.value)}
+        />
+        <PasswordInput
+          label={t("librariesSettings.s3SecretKey")}
+          value={secretAccessKey}
+          onChange={(e) => setSecretAccessKey(e.currentTarget.value)}
+        />
+
+        {error && (
+          <Alert color="red" icon={<IconAlertCircle size={18} />}>
+            {error}
+          </Alert>
+        )}
+
+        <Group justify="flex-end">
+          <Button disabled={!canSubmit} loading={reconnectMutation.isPending} onClick={() => reconnectMutation.mutate()}>
+            {t("librariesSettings.reconnectButton")}
           </Button>
         </Group>
       </Stack>

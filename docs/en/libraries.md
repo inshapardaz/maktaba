@@ -94,6 +94,10 @@ same library list from Settings, so you can open a different library immediately
 being stuck. Once the underlying problem is fixed, switch back to the cloud library to pick up
 where you left off.
 
+If the credential itself is the problem, click the key icon next to that library in
+**Settings → Libraries** and re-enter its access key and secret key — this updates the saved
+credential without needing to reconnect the whole library from scratch.
+
 ## Renaming, moving, or removing a library
 
 From the same list you can:
