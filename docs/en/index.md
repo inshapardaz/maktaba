@@ -46,6 +46,8 @@ to open it.
 
 - [Choosing & Switching Libraries](./libraries) — if you'd like more than one library (for
   example, separate ones for different family members).
+- [Cloud Storage](./cloud-storage) — keep a library in Amazon S3/an S3-compatible provider, Google
+  Drive, or OneDrive instead of only on this computer.
 - [Organizing Your Library](./organizing) — authors, series, tags, and collections.
 - [Reading Books](./reading) — using the built-in reader.
 - [Settings & Preferences](./settings) — language, appearance, and more.

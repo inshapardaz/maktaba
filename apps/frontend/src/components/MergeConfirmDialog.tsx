@@ -26,8 +26,13 @@ export function MergeConfirmDialog({ target, sources, onClose }: MergeConfirmDia
     mutationFn: async () => {
       for (const source of sources) {
         await mergeBooks(target.id, source.id);
-        const { folderPath } = await deleteBook(source.id);
-        await window.maktaba.trashPath(folderPath);
+        const { folderPath, requiresLocalTrash, parentFolderPath } = await deleteBook(source.id);
+        if (requiresLocalTrash) {
+          await window.maktaba.trashPath(folderPath);
+          if (parentFolderPath) {
+            await window.maktaba.trashPathIfEmpty(parentFolderPath);
+          }
+        }
       }
     },
     onSuccess: () => {

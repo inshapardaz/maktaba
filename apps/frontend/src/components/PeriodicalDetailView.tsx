@@ -212,8 +212,10 @@ function IssueRow({
 
   const deleteMutation = useMutation({
     mutationFn: async () => {
-      const { folderPath } = await deleteBook(issue.id);
-      await window.maktaba.trashPath(folderPath);
+      const { folderPath, requiresLocalTrash } = await deleteBook(issue.id);
+      if (requiresLocalTrash) {
+        await window.maktaba.trashPath(folderPath);
+      }
     },
     onSuccess: () => {
       setConfirmingDelete(false);
@@ -383,8 +385,10 @@ export function PeriodicalDetailView({ periodicalId, onBack, onSelectBook }: Per
 
   const deleteMutation = useMutation({
     mutationFn: async () => {
-      const { folderPath } = await deletePeriodical(periodicalId, (periodicalQuery.data?.issueCount ?? 0) > 0);
-      await window.maktaba.trashPath(folderPath);
+      const { folderPath, requiresLocalTrash } = await deletePeriodical(periodicalId, (periodicalQuery.data?.issueCount ?? 0) > 0);
+      if (requiresLocalTrash) {
+        await window.maktaba.trashPath(folderPath);
+      }
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["periodicals"] });

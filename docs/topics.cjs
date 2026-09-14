@@ -13,6 +13,7 @@
 const helpTopics = [
   { slug: "index", title: { en: "Getting Started", ur: "شروع کریں" } },
   { slug: "libraries", title: { en: "Choosing & Switching Libraries", ur: "لائبریری کا انتخاب اور تبدیلی" } },
+  { slug: "cloud-storage", title: { en: "Cloud Storage", ur: "کلاؤڈ اسٹوریج" } },
   { slug: "importing", title: { en: "Importing Books", ur: "کتابیں درآمد کرنا" } },
   { slug: "organizing", title: { en: "Organizing Your Library", ur: "لائبریری کو ترتیب دینا" } },
   { slug: "reading", title: { en: "Reading Books", ur: "کتابیں پڑھنا" } },
