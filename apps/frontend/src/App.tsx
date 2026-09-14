@@ -68,6 +68,7 @@ import { ReaderLauncherProvider, type ReaderRequest } from "./ReaderLauncherCont
 import { useImportQueue } from "./ImportContext";
 import { useRescan } from "./RescanContext";
 import { useLibrarySync } from "./LibrarySyncContext";
+import { useLibrarySwitch } from "./LibrarySwitchContext";
 import { getStoredAutoTagMode, getStoredReaderEngine, getStoredReaderOpenMode } from "./readerSettings";
 import { getStoredShowIssuesInGrid } from "./periodicalSettings";
 import {
@@ -164,6 +165,7 @@ function App() {
   const importQueue = useImportQueue();
   const rescan = useRescan();
   const librarySync = useLibrarySync();
+  const librarySwitch = useLibrarySwitch();
   const { appTheme, darkChrome } = useAppTheme();
   const { themeColor, customColorHex } = useThemeColor();
   // Issue #63: only meaningful under the White theme (Organic already has its own fixed --app-
@@ -409,6 +411,17 @@ function App() {
     }
   }, [librarySync.error, librarySync, t]);
 
+  // Surfaced as a toast for the same reason as librarySync.error above - LibrarySwitcher's sidebar
+  // dropdown or LibrariesSettings' "Open" button could both be long gone from the screen (Settings
+  // closed, sidebar re-rendered past the moment) by the time a switch that started from either one
+  // actually fails.
+  useEffect(() => {
+    if (librarySwitch.error) {
+      notifications.show({ color: "red", title: t("app.switchFailedTitle"), message: librarySwitch.error });
+      librarySwitch.dismissError();
+    }
+  }, [librarySwitch.error, librarySwitch, t]);
+
   // The blocking "Syncing to cloud…" page (AppShell.Main below) is normal page content, not a
   // modal, so it renders *behind* the Settings modal (where the "Sync to cloud now" button lives)
   // if Settings is left open - the confirmation popup itself is a Modal so it can stack above
@@ -420,13 +433,35 @@ function App() {
     }
   }, [librarySync.isSyncing]);
 
+  // Same reasoning as the effect above - a switch started from LibrariesSettings' own "Open"
+  // button (inside Settings) needs Settings out of the way for the "Switching library…" page to
+  // actually be seen, not just started from the sidebar's LibrarySwitcher where Settings was never
+  // open to begin with.
+  useEffect(() => {
+    if (librarySwitch.isSwitching) {
+      setSettingsOpen(false);
+    }
+  }, [librarySwitch.isSwitching]);
+
   // A cloud-backed library isn't actually usable until cloudReconnectQuery above has succeeded -
   // see its comment. Also false for the whole duration of a manual cloud sync (LibrarySyncContext)
   // - the backend clears its SQLite connection pool as part of that, so no query here should be
   // allowed to open a fresh database connection until it's done. hasLibrary (used throughout the
   // rest of this component) is computed here, ahead of booksQuery, so both gate on the exact same
   // condition.
-  const hasLibrary = !!libraryQuery.data && (!needsCloudReconnect || cloudReconnectQuery.isSuccess) && !librarySync.isSyncing;
+  //
+  // showShellChrome is deliberately a *separate*, looser condition - it's what the AppShell.Navbar
+  // below actually mounts/sizes on, not hasLibrary. Gating the sidebar itself on hasLibrary made it
+  // unmount (and the whole AppShell reflow - the navbar's reserved width disappearing, the loading
+  // page squeezed into whatever was left) every time a brief isSyncing/isSwitching moment started,
+  // which reads as the whole window jumping around for what's meant to be a few seconds of loading
+  // in the main content area only. libraryQuery.data itself stays populated with the *previous*
+  // value throughout a switch (React Query only replaces it once the new fetch actually resolves,
+  // it doesn't clear it first) - the same query key never toggling `undefined` mid-flight is why
+  // this alone is enough to keep the sidebar's own outer shell stable, without also checking
+  // isSyncing/isSwitching here the way hasLibrary does.
+  const showShellChrome = !!libraryQuery.data && (!needsCloudReconnect || cloudReconnectQuery.isSuccess);
+  const hasLibrary = showShellChrome && !librarySync.isSyncing && !librarySwitch.isSwitching;
 
   const booksQuery = useQuery({
     queryKey: ["books", filters],
@@ -842,7 +877,7 @@ function App() {
             starting below it. */}
         <AppShell
           header={{ height: TITLEBAR_HEIGHT + extraHeaderHeight }}
-          navbar={hasLibrary ? { width: sidebarWidth, breakpoint: 0 } : undefined}
+          navbar={showShellChrome ? { width: sidebarWidth, breakpoint: 0 } : undefined}
           padding={0}
         >
           <AppShell.Header
@@ -869,14 +904,14 @@ function App() {
                 canGoForward={canGoForward}
                 onGoBack={goBack}
                 onGoForward={goForward}
-                actionsHidden={!!inlineReader || librarySync.isSyncing}
+                actionsHidden={!!inlineReader || librarySync.isSyncing || librarySwitch.isSwitching}
               />
               {showImportBar && <ImportStatusBar />}
               {showRescanBar && <RescanStatusBar />}
             </DarkChromeScope>
           </AppShell.Header>
 
-          {hasLibrary && (
+          {showShellChrome && (
             <AppShell.Navbar
               ref={navbarRef as React.Ref<HTMLDivElement>}
               className={useDarkChrome ? "maktaba-dark-chrome" : undefined}
@@ -913,6 +948,8 @@ function App() {
           <AppShell.Main style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
             {librarySync.isSyncing ? (
               <LoadingContent message={t("app.syncingToCloud")} />
+            ) : librarySwitch.isSwitching ? (
+              <LoadingContent message={t("app.switchingLibrary")} />
             ) : libraryQuery.isLoading || (needsCloudReconnect && cloudReconnectQuery.isLoading) ? (
               <LoadingContent message={t("app.loading")} />
             ) : needsCloudReconnect && cloudReconnectQuery.isError ? (

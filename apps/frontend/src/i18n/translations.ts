@@ -348,6 +348,8 @@ const en = {
   "app.cloudReconnectPickAnother": "Or open a different library:",
   "app.syncingToCloud": "Syncing to cloud…",
   "app.syncFailedTitle": "Sync failed",
+  "app.switchingLibrary": "Switching library…",
+  "app.switchFailedTitle": "Couldn't switch library",
   "app.syncConfirmTitle": "Sync to cloud now?",
   "app.syncConfirmMessage": "This will briefly close your library to sync it safely, then reopen it. Continue?",
 
@@ -431,6 +433,7 @@ const en = {
   "librariesSettings.manage": "Manage libraries…",
   "librariesSettings.periodicals": "Periodicals feature",
   "librariesSettings.syncNow": "Sync to cloud now",
+  "librariesSettings.syncErrorInline": "Background cloud sync failed: {message}",
   "librariesSettings.migrateToCloud": "Migrate to cloud…",
   "librariesSettings.reconnect": "Reconnect…",
   "librariesSettings.reconnectTitle": "Reconnect {name}",
@@ -873,6 +876,8 @@ const ur: TranslationDict = {
   "app.cloudReconnectPickAnother": "یا کوئی دوسری لائبریری کھولیں:",
   "app.syncingToCloud": "کلاؤڈ سے ہم آہنگ ہو رہا ہے…",
   "app.syncFailedTitle": "ہم آہنگی ناکام ہوئی",
+  "app.switchingLibrary": "لائبریری تبدیل ہو رہی ہے…",
+  "app.switchFailedTitle": "لائبریری تبدیل نہ ہو سکی",
   "app.syncConfirmTitle": "ابھی کلاؤڈ سے ہم آہنگ کریں؟",
   "app.syncConfirmMessage": "یہ محفوظ طریقے سے ہم آہنگ کرنے کے لیے آپ کی لائبریری کو مختصر وقت کے لیے بند کر دے گا، پھر دوبارہ کھول دے گا۔ جاری رکھیں؟",
 
@@ -956,6 +961,7 @@ const ur: TranslationDict = {
   "librariesSettings.manage": "لائبریریاں منظم کریں…",
   "librariesSettings.periodicals": "متواتر اشاعتوں کی خصوصیت",
   "librariesSettings.syncNow": "ابھی کلاؤڈ سے ہم آہنگ کریں",
+  "librariesSettings.syncErrorInline": "پس منظر کلاؤڈ ہم آہنگی ناکام ہوئی: {message}",
   "librariesSettings.migrateToCloud": "کلاؤڈ میں منتقل کریں…",
   "librariesSettings.reconnect": "دوبارہ مربوط کریں…",
   "librariesSettings.reconnectTitle": "{name} کو دوبارہ مربوط کریں",

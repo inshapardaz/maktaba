@@ -17,6 +17,7 @@ import {
 } from "@mantine/core";
 import {
   IconAlertCircle,
+  IconAlertTriangle,
   IconBooks,
   IconCheck,
   IconCloud,
@@ -32,9 +33,9 @@ import {
 } from "../icons";
 import {
   connectCloudLibrary,
+  getSyncStatus,
   listLibraries,
   openLibrary,
-  openLibraryById,
   relocateLibrary,
   removeLibrary,
   renameLibrary,
@@ -49,8 +50,10 @@ import { useLanguage } from "../i18n/LanguageContext";
 import { invalidateLibraryQueries } from "../queries";
 import { useRescan } from "../RescanContext";
 import { useLibrarySync } from "../LibrarySyncContext";
+import { useLibrarySwitch } from "../LibrarySwitchContext";
 import { EMPTY_S3_FIELDS, isS3FieldsComplete, S3CredentialFields, type S3FieldsValue } from "./S3CredentialFields";
 import { MigrationWizard } from "./MigrationWizard";
+import { PROVIDER_ICONS } from "./providerIcons";
 
 // Provider names are proper nouns/brand names, not translated - same convention as file format
 // labels (EPUB/PDF/...) elsewhere in this app. Only "local" is reachable today; the rest land with
@@ -74,6 +77,10 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
   const queryClient = useQueryClient();
 
   const librariesQuery = useQuery({ queryKey: ["libraries"], queryFn: listLibraries });
+  // Same query key/cadence as TitleBar.tsx's SyncStatusIndicator, which is already polling this -
+  // sharing the key means this doesn't add a second independent poll, just a second consumer of
+  // the same cached result.
+  const syncStatusQuery = useQuery({ queryKey: ["syncStatus"], queryFn: getSyncStatus, refetchInterval: 10_000 });
 
   const [addBusy, setAddBusy] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
@@ -85,6 +92,7 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
 
   const rescan = useRescan();
   const librarySync = useLibrarySync();
+  const librarySwitch = useLibrarySwitch();
 
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -114,15 +122,6 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
       setAddBusy(false);
     }
   };
-
-  const switchMutation = useMutation({
-    mutationFn: (id: string) => openLibraryById(id),
-    onSuccess: () => {
-      invalidateLibraries();
-      refreshActiveLibrary();
-    },
-    onError: (err) => setActionError(err instanceof Error ? err.message : String(err)),
-  });
 
   const renameMutation = useMutation({
     mutationFn: ({ id, name }: { id: string; name: string }) => renameLibrary(id, name),
@@ -223,10 +222,15 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
           {t("librariesSettings.description")}
         </Text>
         <Group gap="xs">
-          <Button size="sm" variant="default" leftSection={<IconCloud size={14} />} onClick={() => setS3ModalOpen(true)}>
+          <Button size="sm" variant="default" leftSection={<PROVIDER_ICONS.s3 size={14} />} onClick={() => setS3ModalOpen(true)}>
             {t("librariesSettings.connectS3")}
           </Button>
-          <Button size="sm" variant="default" leftSection={<IconCloud size={14} />} onClick={() => setGoogleModalOpen(true)}>
+          <Button
+            size="sm"
+            variant="default"
+            leftSection={<PROVIDER_ICONS.googledrive size={14} />}
+            onClick={() => setGoogleModalOpen(true)}
+          >
             {t("librariesSettings.connectGoogleDrive")}
           </Button>
           <Button size="sm" leftSection={<IconPlus size={14} />} onClick={() => void handleAdd()} loading={addBusy}>
@@ -281,7 +285,9 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
       )}
 
       <Stack gap="xs">
-        {librariesQuery.data?.map((entry) => (
+        {librariesQuery.data?.map((entry) => {
+          const ProviderIcon = entry.providerType !== "local" ? PROVIDER_ICONS[entry.providerType] : undefined;
+          return (
           <Stack
             key={entry.id}
             gap={6}
@@ -327,7 +333,12 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
                     </Badge>
                   )}
                   {entry.providerType !== "local" && (
-                    <Badge size="xs" variant="outline" color="gray">
+                    <Badge
+                      size="xs"
+                      variant="outline"
+                      color="gray"
+                      leftSection={ProviderIcon ? <ProviderIcon size={11} /> : undefined}
+                    >
                       {PROVIDER_LABELS[entry.providerType] ?? entry.providerType}
                     </Badge>
                   )}
@@ -339,8 +350,8 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
                   <Button
                     size="xs"
                     variant="default"
-                    loading={switchMutation.isPending && switchMutation.variables === entry.id}
-                    onClick={() => switchMutation.mutate(entry.id)}
+                    loading={librarySwitch.isSwitching}
+                    onClick={() => librarySwitch.switchTo(entry.id, refreshActiveLibrary)}
                   >
                     {t("librariesSettings.open")}
                   </Button>
@@ -467,8 +478,20 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
                 </Text>
               </Stack>
             )}
+
+            {/* ISyncStatusTracker (the backend behind TitleBar.tsx's SyncStatusIndicator) only
+                ever tracks the *active* library - so this can only ever be shown for entry.isActive,
+                never any other row. Inline here (not just the title bar icon) so the actual error
+                message is reachable somewhere that doesn't disappear if the failure happened while
+                Settings was closed and the title bar's own tooltip was never seen. */}
+            {entry.isActive && syncStatusQuery.data?.state === "Error" && (
+              <Alert color="red" icon={<IconAlertTriangle size={14} />} py={6}>
+                <Text size="xs">{t("librariesSettings.syncErrorInline", { message: syncStatusQuery.data.errorMessage ?? "" })}</Text>
+              </Alert>
+            )}
           </Stack>
-        ))}
+          );
+        })}
       </Stack>
     </Stack>
   );

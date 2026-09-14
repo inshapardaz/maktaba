@@ -1,36 +1,31 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Box, Menu, Text, UnstyledButton } from "@mantine/core";
+import { useQuery } from "@tanstack/react-query";
+import { Box, Group, Loader, Menu, Text, UnstyledButton } from "@mantine/core";
 import { IconBooks, IconCheck, IconChevronDown, IconSettings } from "../icons";
-import { listLibraries, openLibraryById } from "../api";
+import { listLibraries } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
-import { invalidateLibraryQueries } from "../queries";
+import { useLibrarySwitch } from "../LibrarySwitchContext";
+import { PROVIDER_ICONS } from "./providerIcons";
 
 interface LibrarySwitcherProps {
   // Same "did the active library's identity/contents change" contract as
   // LibrariesSettings.tsx's onActiveLibraryChanged - both end up calling App.tsx's
-  // handleLibraryChanged, which resets selection/filters and jumps back to the library view.
+  // handleLibraryChanged, which resets selection/filters and jumps back to the library view. Only
+  // called on a successful switch - see LibrarySwitchContext.switchTo.
   onLibraryChanged: () => void;
   onManage: () => void;
 }
 
 // A sidebar-bottom dropdown for switching between libraries the user has opened before, mirroring
 // Settings -> Libraries' switch action (LibrariesSettings.tsx) without leaving the current view.
+// Both go through LibrarySwitchContext's shared switchTo rather than each running their own
+// openLibraryById mutation - see that context for why (one loading/error UX, not two).
 // Fills the full width of the sidebar's footer, which otherwise only holds this.
 export function LibrarySwitcher({ onLibraryChanged, onManage }: LibrarySwitcherProps) {
   const { t } = useLanguage();
-  const queryClient = useQueryClient();
   const librariesQuery = useQuery({ queryKey: ["libraries"], queryFn: listLibraries });
+  const librarySwitch = useLibrarySwitch();
   const active = librariesQuery.data?.find((entry) => entry.isActive);
-
-  const switchMutation = useMutation({
-    mutationFn: (id: string) => openLibraryById(id),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["libraries"] });
-      void queryClient.invalidateQueries({ queryKey: ["library"] });
-      invalidateLibraryQueries(queryClient);
-      onLibraryChanged();
-    },
-  });
+  const ActiveProviderIcon = active && active.providerType !== "local" ? PROVIDER_ICONS[active.providerType] : null;
 
   if (!librariesQuery.data || librariesQuery.data.length === 0) {
     return null;
@@ -53,7 +48,11 @@ export function LibrarySwitcher({ onLibraryChanged, onManage }: LibrarySwitcherP
             backgroundColor: "var(--mantine-color-body)",
           }}
         >
-          <IconBooks size={15} style={{ flexShrink: 0, opacity: 0.6 }} />
+          {ActiveProviderIcon ? (
+            <ActiveProviderIcon size={15} style={{ flexShrink: 0, opacity: 0.6 }} />
+          ) : (
+            <IconBooks size={15} style={{ flexShrink: 0, opacity: 0.6 }} />
+          )}
           <Text size="xs" fw={500} truncate="end" style={{ minWidth: 0, flex: 1 }}>
             {active?.name ?? "…"}
           </Text>
@@ -62,18 +61,28 @@ export function LibrarySwitcher({ onLibraryChanged, onManage }: LibrarySwitcherP
       </Menu.Target>
 
       <Menu.Dropdown>
-        {librariesQuery.data.map((entry) => (
-          <Menu.Item
-            key={entry.id}
-            leftSection={entry.isActive ? <IconCheck size={14} /> : <Box w={14} />}
-            disabled={switchMutation.isPending}
-            onClick={() => {
-              if (!entry.isActive) switchMutation.mutate(entry.id);
-            }}
-          >
-            {entry.name}
-          </Menu.Item>
-        ))}
+        {librariesQuery.data.map((entry) => {
+          const ProviderIcon = entry.providerType !== "local" ? PROVIDER_ICONS[entry.providerType] : null;
+          const isSwitchingToThis = librarySwitch.isSwitching && !entry.isActive;
+          return (
+            <Menu.Item
+              key={entry.id}
+              leftSection={entry.isActive ? <IconCheck size={14} /> : <Box w={14} />}
+              rightSection={ProviderIcon ? <ProviderIcon size={13} style={{ opacity: 0.6 }} /> : undefined}
+              disabled={librarySwitch.isSwitching}
+              onClick={() => {
+                if (!entry.isActive) librarySwitch.switchTo(entry.id, onLibraryChanged);
+              }}
+            >
+              <Group gap={6} wrap="nowrap">
+                <Text size="sm" truncate="end" style={{ minWidth: 0, flex: 1 }}>
+                  {entry.name}
+                </Text>
+                {isSwitchingToThis && <Loader size={12} />}
+              </Group>
+            </Menu.Item>
+          );
+        })}
         <Menu.Divider />
         <Menu.Item leftSection={<IconSettings size={14} />} onClick={onManage}>
           {t("librariesSettings.manage")}
