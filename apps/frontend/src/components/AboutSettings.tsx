@@ -55,11 +55,11 @@ export function AboutSettings() {
         <Anchor href="https://github.com/inshapardaz/maktaba" target="_blank" rel="noreferrer" size="xs">
           {t("settings.githubRepo")}
         </Anchor>
-        <Anchor href="https://github.com/inshapardaz/maktaba/blob/main/privacy-policy.md" target="_blank" rel="noreferrer" size="xs">
+        <Anchor href="https://inshapardaz.github.io/maktaba/privacy-policy" target="_blank" rel="noreferrer" size="xs">
           {t("settings.privacyPolicy")}
         </Anchor>
         <Anchor
-          href="https://github.com/inshapardaz/maktaba/blob/main/terms-and-conditions.md"
+          href="https://inshapardaz.github.io/maktaba/terms-and-conditions"
           target="_blank"
           rel="noreferrer"
           size="xs"

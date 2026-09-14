@@ -1,3 +1,7 @@
+---
+title: Terms and Conditions
+---
+
 # Terms and Conditions for Maktaba
 
 **Last updated:** September 14, 2026
@@ -6,7 +10,7 @@ Please read these Terms and Conditions ("Terms") carefully before using Maktaba 
 
 ## 1. Description of the App
 
-Maktaba is a local e-book library management application that allows you to scan, organize, move, copy, edit, and optionally sync e-book files and their metadata, including integration with third-party cloud storage services such as OneDrive.
+Maktaba is a local e-book library management application that allows you to scan, organize, move, copy, edit, and optionally sync e-book files and their metadata, including integration with third-party cloud storage services such as Google Drive, Microsoft OneDrive, and S3-compatible providers.
 
 ## 2. License
 
@@ -18,12 +22,12 @@ You are solely responsible for:
 
 - Maintaining independent backups of any files or libraries before using the App to scan, move, copy, edit, or sync them;
 - The legality of the e-book files and content you manage through the App, including compliance with applicable copyright and licensing laws;
-- Securing your own devices, accounts, and any third-party services (e.g., OneDrive) connected to the App;
+- Securing your own devices, accounts, and any third-party services (e.g., Google Drive, OneDrive, S3-compatible providers) connected to the App;
 - Any consequences arising from your configuration or use of the App's features.
 
 ## 4. Third-Party Services
 
-The App may integrate with third-party services (such as Microsoft OneDrive) for sync functionality. Your use of such services is subject to their own terms and policies. We are not a party to, and have no responsibility or liability for, your relationship with any third-party service provider, including their availability, performance, security, or changes to their APIs.
+The App may integrate with third-party services (such as Google Drive, Microsoft OneDrive, and S3-compatible providers) for sync functionality. Your use of such services is subject to their own terms and policies. We are not a party to, and have no responsibility or liability for, your relationship with any third-party service provider, including their availability, performance, security, or changes to their APIs.
 
 ## 5. Disclaimer of Warranties
 
@@ -66,4 +70,4 @@ These Terms shall be governed by the laws of [INSERT JURISDICTION], without rega
 
 ## 12. Contact
 
-Questions about these Terms can be raised by creating an issue on github repository
+Questions about these Terms can be raised by creating an issue on github repository.

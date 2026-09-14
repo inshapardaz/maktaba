@@ -136,10 +136,12 @@ rotated:
    - User type: **External** (Maktaba isn't a Google Workspace organization, so "Internal" isn't
      an option).
    - Branding: **App name** (e.g. "Maktaba"), **User support email**, **Developer contact
-     information** are required; **Authorized domains** and the App home page/Privacy
-     policy/Terms of service links should all be left **blank** - Maktaba has no public web
-     presence, and Authorized domains would need Google Search Console domain-ownership
-     verification that doesn't apply here anyway. Leaving these blank works fine at this scope.
+     information** are required. **Privacy policy link**/**Terms of service link** can point at
+     `https://inshapardaz.github.io/maktaba/privacy-policy`/`.../terms-and-conditions` (see "Help &
+     onboarding" below - GitHub Pages, deployed from `docs/`). **Authorized domains** should stay
+     **blank** - it would need Google Search Console domain-ownership verification that doesn't
+     apply here (the redirect target is a loopback address, not `github.io`), so leaving it empty
+     works fine at this scope even with the two links above filled in.
    - **Data access / Scopes** → Add or Remove Scopes → add all three: `.../auth/drive.file`,
      `.../auth/userinfo.email`, `.../auth/userinfo.profile` (must match `SCOPES` in
      `googleDriveAuth.ts` exactly, or the authorize request fails).
@@ -550,6 +552,18 @@ without a build step: `docs/.vitepress/config.ts` (sidebar), `scripts/build-help
 referenced from markdown (`docs/screenshots/*.svg`) are currently all placeholder graphics (copies
 of `_placeholder-source.svg`) — see `docs/SCREENSHOTS.md` for the capture checklist of what each
 one should eventually show.
+
+The same `docs/` tree is also **published to GitHub Pages** (`.github/workflows/pages.yml`, runs
+`npm run docs:build` then `actions/deploy-pages` on every `main` push touching `docs/**`) at
+`https://inshapardaz.github.io/maktaba/` - `docs/.vitepress/config.ts`'s `base: "/maktaba/"` matches
+that project-site path (needed for every generated asset/link to resolve correctly once actually
+deployed there; doesn't affect the in-app Help window at all, which reads the same source `.md`
+files directly rather than going through this build - see below). This is also where
+`docs/privacy-policy.md`/`docs/terms-and-conditions.md` live - English-only (no `docs/ur/`
+counterpart, and not part of `topics.cjs`'s help-topic list, just each locale's `themeConfig.nav`)
+pages for `AboutSettings.tsx`'s Privacy Policy/Terms & Conditions links and cloud provider OAuth
+consent screens (see the Google Cloud project walkthrough above) that need a stable public URL -
+edit them directly (not the old repo-root copies, which were moved into `docs/` once this existed).
 
 The same `docs/` markdown is also the **offline in-app Help**, shown in its own top-level window
 (`HelpWindow.tsx`) rather than a Settings tab — help content is multi-page and screenshot-heavy
