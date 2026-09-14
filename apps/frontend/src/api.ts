@@ -357,6 +357,35 @@ export interface OneDriveCredential {
   expiresAt: number;
 }
 
+// The credential shape saved via window.maktaba.saveCloudCredential/getCloudCredential for a
+// Nawishta library - see backend NawishtaProviderOptions.FromConfig, which expects exactly this
+// JSON shape. Unlike Google Drive/OneDrive's OAuth token set, this comes from a plain email/
+// password POST to the backend (nawishtaLogin below) rather than an interactive window.maktaba
+// sign-in - Nawishta has no OAuth flow of its own.
+export interface NawishtaCredential {
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: number;
+}
+
+export interface NawishtaLibrarySummary {
+  id: number;
+  name: string;
+  description: string | null;
+}
+
+// Authenticates against a Nawishta server and, in the same round trip, lists the account's
+// libraries - see Maktaba.Api's NawishtaEndpoints.cs. The connect form (NawishtaConnectModal) uses
+// this to go straight from "email/password" to a library picker.
+export function nawishtaLogin(
+  serverUrl: string, email: string, password: string,
+): Promise<{ credential: NawishtaCredential; libraries: NawishtaLibrarySummary[] }> {
+  return request("/api/nawishta/login", {
+    method: "POST",
+    body: JSON.stringify({ serverUrl, email, password }),
+  });
+}
+
 // Generic over the credential shape (S3Credential, GoogleDriveCredential, ...) since this endpoint
 // only ever JSON.stringifies it into an opaque string the backend deserializes per providerType -
 // see LibraryEndpoints' "/cloud" handler and ILibraryService.OpenCloudLibraryAsync, neither of

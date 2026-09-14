@@ -680,8 +680,23 @@ public static class BookEndpoints
         });
 
         group.MapPost("/import", async (
-            ImportBookRequest request, IImportService importService, ILogger<Program> logger, CancellationToken ct) =>
+            ImportBookRequest request, IImportService importService, ILibraryService libraryService,
+            ILogger<Program> logger, CancellationToken ct) =>
         {
+            // Nawishta's content model (chapters/pages/OCR/bind/publish) doesn't map onto "attach an
+            // EPUB/PDF file" the way local/S3/Google Drive/OneDrive import does, and needs live
+            // verification before it's safe to build (see NawishtaBookMutationService's own doc
+            // comment) - a clear, friendly rejection here rather than letting ImportService proceed
+            // and fail confusingly partway through against NawishtaStorageProvider's file-write
+            // methods, which do throw NotSupportedException but with a less specific message.
+            if (IsNawishtaLibrary(libraryService))
+            {
+                return Results.BadRequest(new
+                {
+                    error = "Importing files isn't supported yet for a Nawishta-backed library - add books directly on the Nawishta server for now.",
+                });
+            }
+
             if (string.IsNullOrWhiteSpace(request.FilePath) || !File.Exists(request.FilePath))
             {
                 return Results.BadRequest(new { error = "File not found." });

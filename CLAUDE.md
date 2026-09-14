@@ -506,11 +506,61 @@ Nawishta-backed library needs a working `IBookQueryService`/etc. implementation 
 which doesn't exist yet, so these two endpoints only get the frontend as far as "authenticated,
 here's your library list."
 
-**Frontend library-picker UI is deliberately not built yet**, even though #108's own issue text
-names it - a connect form + picker with no working "Connect" button at the end (nothing exists yet
-to actually register/open what's picked) would be exactly the kind of half-finished feature this
-project's conventions call out to avoid, and its real shape depends on what #110 ends up needing
-from the picked library anyway. Build it once #110 lands and "Connect" has somewhere real to go.
+**Read/write/shadow-table/cache-reuse implementation (#110-#113)** - `Maktaba.Nawishta`'s
+`Nawishta{Book,Browse,Collection,Periodical}QueryService` implement Phase A's four interfaces
+against Nawishta, and `NawishtaBookMutationService` (metadata edit/reading-status/rating/
+collections/delete, called directly from `BookEndpoints.cs`'s PUT/PATCH/DELETE handlers rather than
+registered as `IBookEditService`/`IBookRemovalService` - see that class's own doc comment for why)
+covers the write side except file/content management. `NawishtaShadowDbContext`
+(`%AppData%/Maktaba/NawishtaShadow/{libraryId}.db`) holds ReadingStatus/Rating/reading-progress/
+Collections - the one thing Nawishta has no equivalent concept for. `NawishtaStorageProvider` is a
+real `IStorageProvider` backed by `ICloudCacheManager` (not a second cache mechanism) - this is what
+lets the *existing* cover/file-serving endpoints work for a Nawishta library without being
+individually rewritten, since they already go through `IStorageProviderFactory.Current`.
+
+**A key finding: Nawishta's live swagger response schemas and its own "download" link are both
+unreliable** - `NawishtaRawApiClient` (see its own doc comment) works around the missing response
+schemas by deserializing into the request-side model classes NSwag *did* generate. Separately,
+confirmed live against a real account: `GET .../books/{bookId}/contents/{contentId}` returns a
+`BookContentView`-shaped JSON description (not file bytes) whose own `download` link is what should
+serve them - `DownloadContentAsync` follows that link, but the link itself currently 404s for at
+least the content tested against (a real bug on Nawishta's own side, not fixable from this
+codebase). `BookEndpoints.cs`'s `GET /{id}` degrades gracefully (empty `AbsolutePath` for that one
+file, not a 500) rather than assuming this always works.
+
+**Making a Nawishta library the *active* one needed real `LibraryService`/`CloudSyncLifecycleService`
+changes** - the whole app treats `LibraryRootPath != null` as "a library is open" (this middleware,
+the frontend's `hasLibrary` gate), but a Nawishta library has no filesystem path. Fixed by giving it
+the same synthetic display path `BuildCloudDisplayPath` already produces for any non-s3 provider
+(`"nawishta://{name}"`) and adding an early-return branch in **both** `ActivateAsync` (the normal
+connect/switch path) **and** `LoadConfig`'s startup auto-open of the last-active library (a separate
+code path that bypasses `ActivateAsync` entirely and was missed on the first pass - confirmed live:
+"SQLite Error 14: unable to open database file" on the very first request after restart) - both skip
+the pull/push/`EnsureCreatedAsync` sequence entirely (no metadata.db for Nawishta) while still
+setting `_schemaVerified = true`, so every existing "is a library open" check keeps working
+unmodified. `PushCurrentLibraryIfCloudAsync` and `CloudSyncLifecycleService`'s push/lock-refresh
+loop both exclude `"nawishta"` too (`IStorageProviderFactory.Current` throws
+`NotSupportedException` for any provider type `BuildProvider`'s switch doesn't recognize, by
+design) - without these, switching away from or just idly having an active Nawishta library open
+would have crashed on the next heartbeat tick. No new endpoint was needed for "connect a Nawishta
+library" - `ILibraryService.OpenCloudLibraryAsync`'s own doc comment already named Nawishta as a
+target provider from Phase 1 onward, and `POST /api/libraries/cloud` is already provider-agnostic.
+
+**Frontend (#114/#115)**: `LibrariesSettings.tsx`'s `NawishtaConnectModal` follows the same
+"Connect {Provider} library…" button pattern as S3/Google Drive/OneDrive, but is two steps instead
+of one - login (server URL/email/password) replaces itself with a `Radio.Group` library picker built
+from the login response's own list, since one Nawishta account can access several libraries; "Name"
+defaults to the picked library's own name (still editable) once one is picked, rather than being
+asked for up front. `ReconnectModal` gained a matching email/password branch (re-authenticating
+rather than a silent token refresh - #116's job) for a Nawishta entry whose cached credential has
+gone stale. Two things are deliberately guarded rather than built: the per-library "Resync" button
+is hidden for a Nawishta entry (`LibraryRescanService.RescanAsync` assumes a local folder/
+metadata.db, never adapted for Nawishta - clicking it risked an unhandled crash, not just "does
+nothing"), and `POST /api/books/import` rejects up front with a clear message for a Nawishta-active
+library (file/content management isn't implemented - see `NawishtaBookMutationService`'s own doc
+comment) rather than letting `ImportService` fail confusingly partway through. A real "Sync now"
+(re-pull book/author/series list) and content-management support are still open work, not built in
+this pass.
 
 ## Backend conventions
 
