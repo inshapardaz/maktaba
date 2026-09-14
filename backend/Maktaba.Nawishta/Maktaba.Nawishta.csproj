@@ -6,4 +6,15 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\Maktaba.Core\Maktaba.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The local shadow table (ReadingStatus/Rating/Collections/ReadingProgress - see
+         NawishtaShadowDbContext) is a second, much smaller SQLite database, kept separate from
+         metadata.db - a Nawishta library has no metadata.db at all. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.0.9" />
+  </ItemGroup>
+
 </Project>

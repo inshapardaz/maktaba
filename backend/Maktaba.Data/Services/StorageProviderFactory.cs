@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Maktaba.Cloud;
 using Maktaba.Core.Services;
+using Maktaba.Nawishta;
 
 namespace Maktaba.Data.Services;
 
@@ -15,7 +16,8 @@ public class StorageProviderFactory(
     ILibraryService libraryService,
     LocalFileSystemProvider local,
     ICloudCacheManager cloudCacheManager,
-    ICloudCredentialCache credentials) : IStorageProviderFactory
+    ICloudCredentialCache credentials,
+    IHttpClientFactory httpClientFactory) : IStorageProviderFactory
 {
     // Keyed by (libraryId, providerType, credential hash) rather than just libraryId, so a
     // freshly-supplied credential (the frontend re-opening with a new/changed one) naturally
@@ -78,8 +80,19 @@ public class StorageProviderFactory(
             "s3" => new S3StorageProvider(libraryId, S3ProviderOptions.FromConfig(providerConfig, credential), cloudCacheManager),
             "onedrive" => new OneDriveStorageProvider(libraryId, OneDriveProviderOptions.FromConfig(providerConfig, credential), cloudCacheManager),
             "googledrive" => new GoogleDriveStorageProvider(libraryId, GoogleDriveProviderOptions.FromConfig(providerConfig, credential), cloudCacheManager),
+            "nawishta" => BuildNawishtaProvider(libraryId, providerConfig, credential),
             _ => throw new NotSupportedException($"Storage provider \"{providerType}\" isn't implemented yet."),
         };
+
+    private NawishtaStorageProvider BuildNawishtaProvider(
+        string libraryId, IReadOnlyDictionary<string, string> providerConfig, string credential)
+    {
+        var options = NawishtaProviderOptions.FromConfig(providerConfig, credential);
+        var httpClient = httpClientFactory.CreateClient(nameof(NawishtaRawApiClient));
+        var api = new NawishtaRawApiClient(httpClient, options.ServerUrl);
+        api.SetAccessToken(options.AccessToken);
+        return new NawishtaStorageProvider(libraryId, options.RemoteLibraryId, api, cloudCacheManager);
+    }
 
     private IStorageProvider GetOrCreateCloudProvider(
         string libraryId, string providerType, IReadOnlyDictionary<string, string> providerConfig, string credential)

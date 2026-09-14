@@ -3,12 +3,21 @@ using Maktaba.Core.Entities;
 using Maktaba.Core.Ids;
 using Maktaba.Core.Services;
 using Maktaba.Data;
+using Maktaba.Data.Services;
+using Maktaba.Nawishta;
 using Microsoft.EntityFrameworkCore;
 
 namespace Maktaba.Api.Endpoints;
 
 public static class BookEndpoints
 {
+    // PUT/PATCH/DELETE below branch on this rather than going through a registered
+    // IBookEditService/IBookRemovalService (see NawishtaBookMutationService's own doc comment for
+    // why it isn't one) - "nawishta" is the only provider type any of these three branches ever
+    // take, every other provider keeps going through the existing EF-backed services unchanged.
+    private static bool IsNawishtaLibrary(ILibraryService libraryService) =>
+        libraryService.Libraries.FirstOrDefault(l => l.Id == libraryService.CurrentLibraryId)?.ProviderType == "nawishta";
+
     // Shared by every endpoint below that builds a BookSummaryDto/ContinueReadingBookDto -
     // AuthorRefDto is the same "name + id + photo presence" shape BookDetailDto already uses for
     // BookDetailPanel's pills, so the Home view/grid rows can reuse it for avatars too.
@@ -368,7 +377,8 @@ public static class BookEndpoints
         });
 
         group.MapPut("/{id}", async (
-            string id, BookEditRequestDto request, IBookEditService editService, CancellationToken ct) =>
+            string id, BookEditRequestDto request, IBookEditService editService,
+            ILibraryService libraryService, NawishtaSessionResolver nawishtaResolver, CancellationToken ct) =>
         {
             if (!IdCodec.TryDecode(id, out var bookId))
             {
@@ -411,12 +421,21 @@ public static class BookEndpoints
                 request.VolumeNumber,
                 request.IssueDate);
 
+            if (IsNawishtaLibrary(libraryService))
+            {
+                nawishtaResolver.TryResolve(out var n);
+                var updated = await new NawishtaBookMutationService(n.Api, n.RemoteLibraryId, n.Shadow)
+                    .UpdateMetadataAsync(bookId, editRequest, ct);
+                return updated is null ? Results.NotFound() : Results.NoContent();
+            }
+
             var book = await editService.UpdateAsync(bookId, editRequest, ct);
             return book is null ? Results.NotFound() : Results.NoContent();
         });
 
         group.MapPatch("/{id}/status", async (
-            string id, UpdateBookStatusRequestDto request, MaktabaDbContext db, CancellationToken ct) =>
+            string id, UpdateBookStatusRequestDto request, MaktabaDbContext db,
+            ILibraryService libraryService, NawishtaSessionResolver nawishtaResolver, CancellationToken ct) =>
         {
             if (!IdCodec.TryDecode(id, out var bookId))
             {
@@ -426,6 +445,13 @@ public static class BookEndpoints
             if (!Enum.TryParse<ReadingStatus>(request.ReadingStatus, ignoreCase: true, out var status))
             {
                 return Results.BadRequest(new { error = "Invalid reading status." });
+            }
+
+            if (IsNawishtaLibrary(libraryService))
+            {
+                nawishtaResolver.TryResolve(out var n);
+                var ok = await new NawishtaBookMutationService(n.Api, n.RemoteLibraryId, n.Shadow).SetReadingStatusAsync(bookId, status, ct);
+                return ok ? Results.NoContent() : Results.NotFound();
             }
 
             var book = await db.Books.FirstOrDefaultAsync(b => b.Id == bookId, ct);
@@ -473,11 +499,22 @@ public static class BookEndpoints
             };
         });
 
-        group.MapDelete("/{id}", async (string id, IBookRemovalService removalService, CancellationToken ct) =>
+        group.MapDelete("/{id}", async (
+            string id, IBookRemovalService removalService,
+            ILibraryService libraryService, NawishtaSessionResolver nawishtaResolver, CancellationToken ct) =>
         {
             if (!IdCodec.TryDecode(id, out var bookId))
             {
                 return Results.NotFound();
+            }
+
+            if (IsNawishtaLibrary(libraryService))
+            {
+                nawishtaResolver.TryResolve(out var n);
+                var deleted = await new NawishtaBookMutationService(n.Api, n.RemoteLibraryId, n.Shadow).DeleteAsync(bookId, ct);
+                return deleted
+                    ? Results.Ok(new { folderPath = (string?)null, requiresLocalTrash = false, parentFolderPath = (string?)null })
+                    : Results.NotFound();
             }
 
             var result = await removalService.RemoveAsync(bookId, ct);
