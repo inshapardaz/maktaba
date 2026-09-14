@@ -442,6 +442,42 @@ Drive/OneDrive, whose *files* live remotely but whose metadata stays local) stil
 same EF-backed services, since only a library's file storage differs today, not where its metadata
 lives.
 
+## Nawishta typed client (Nawishta epic #107)
+
+`Maktaba.Nawishta` (new project, not yet referenced by anything - `Maktaba.Api`/`Maktaba.Data`
+don't depend on it until #110 actually implements the query-service interfaces against it) holds a
+generated C# client for the user's own Nawishta REST API (`C:\code\inshapardaz\api`), the eventual
+second `ProviderType` mentioned above. No OpenAPI spec is checked into the Nawishta repo itself -
+Swashbuckle only serves it live at `https://api.nawishta.co.uk/swagger/v1/swagger.json` (or
+whatever instance URL) - so `Maktaba.Nawishta/nswag.json` (an NSwag document, pinned via
+`backend/.config/dotnet-tools.json`'s `nswag.consolecore` local tool) generates
+`NawishtaClient.Generated.cs` from that live URL and the **generated output is checked into git**,
+not built on every compile - there's no live Nawishta instance in CI/most dev environments to
+generate against, and regenerating on every build would make the build non-reproducible offline.
+Regenerate after any Nawishta API change with:
+
+```
+cd backend
+dotnet tool restore
+dotnet tool run nswag run Maktaba.Nawishta/nswag.json
+```
+
+`operationGenerationMode: MultipleClientsFromFirstTagAndOperationId` was picked over NSwag's default
+`MultipleClientsFromOperationId` because Nawishta's own operationIds aren't `Controller_Method`-
+prefixed (most are just a bare method name, several are missing entirely) - grouping by each
+operation's Swagger tag instead is what actually produces one client class per controller
+(`AccountsClient`, `BookClient`, `LibraryClient`, `SeriesClient`, `PeriodicalClient`, etc., 18 in
+total) rather than dumping every operation into one giant `Client` class (what the default mode
+fell back to against this particular spec). `jsonLibrary: SystemTextJson` matches
+`Maktaba.Api`'s own (implicit, unconfigured) JSON stack rather than pulling in Newtonsoft. Each
+generated `*Client` takes a `baseUrl` string and a shared `HttpClient` via constructor injection
+(`injectHttpClient: true`) - deliberately left unwired to any DI/auth here, since attaching the
+JWT bearer token (from the same `safeStorage`-backed credential store cloud providers already use,
+per the design addendum on issue #69) and building an actual `INawishtaApiClient` facade over these
+18 generated classes is #108/#110's job, not this one. Nawishta's swagger document declares no
+`securitySchemes` at all (auth is bearer-token-via-header but undocumented in the spec itself), so
+there was nothing for NSwag to generate an auth-handling constructor overload from either way.
+
 ## Backend conventions
 
 - **Find-or-create by name**: `Maktaba.Data/Services/EntityResolvers.cs` (`ResolveAuthorsAsync`/
