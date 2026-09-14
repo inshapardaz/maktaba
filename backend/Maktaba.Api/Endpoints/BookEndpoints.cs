@@ -643,7 +643,9 @@ public static class BookEndpoints
             }
 
             var result = await removalService.RemoveAsync(bookId, ct);
-            return result is null ? Results.NotFound() : Results.Ok(new { folderPath = result.AbsoluteFolderPath });
+            return result is null
+                ? Results.NotFound()
+                : Results.Ok(new { folderPath = result.AbsoluteFolderPath, requiresLocalTrash = result.RequiresLocalTrash });
         });
 
         group.MapPost("/{id}/files", async (

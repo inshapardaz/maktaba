@@ -107,8 +107,9 @@ If you already have a library on your own computer and want to move it to cloud 
 of starting a new one, open **Settings → Libraries**, make sure the library you want to move is
 the active one, and click **Migrate to cloud…**. A wizard walks you through it:
 
-1. **Target** — the same bucket/region/subfolder/server endpoint/credentials fields as connecting
-   a cloud library, with a **Test connection** step.
+1. **Target** — choose Amazon S3/S3-compatible or Google Drive, then fill in the same fields as
+   connecting a cloud library that way (bucket/region/subfolder/server endpoint/credentials, with a
+   **Test connection** step for S3; a Google sign-in for Google Drive).
 2. **Review** — how many files will be copied. This step is a good moment to make sure you're on
    a connection you're comfortable uploading your whole library over. You can close this window
    at any point after starting — the migration keeps running in the background, and you can check
