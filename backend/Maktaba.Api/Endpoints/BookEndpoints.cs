@@ -24,32 +24,39 @@ public static class BookEndpoints
     private static bool HasDuplicateFiles(IEnumerable<BookFile> files) =>
         files.GroupBy(f => f.ContentHash).Any(g => g.Count() > 1);
 
-    // Pagination: mirrors what the frontend's own sortBooks/compareBooks (App.tsx) used to do
-    // client-side over the *entire* matching set before this - moved server-side so a page can be
-    // sliced out correctly (the in-memory result here still has to be sorted before Skip/Take, since
-    // SQL-side ORDER BY can't easily express "author's own display name" or "series index, treating
-    // null as last" without pulling every row's related author/series anyway). Default matches
-    // FilterBar's own SortKey/SortDirection defaults for "title"/asc if the frontend ever omits them.
-    private const int DefaultPageSize = 60;
-
-    private static int CompareBooksForSort(Book a, Book b, string? sortKey, IReadOnlyDictionary<int, DateTime> lastReadByBookId)
+    // Decodes every filter/sort/page query param this endpoint accepts into the plain values
+    // IBookQueryService.ListAsync expects (Nawishta epic, Phase A) - id-decoding/enum-parsing stays
+    // an endpoint concern, not something every query-service implementation repeats. An id that
+    // fails to decode can't match anything, so its filter is passed through as -1 rather than
+    // treated as "no filter" - a malformed/stale id should yield an empty result.
+    private static BookQueryFilters BuildFilters(
+        string? search, string? authorId, string? seriesId, string? tagId, string? collectionId, string? periodicalId,
+        bool? includeIssues, string? readingStatus, string? format, int? minRating, string? publisher, string? language,
+        string? sortKey, string? sortDirection, int? page, int? pageSize)
     {
-        var result = sortKey switch
-        {
-            "author" => string.Compare(
-                a.BookAuthors.OrderBy(ba => ba.Order).FirstOrDefault()?.Author.Name ?? "",
-                b.BookAuthors.OrderBy(ba => ba.Order).FirstOrDefault()?.Author.Name ?? "",
-                StringComparison.OrdinalIgnoreCase),
-            "dateAdded" => a.DateAdded.CompareTo(b.DateAdded),
-            "rating" => a.Rating.CompareTo(b.Rating),
-            "seriesIndex" => (a.BookSeries.FirstOrDefault()?.SeriesIndex ?? double.PositiveInfinity)
-                .CompareTo(b.BookSeries.FirstOrDefault()?.SeriesIndex ?? double.PositiveInfinity),
-            "lastRead" => Nullable.Compare<DateTime>(
-                lastReadByBookId.TryGetValue(a.Id, out var aLastRead) ? aLastRead : null,
-                lastReadByBookId.TryGetValue(b.Id, out var bLastRead) ? bLastRead : null),
-            _ => string.Compare(a.SortTitle, b.SortTitle, StringComparison.OrdinalIgnoreCase),
-        };
-        return result;
+        int? DecodeOrSentinel(string? id) => id is null ? null : (IdCodec.TryDecode(id, out var decoded) ? decoded : -1);
+
+        var statusParsed = Enum.TryParse<ReadingStatus>(readingStatus, ignoreCase: true, out var parsedStatus);
+        var formatParsed = Enum.TryParse<BookFormat>(format, ignoreCase: true, out var parsedFormat);
+
+        return new BookQueryFilters(
+            Search: search,
+            AuthorId: authorId == "unknown" ? null : DecodeOrSentinel(authorId),
+            AuthorIsUnknown: authorId == "unknown",
+            SeriesId: DecodeOrSentinel(seriesId),
+            TagId: DecodeOrSentinel(tagId),
+            CollectionId: DecodeOrSentinel(collectionId),
+            PeriodicalId: DecodeOrSentinel(periodicalId),
+            IncludeIssues: includeIssues == true,
+            Publisher: publisher,
+            Language: language,
+            ReadingStatus: statusParsed ? parsedStatus : null,
+            MinRating: minRating,
+            Format: formatParsed ? parsedFormat : null,
+            SortKey: sortKey,
+            SortDirection: sortDirection,
+            Page: page,
+            PageSize: pageSize);
     }
 
     public static void MapBookEndpoints(this WebApplication app)
@@ -57,7 +64,7 @@ public static class BookEndpoints
         var group = app.MapGroup("/api/books");
 
         group.MapGet("", async (
-            MaktabaDbContext db,
+            ILibraryQueryServiceFactory queryServices,
             IStorageProviderFactory storageFactory,
             string? search,
             string? authorId,
@@ -79,131 +86,12 @@ public static class BookEndpoints
         {
             var root = await storageFactory.Current.GetLocalPathAsync("", ct);
 
-            var query = db.Books
-                .Include(b => b.BookAuthors).ThenInclude(ba => ba.Author)
-                .Include(b => b.BookSeries).ThenInclude(bs => bs.Series)
-                .Include(b => b.BookTags).ThenInclude(bt => bt.Tag)
-                .Include(b => b.BookCollections).ThenInclude(bc => bc.Collection)
-                .Include(b => b.Files)
-                .Include(b => b.Periodical)
-                .AsNoTracking()
-                .AsQueryable();
+            var filters = BuildFilters(
+                search, authorId, seriesId, tagId, collectionId, periodicalId, includeIssues, readingStatus, format,
+                minRating, publisher, language, sortKey, sortDirection, page, pageSize);
+            var result = await queryServices.Books.ListAsync(filters, ct);
 
-            // An id that fails to decode can't match anything, so its filter is just left applied with
-            // no matching rows below rather than treated as "no filter" - a malformed/stale id should
-            // yield an empty result, not silently ignore the filter. "unknown" is a sentinel (not an
-            // IdCodec-encoded id, see BrowseEndpoints.cs's /api/authors) matching books with no author
-            // at all - see issue #41.
-            if (authorId == "unknown")
-            {
-                query = query.Where(b => !b.BookAuthors.Any());
-            }
-            else if (authorId is not null)
-            {
-                var aId = IdCodec.TryDecode(authorId, out var decoded) ? decoded : -1;
-                query = query.Where(b => b.BookAuthors.Any(ba => ba.AuthorId == aId));
-            }
-
-            if (seriesId is not null)
-            {
-                var sId = IdCodec.TryDecode(seriesId, out var decoded) ? decoded : -1;
-                query = query.Where(b => b.BookSeries.Any(bs => bs.SeriesId == sId));
-            }
-
-            if (tagId is not null)
-            {
-                var tId = IdCodec.TryDecode(tagId, out var decoded) ? decoded : -1;
-                query = query.Where(b => b.BookTags.Any(bt => bt.TagId == tId));
-            }
-
-            if (collectionId is not null)
-            {
-                var cId = IdCodec.TryDecode(collectionId, out var decoded) ? decoded : -1;
-                query = query.Where(b => b.BookCollections.Any(bc => bc.CollectionId == cId));
-            }
-
-            // Issues are hidden from the main library view by default (a daily/weekly periodical
-            // would otherwise flood it) - see periodicalSettings.ts's localStorage-backed toggle on
-            // the frontend. Browsing a specific periodical always shows its own issues regardless.
-            if (periodicalId is not null)
-            {
-                var pId = IdCodec.TryDecode(periodicalId, out var decoded) ? decoded : -1;
-                query = query.Where(b => b.PeriodicalId == pId);
-            }
-            else if (includeIssues != true)
-            {
-                query = query.Where(b => b.PeriodicalId == null);
-            }
-
-            // Unlike authorId/seriesId/etc., Publisher is a plain string column (see
-            // BrowseEndpoints.cs's /api/publishers) - matched directly rather than decoded via IdCodec.
-            if (!string.IsNullOrEmpty(publisher))
-            {
-                query = query.Where(b => b.Publisher == publisher);
-            }
-
-            // Same rationale as publisher above - Language is a plain string column (an ISO 639-1
-            // code, see BrowseEndpoints.cs's /api/languages/grouped), matched directly.
-            if (!string.IsNullOrEmpty(language))
-            {
-                query = query.Where(b => b.Language == language);
-            }
-
-            if (Enum.TryParse<ReadingStatus>(readingStatus, ignoreCase: true, out var parsedStatus))
-            {
-                query = query.Where(b => b.ReadingStatus == parsedStatus);
-            }
-
-            if (minRating is { } rating)
-            {
-                query = query.Where(b => b.Rating >= rating);
-            }
-
-            if (Enum.TryParse<BookFormat>(format, ignoreCase: true, out var parsedFormat))
-            {
-                query = query.Where(b => b.Files.Any(f => f.Format == parsedFormat));
-            }
-
-            var books = await query.ToListAsync();
-
-            // Free-text search runs against the already-materialized list: EF Core can't translate the
-            // StringComparison overload of Contains to SQL, and this dataset is small enough (v1: single
-            // local library) that in-memory filtering after the SQL-side filters above is simplest.
-            if (!string.IsNullOrWhiteSpace(search))
-            {
-                var term = search.Trim();
-                books = books.Where(b =>
-                    b.Title.Contains(term, StringComparison.OrdinalIgnoreCase) ||
-                    b.BookAuthors.Any(ba => ba.Author.Name.Contains(term, StringComparison.OrdinalIgnoreCase)) ||
-                    b.BookSeries.Any(bs => bs.Series.Name.Contains(term, StringComparison.OrdinalIgnoreCase)) ||
-                    b.BookTags.Any(bt => bt.Tag.Name.Contains(term, StringComparison.OrdinalIgnoreCase))
-                ).ToList();
-            }
-
-            // A second small lookup rather than an Include+join above - keeps the main query (with
-            // its several optional filters) untouched, and most books never have a progress row.
-            var bookIds = books.Select(b => b.Id).ToList();
-            var lastReadByBookId = await db.ReadingProgress
-                .Where(rp => bookIds.Contains(rp.BookId))
-                .ToDictionaryAsync(rp => rp.BookId, rp => rp.UpdatedAt);
-
-            var totalCount = books.Count;
-
-            var direction = string.Equals(sortDirection, "desc", StringComparison.OrdinalIgnoreCase) ? -1 : 1;
-            books.Sort((a, b) => direction * CompareBooksForSort(a, b, sortKey, lastReadByBookId));
-
-            // Pagination is opt-in via `page` - callers that don't pass it (LibrarySpotlight's search,
-            // PeriodicalDetailView's "every issue of this periodical") get the full sorted set, same as
-            // before this endpoint supported paging at all. Only the main library view (App.tsx) sends
-            // `page` today.
-            IEnumerable<Book> paged = books;
-            if (page is > 0)
-            {
-                var effectivePageSize = pageSize is > 0 ? pageSize.Value : DefaultPageSize;
-                paged = books.Skip((page.Value - 1) * effectivePageSize).Take(effectivePageSize);
-            }
-
-            var dtos = paged
+            var dtos = result.Books
                 .Select(b => new BookSummaryDto(
                     IdCodec.Encode(b.Id),
                     b.Title,
@@ -221,7 +109,7 @@ public static class BookEndpoints
                     b.BookSeries.FirstOrDefault()?.Series.Name,
                     b.BookTags.Select(bt => bt.Tag.Name).ToArray(),
                     b.BookCollections.Select(bc => bc.Collection.Name).ToArray(),
-                    lastReadByBookId.TryGetValue(b.Id, out var lastRead) ? lastRead : null,
+                    result.LastReadByBookId.TryGetValue(b.Id, out var lastRead) ? lastRead : null,
                     b.Files.Select(f => f.Format.ToString()).Distinct().ToArray(),
                     b.PeriodicalId is not null ? IdCodec.Encode(b.PeriodicalId.Value) : null,
                     b.Periodical?.Name,
@@ -231,7 +119,7 @@ public static class BookEndpoints
                     b.IssueDate))
                 .ToArray();
 
-            return Results.Ok(new PagedBooksDto(dtos, totalCount));
+            return Results.Ok(new PagedBooksDto(dtos, result.TotalCount));
         });
 
         // Backs the Home view - every book whose ReadingStatus is "Reading", most recently touched
@@ -242,42 +130,18 @@ public static class BookEndpoints
         // frontend still applies its own ReadingStatus == "Reading" filter defensively, but every
         // row from here now already satisfies it.
         group.MapGet("/continue-reading", async (
-            MaktabaDbContext db, IStorageProviderFactory storageFactory, int? limit, bool? includeIssues, CancellationToken ct) =>
+            ILibraryQueryServiceFactory queryServices, IStorageProviderFactory storageFactory, int? limit, bool? includeIssues,
+            CancellationToken ct) =>
         {
             var storage = storageFactory.Current;
             var root = await storage.GetLocalPathAsync("", ct);
 
-            var query = db.Books
-                .Where(b => b.ReadingStatus == ReadingStatus.Reading)
-                .Include(b => b.BookAuthors).ThenInclude(ba => ba.Author)
-                .Include(b => b.Files)
-                .AsNoTracking()
-                .AsQueryable();
-
-            if (includeIssues != true)
-            {
-                query = query.Where(b => b.PeriodicalId == null);
-            }
-
-            var books = await query.ToListAsync();
-            var bookIds = books.Select(b => b.Id).ToList();
-            var progressByBookId = await db.ReadingProgress
-                .Where(rp => bookIds.Contains(rp.BookId))
-                .ToDictionaryAsync(rp => rp.BookId);
-
-            var candidates = books
-                .OrderByDescending(book => progressByBookId.GetValueOrDefault(book.Id)?.UpdatedAt ?? book.DateAdded)
-                .Take(limit is > 0 ? limit.Value : 20)
-                .ToList();
+            var entries = await queryServices.Books.ListContinueReadingAsync(limit, includeIssues == true, ct);
 
             var dtos = new List<ContinueReadingBookDto>();
-            foreach (var book in candidates)
+            foreach (var entry in entries)
             {
-                var progress = progressByBookId.GetValueOrDefault(book.Id);
-                // Same "prefer Epub" rule BookDetailPanel/openReader uses on the frontend - the
-                // resume button opens whichever format this feed reports without a second round trip.
-                var file = book.Files.FirstOrDefault(f => f.Format == BookFormat.Epub) ?? book.Files.FirstOrDefault();
-
+                var book = entry.Book;
                 dtos.Add(new ContinueReadingBookDto(
                     IdCodec.Encode(book.Id),
                     book.Title,
@@ -286,10 +150,10 @@ public static class BookEndpoints
                     CoverLocator.Find(root, book.FolderPath) is not null,
                     CoverLocator.GetVersion(root, book.FolderPath),
                     book.ReadingStatus.ToString(),
-                    (file?.Format ?? BookFormat.Epub).ToString(),
-                    file is not null ? await storage.GetLocalPathAsync(file.FilePath, ct) : "",
-                    progress?.Percentage ?? 0,
-                    progress?.UpdatedAt ?? book.DateAdded));
+                    (entry.File?.Format ?? BookFormat.Epub).ToString(),
+                    entry.File is not null ? await storage.GetLocalPathAsync(entry.File.FilePath, ct) : "",
+                    entry.Percentage,
+                    entry.UpdatedAt));
             }
 
             return Results.Ok(dtos);
@@ -300,29 +164,12 @@ public static class BookEndpoints
         // books with a ReadingProgress row, so a freshly imported library (nothing opened yet) would
         // show nothing there even though there's plenty to display here.
         group.MapGet("/recently-added", async (
-            MaktabaDbContext db, IStorageProviderFactory storageFactory, int? limit, bool? includeIssues, CancellationToken ct) =>
+            ILibraryQueryServiceFactory queryServices, IStorageProviderFactory storageFactory, int? limit, bool? includeIssues,
+            CancellationToken ct) =>
         {
             var root = await storageFactory.Current.GetLocalPathAsync("", ct);
 
-            var query = db.Books
-                .Include(b => b.BookAuthors).ThenInclude(ba => ba.Author)
-                .Include(b => b.BookSeries).ThenInclude(bs => bs.Series)
-                .Include(b => b.BookTags).ThenInclude(bt => bt.Tag)
-                .Include(b => b.BookCollections).ThenInclude(bc => bc.Collection)
-                .Include(b => b.Files)
-                .Include(b => b.Periodical)
-                .AsNoTracking()
-                .AsQueryable();
-
-            if (includeIssues != true)
-            {
-                query = query.Where(b => b.PeriodicalId == null);
-            }
-
-            var books = await query
-                .OrderByDescending(b => b.DateAdded)
-                .Take(limit is > 0 ? limit.Value : 12)
-                .ToListAsync();
+            var books = await queryServices.Books.ListRecentlyAddedAsync(limit, includeIssues == true, ct);
 
             var dtos = books
                 .Select(b => new BookSummaryDto(
@@ -355,7 +202,7 @@ public static class BookEndpoints
             return Results.Ok(dtos);
         });
 
-        group.MapGet("/{id}", async (string id, MaktabaDbContext db, IStorageProviderFactory storageFactory, CancellationToken ct) =>
+        group.MapGet("/{id}", async (string id, ILibraryQueryServiceFactory queryServices, IStorageProviderFactory storageFactory, CancellationToken ct) =>
         {
             if (!IdCodec.TryDecode(id, out var bookId))
             {
@@ -365,16 +212,7 @@ public static class BookEndpoints
             var storage = storageFactory.Current;
             var root = await storage.GetLocalPathAsync("", ct);
 
-            var book = await db.Books
-                .Include(b => b.BookAuthors).ThenInclude(ba => ba.Author)
-                .Include(b => b.BookSeries).ThenInclude(bs => bs.Series)
-                .Include(b => b.BookTags).ThenInclude(bt => bt.Tag)
-                .Include(b => b.BookCollections).ThenInclude(bc => bc.Collection)
-                .Include(b => b.Files)
-                .Include(b => b.Identifiers)
-                .Include(b => b.Periodical)
-                .AsNoTracking()
-                .FirstOrDefaultAsync(b => b.Id == bookId);
+            var book = await queryServices.Books.GetByIdAsync(bookId, ct);
 
             if (book is null)
             {
@@ -383,8 +221,7 @@ public static class BookEndpoints
 
             var series = book.BookSeries.FirstOrDefault();
 
-            var secondsRead = await db.ReadingActivities.Where(ra => ra.BookId == bookId).SumAsync(ra => (int?)ra.DurationSeconds, default) ?? 0;
-            var percentage = await db.ReadingProgress.Where(rp => rp.BookId == bookId).Select(rp => (double?)rp.Percentage).FirstOrDefaultAsync();
+            var (secondsRead, percentage) = await queryServices.Books.GetReadingStatsAsync(bookId, ct);
             var expectedTotalSeconds = ReadingTimeEstimator.EstimateTotalSeconds(secondsRead, percentage ?? 0);
 
             var fileDtos = new List<BookFileDto>();
