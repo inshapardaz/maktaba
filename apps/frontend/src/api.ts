@@ -61,6 +61,11 @@ export interface BookFileInfo {
   fileSizeBytes: number;
   absolutePath: string;
   contentHash: string;
+  // Issue #102: only ever set for a Google Drive-backed library (S3 has no single console URL that
+  // works across every S3-compatible provider this app supports; OneDrive isn't wired up yet) -
+  // null everywhere else, including every endpoint other than getBook's own file list (see backend
+  // BookFileDto's own comment for why those leave it null too).
+  webViewUrl: string | null;
 }
 
 export interface Identifier {

@@ -94,6 +94,14 @@ public interface IStorageProvider
     /// another device doesn't have to wait out the full staleness window before it can open this
     /// library. A no-op for <see cref="LocalFileSystemProvider"/>.</summary>
     Task DeleteLockAsync(CancellationToken ct = default);
+
+    /// <summary>A web URL to view this file directly in the provider's own UI (e.g. Google Drive's
+    /// file viewer), purely as a "View in {Provider}" convenience link for the frontend - never
+    /// used for any actual file I/O. Null if the provider has no such concept (a local library, or
+    /// S3 - no single console URL works across every S3-compatible provider this app supports, from
+    /// AWS itself to a self-hosted MinIO with no web console at all) or the file doesn't exist
+    /// remotely.</summary>
+    Task<string?> GetWebViewUrlAsync(string relativePath, CancellationToken ct = default);
 }
 
 /// <summary>Resolves the <see cref="IStorageProvider"/> for a library, by its registry entry's

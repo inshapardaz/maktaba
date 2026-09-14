@@ -408,6 +408,13 @@ public class OneDriveStorageProvider : IStorageProvider, IDisposable
         }
     }
 
+    // Graph's DriveItem.WebUrl would give this directly, but OneDrive support is parked (Cloud:
+    // Phase 4, blocked on a real Azure AD app registration - see oneDriveAuth.ts's CLIENT_ID
+    // comment) - stubbed the same as the other not-yet-worth-implementing provider gaps rather than
+    // adding a real network call nothing can exercise yet.
+    public Task<string?> GetWebViewUrlAsync(string relativePath, CancellationToken ct = default) =>
+        Task.FromResult<string?>(null);
+
     // Diagnostic-only, same purpose as S3StorageProvider.ToString() - surfaced in error messages
     // (e.g. migration verification failures) without needing a debugger.
     public override string ToString() =>

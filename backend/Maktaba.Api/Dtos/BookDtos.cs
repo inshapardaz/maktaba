@@ -93,7 +93,12 @@ public record IdentifierDto(string Scheme, string Value);
 // BookSummaryDto/every list view that only needs plain names is untouched.
 public record AuthorRefDto(string Id, string Name, bool HasImage);
 
-public record BookFileDto(string Id, string Format, long FileSizeBytes, string AbsolutePath, string ContentHash);
+// WebViewUrl (issue #102) is only ever populated by GET /{id}'s own file list, where it's actually
+// rendered as a "View in Google Drive" action - other endpoints returning a single BookFileDto
+// (add/rename/convert a file) leave it null rather than making an extra remote call for a value
+// nothing they return is ever used to render; the frontend's own book-detail query is always
+// refetched after those anyway (see invalidateLibraryQueries), which picks up the real value.
+public record BookFileDto(string Id, string Format, long FileSizeBytes, string AbsolutePath, string ContentHash, string? WebViewUrl = null);
 
 public record RenameBookFileRequestDto(string FileName);
 

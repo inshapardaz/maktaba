@@ -391,7 +391,8 @@ public static class BookEndpoints
             foreach (var f in book.Files)
             {
                 fileDtos.Add(new BookFileDto(
-                    IdCodec.Encode(f.Id), f.Format.ToString(), f.FileSizeBytes, await storage.GetLocalPathAsync(f.FilePath, ct), f.ContentHash));
+                    IdCodec.Encode(f.Id), f.Format.ToString(), f.FileSizeBytes, await storage.GetLocalPathAsync(f.FilePath, ct), f.ContentHash,
+                    await storage.GetWebViewUrlAsync(f.FilePath, ct)));
             }
 
             var dto = new BookDetailDto(

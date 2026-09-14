@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu } from "electron";
+import { app, BrowserWindow, ipcMain, Menu, shell } from "electron";
 import * as path from "node:path";
 import * as fs from "node:fs";
 import { startSidecar, stopSidecar, stopSidecarGracefully, waitForHealth, SidecarHandle, SidecarStatus } from "./sidecar";
@@ -363,6 +363,22 @@ ipcMain.handle("maktaba:replay-onboarding-tour", () => {
     mainWindow.focus();
     mainWindow.webContents.send("maktaba:replay-onboarding-tour");
   }
+});
+
+// Every external link this app renders (About screen's GitHub/Privacy/Terms links, a book file's
+// "View in Google Drive" action, ...) is a plain <a target="_blank"> - without this, Electron's
+// default handling for that (or a raw window.open() call) spawns a bare, chromeless BrowserWindow
+// that navigates to the URL *inside the app* rather than the user's actual default browser, which
+// is both a confusing UX (no back/forward/address bar) and unnecessary attack surface (that new
+// window would otherwise be free to keep calling window.open on itself, etc.). Applied once here via
+// "web-contents-created" so it covers every current and future webContents - the main window, every
+// reader window, and the Help window - rather than repeating setWindowOpenHandler at each of their
+// own BrowserWindow construction sites below.
+app.on("web-contents-created", (_event, contents) => {
+  contents.setWindowOpenHandler(({ url }) => {
+    void shell.openExternal(url);
+    return { action: "deny" };
+  });
 });
 
 app.whenReady().then(async () => {

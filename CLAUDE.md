@@ -326,6 +326,28 @@ actually been trashed, so it's checking real, current state rather than the back
 of time - a no-op if the folder is missing or still has something in it (a file the user placed
 there Maktaba doesn't know about, say).
 
+**"View in Google Drive"** (issue #102) - `IStorageProvider.GetWebViewUrlAsync` returns a web URL to
+view a file directly in the provider's own UI, purely a convenience link (never used for any actual
+file I/O). Only Google Drive implements it for real (`https://drive.google.com/file/d/{id}/view`,
+built directly from the already-resolved item id - no extra API call needed); S3 returns null (no
+single console URL works across every S3-compatible provider this app supports, from AWS itself to
+a self-hosted MinIO with no web console at all) and so does OneDrive for now (parked alongside the
+rest of OneDrive support - see above). `BookFileDto.WebViewUrl`/`BookFileInfo.webViewUrl` are only
+ever populated by `GET /api/books/{id}`'s own file list (the one place it's actually rendered, as a
+button in `BookDetailPanel.tsx`) - every other endpoint returning a `BookFileDto` (add/rename/
+convert a file) leaves it null rather than making a remote call for a value nothing they return
+renders; the frontend's own book-detail query is always refetched after those anyway, which picks up
+the real value. Opening it goes through a plain `<a target="_blank">` - see `main.ts`'s
+`web-contents-created`/`setWindowOpenHandler` below for why that's not a no-op.
+
+**External links always route through `shell.openExternal`, never a bare Electron popup window** -
+`main.ts` registers one `app.on("web-contents-created", ...)` `setWindowOpenHandler` covering every
+window (main, every reader window, Help), denying Electron's own default action (spawning a
+chromeless `BrowserWindow` that navigates in-app) and opening the user's actual default browser
+instead. Applies uniformly to every `<a target="_blank">` this app renders - `AboutSettings.tsx`'s
+GitHub/Privacy Policy/Terms & Conditions links, the "View in Google Drive" button above, and any
+future one - without needing to repeat the handler at each window's own construction site.
+
 Frontend surface: `LibrariesSettings.tsx`'s "Connect S3-compatible library…" form (bucket/region/
 subfolder/endpoint/access key/secret, with a "Test connection" step) and its "Connect Google
 Drive…"/"Connect OneDrive…" forms (name/optional folder, plus a "Sign in with Google"/"Sign in with

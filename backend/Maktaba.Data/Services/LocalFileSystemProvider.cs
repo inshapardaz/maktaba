@@ -100,4 +100,7 @@ public class LocalFileSystemProvider(ILibraryPathProvider libraryPath) : IStorag
     public Task WriteLockAsync(LibraryLockInfo lockInfo, CancellationToken ct = default) => Task.CompletedTask;
 
     public Task DeleteLockAsync(CancellationToken ct = default) => Task.CompletedTask;
+
+    public Task<string?> GetWebViewUrlAsync(string relativePath, CancellationToken ct = default) =>
+        Task.FromResult<string?>(null);
 }

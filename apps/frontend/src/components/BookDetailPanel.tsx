@@ -37,6 +37,7 @@ import {
   IconCamera,
   IconCheck,
   IconChevronDown,
+  IconCloud,
   IconFileText,
   IconFileTypeDocx,
   IconFolder,
@@ -700,6 +701,22 @@ export function BookDetailPanel({ bookId, onClose, onRemoved, onSelectFilter }: 
                           <IconFolder size={14} />
                         </ActionIcon>
                       </Tooltip>
+                      {f.webViewUrl && (
+                        <Tooltip label={t("bookDetail.viewInGoogleDrive")}>
+                          <ActionIcon
+                            component="a"
+                            href={f.webViewUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            size="sm"
+                            variant="subtle"
+                            color="gray"
+                            aria-label={t("bookDetail.viewInGoogleDrive")}
+                          >
+                            <IconCloud size={14} />
+                          </ActionIcon>
+                        </Tooltip>
+                      )}
                       <Popover
                         opened={extractCoverConfirmId === f.id}
                         onClose={() => setExtractCoverConfirmId(null)}

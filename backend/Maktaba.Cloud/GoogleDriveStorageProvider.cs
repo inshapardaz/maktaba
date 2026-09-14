@@ -464,6 +464,14 @@ public class GoogleDriveStorageProvider : IStorageProvider, IDisposable
         }
     }
 
+    // Drive's file viewer URL is a fixed, well-known shape keyed only by the item id - no separate
+    // API call needed to look up a "webViewLink" once the id is already known via FindItemIdAsync.
+    public async Task<string?> GetWebViewUrlAsync(string relativePath, CancellationToken ct = default)
+    {
+        var itemId = await FindItemIdAsync(ToItemPath(relativePath), ct);
+        return itemId is null ? null : $"https://drive.google.com/file/d/{itemId}/view";
+    }
+
     // Diagnostic-only, same purpose as S3StorageProvider/OneDriveStorageProvider's ToString().
     public override string ToString() =>
         $"googledrive folder={(string.IsNullOrEmpty(_options.Folder) ? "(My Drive root)" : _options.Folder)}";

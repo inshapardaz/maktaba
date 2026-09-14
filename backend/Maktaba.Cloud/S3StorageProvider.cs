@@ -259,6 +259,12 @@ public class S3StorageProvider(
     public Task DeleteLockAsync(CancellationToken ct = default) =>
         _client.DeleteObjectAsync(options.Bucket, ToKey(LockRelativePath), ct);
 
+    // No single console URL works across every S3-compatible provider this app supports (AWS's own
+    // console has one shape; a self-hosted MinIO typically has none at all) - see the interface's
+    // own doc comment.
+    public Task<string?> GetWebViewUrlAsync(string relativePath, CancellationToken ct = default) =>
+        Task.FromResult<string?>(null);
+
     // Diagnostic-only - surfaced in error messages (e.g. migration verification failures) so a
     // mismatch between "what the user configured" and "what actually got checked" is visible
     // without needing to add a debugger.
