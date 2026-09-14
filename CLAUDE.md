@@ -478,6 +478,18 @@ per the design addendum on issue #69) and building an actual `INawishtaApiClient
 `securitySchemes` at all (auth is bearer-token-via-header but undocumented in the spec itself), so
 there was nothing for NSwag to generate an auth-handling constructor overload from either way.
 
+`Maktaba.Nawishta/NawishtaProviderOptions.cs` (issue #109) rounds out the registry schema side:
+`NawishtaProviderOptions`/`NawishtaCredential` mirror `S3ProviderOptions`/`GoogleDriveProviderOptions`/
+`OneDriveProviderOptions`'s own "non-secret `ProviderConfig` dict + secret credential JSON" split
+(`Maktaba.Cloud`) - kept in `Maktaba.Nawishta` instead since a Nawishta library isn't an
+`IStorageProvider` (it replaces both metadata and file storage, not just where files sit - see the
+design addendum on issue #69). `ProviderConfig`'s `serverUrl`/`remoteLibraryId` keys and the
+credential JSON's `accessToken`/`refreshToken`/`expiresAt` shape are defined now so #108 (actual
+login) has somewhere concrete to write into - `LibraryRegistryEntry`'s own `ProviderType`/
+`ProviderConfig`/`CredentialRef` fields already supported an opaque `"nawishta"` entry generically
+from Phase 1 (Cloud storage) onward, so no registry/config.json schema change was needed, only this
+typed wrapper around it.
+
 ## Backend conventions
 
 - **Find-or-create by name**: `Maktaba.Data/Services/EntityResolvers.cs` (`ResolveAuthorsAsync`/
