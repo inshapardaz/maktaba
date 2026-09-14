@@ -920,9 +920,17 @@ interface NawishtaConnectModalProps {
 // field defaults to the picked library's own Nawishta name (still editable) rather than being typed
 // up front, since asking for a display name before the user has even seen which libraries exist
 // would be backwards.
+//
+// The server URL is deliberately never shown - Nawishta is the one Maktaba's own developer runs
+// (unlike S3/Google Drive/OneDrive, which are third-party services with real self-hosted/alternate-
+// endpoint use cases), so exposing a server URL field would only invite typos into a value that's
+// never actually meant to vary. serverUrl still exists as internal state (fixed to
+// NAWISHTA_DEFAULT_SERVER_URL) purely because connectCloudLibrary's ProviderConfig needs one.
+const NAWISHTA_DEFAULT_SERVER_URL = "https://api.nawishta.co.uk";
+
 function NawishtaConnectModal({ opened, onClose, onConnected }: NawishtaConnectModalProps) {
   const { t } = useLanguage();
-  const [serverUrl, setServerUrl] = useState("https://api.nawishta.co.uk");
+  const [serverUrl] = useState(NAWISHTA_DEFAULT_SERVER_URL);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [credential, setCredential] = useState<NawishtaCredential | null>(null);
@@ -968,7 +976,6 @@ function NawishtaConnectModal({ opened, onClose, onConnected }: NawishtaConnectM
   });
 
   const reset = () => {
-    setServerUrl("https://api.nawishta.co.uk");
     setEmail("");
     setPassword("");
     setCredential(null);
@@ -978,7 +985,7 @@ function NawishtaConnectModal({ opened, onClose, onConnected }: NawishtaConnectM
     setError(null);
   };
 
-  const canLogin = serverUrl.trim().length > 0 && email.trim().length > 0 && password.length > 0;
+  const canLogin = email.trim().length > 0 && password.length > 0;
   const canConnect = credential !== null && selectedLibraryId !== null && name.trim().length > 0;
 
   return (
@@ -994,11 +1001,6 @@ function NawishtaConnectModal({ opened, onClose, onConnected }: NawishtaConnectM
         {credential === null ? (
           <>
             <TextInput
-              label={t("librariesSettings.nawishtaServerUrl")}
-              value={serverUrl}
-              onChange={(e) => setServerUrl(e.currentTarget.value)}
-            />
-            <TextInput
               label={t("librariesSettings.nawishtaEmail")}
               value={email}
               onChange={(e) => setEmail(e.currentTarget.value)}
@@ -1008,6 +1010,9 @@ function NawishtaConnectModal({ opened, onClose, onConnected }: NawishtaConnectM
               value={password}
               onChange={(e) => setPassword(e.currentTarget.value)}
             />
+            <Text size="xs" c="dimmed">
+              {t("librariesSettings.nawishtaPrivacyNote")}
+            </Text>
           </>
         ) : (
           <>
@@ -1078,10 +1083,10 @@ function ReconnectModal({ entry, onClose, onReconnected }: ReconnectModalProps) 
   const [accessKeyId, setAccessKeyId] = useState("");
   const [secretAccessKey, setSecretAccessKey] = useState("");
   const [oauthTokens, setOauthTokens] = useState<GoogleDriveCredential | OneDriveCredential | null>(null);
-  // LibraryEntry doesn't carry its own ProviderConfig (only ProviderType) - defaults to the same
-  // server URL NawishtaConnectModal's own default is, editable in the rare case a library was
-  // connected against a different one.
-  const [nawishtaServerUrl, setNawishtaServerUrl] = useState("https://api.nawishta.co.uk");
+  // Never shown as a field, same reasoning as NAWISHTA_DEFAULT_SERVER_URL above - LibraryEntry
+  // doesn't carry its own ProviderConfig (only ProviderType), so this can't be read back from the
+  // entry being reconnected either way.
+  const [nawishtaServerUrl] = useState(NAWISHTA_DEFAULT_SERVER_URL);
   const [nawishtaEmail, setNawishtaEmail] = useState("");
   const [nawishtaPassword, setNawishtaPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -1094,7 +1099,6 @@ function ReconnectModal({ entry, onClose, onReconnected }: ReconnectModalProps) 
     setAccessKeyId("");
     setSecretAccessKey("");
     setOauthTokens(null);
-    setNawishtaServerUrl("https://api.nawishta.co.uk");
     setNawishtaEmail("");
     setNawishtaPassword("");
     setError(null);
@@ -1142,7 +1146,7 @@ function ReconnectModal({ entry, onClose, onReconnected }: ReconnectModalProps) 
   });
 
   const canSubmit = isNawishta
-    ? nawishtaServerUrl.trim().length > 0 && nawishtaEmail.trim().length > 0 && nawishtaPassword.length > 0
+    ? nawishtaEmail.trim().length > 0 && nawishtaPassword.length > 0
     : isOAuthProvider
       ? oauthTokens !== null
       : accessKeyId.trim().length > 0 && secretAccessKey.length > 0;
@@ -1193,11 +1197,6 @@ function ReconnectModal({ entry, onClose, onReconnected }: ReconnectModalProps) 
         ) : isNawishta ? (
           <>
             <TextInput
-              label={t("librariesSettings.nawishtaServerUrl")}
-              value={nawishtaServerUrl}
-              onChange={(e) => setNawishtaServerUrl(e.currentTarget.value)}
-            />
-            <TextInput
               label={t("librariesSettings.nawishtaEmail")}
               value={nawishtaEmail}
               onChange={(e) => setNawishtaEmail(e.currentTarget.value)}
@@ -1207,6 +1206,9 @@ function ReconnectModal({ entry, onClose, onReconnected }: ReconnectModalProps) 
               value={nawishtaPassword}
               onChange={(e) => setNawishtaPassword(e.currentTarget.value)}
             />
+            <Text size="xs" c="dimmed">
+              {t("librariesSettings.nawishtaPrivacyNote")}
+            </Text>
           </>
         ) : (
           <>

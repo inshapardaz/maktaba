@@ -12,11 +12,13 @@ namespace Maktaba.Data.Services;
 public class NawishtaSessionResolver(
     ILibraryService libraryService,
     ICloudCredentialCache credentials,
+    ICloudCacheManager cacheManager,
     IHttpClientFactory httpClientFactory)
 {
-    private (NawishtaRawApiClient Api, int RemoteLibraryId, NawishtaShadowDbContext Shadow)? _cached;
+    private (NawishtaRawApiClient Api, int RemoteLibraryId, NawishtaShadowDbContext Shadow, ICloudCacheManager CacheManager, string LibraryId)? _cached;
 
-    public bool TryResolve(out (NawishtaRawApiClient Api, int RemoteLibraryId, NawishtaShadowDbContext Shadow) result)
+    public bool TryResolve(
+        out (NawishtaRawApiClient Api, int RemoteLibraryId, NawishtaShadowDbContext Shadow, ICloudCacheManager CacheManager, string LibraryId) result)
     {
         if (_cached is { } cached)
         {
@@ -45,7 +47,7 @@ public class NawishtaSessionResolver(
         var shadow = new NawishtaShadowDbContext(NawishtaShadowDbContext.GetDbPath(entry.Id));
         shadow.Database.EnsureCreated();
 
-        var value = (api, options.RemoteLibraryId, shadow);
+        var value = (api, options.RemoteLibraryId, shadow, cacheManager, entry.Id);
         _cached = value;
         result = value;
         return true;

@@ -1,5 +1,6 @@
 using Maktaba.Core.Entities;
 using Maktaba.Core.Services;
+using Maktaba.Nawishta.Generated;
 using Microsoft.EntityFrameworkCore;
 
 namespace Maktaba.Nawishta;
@@ -14,8 +15,19 @@ namespace Maktaba.Nawishta;
 /// trade-off EfBookQueryService doesn't have to make (it can filter before paging, in SQL). ReadingStatus/
 /// Rating/reading-progress always come from the local shadow table (NawishtaShadowDbContext), never
 /// from Nawishta itself - see the design addendum on issue #69.
+///
+/// Covers are eagerly cached here, not lazily on first request like content (NawishtaStorageProvider).
+/// Every caller of "does this book have a cover" (BookEndpoints.cs's GET ""/{id}/{id}/recently-added/
+/// continue-reading) uses CoverLocator.Find - a synchronous, disk-only check with no way to trigger a
+/// download itself. Without pre-caching here, HasCover would stay false forever (nothing would ever
+/// populate the cache), so the frontend would never even attempt to load the image - the actual
+/// symptom reported (book covers never shown). EnsureCoverCachedAsync costs one extra download per
+/// book that has a cover and isn't already cached, bounded by whatever page size/limit the caller
+/// already asked for.
 /// </summary>
-public class NawishtaBookQueryService(NawishtaRawApiClient api, int remoteLibraryId, NawishtaShadowDbContext shadow) : IBookQueryService
+public class NawishtaBookQueryService(
+    NawishtaRawApiClient api, int remoteLibraryId, NawishtaShadowDbContext shadow,
+    ICloudCacheManager cacheManager, string libraryId) : IBookQueryService
 {
     public async Task<BookListResult> ListAsync(BookQueryFilters filters, CancellationToken ct = default)
     {
@@ -42,6 +54,7 @@ public class NawishtaBookQueryService(NawishtaRawApiClient api, int remoteLibrar
                 continue;
             }
 
+            await EnsureCoverCachedAsync(view, ct);
             books.Add(book);
             if (state?.LastReadAt is { } lastReadAt)
             {
@@ -61,6 +74,7 @@ public class NawishtaBookQueryService(NawishtaRawApiClient api, int remoteLibrar
         }
 
         var state = await shadow.BookStates.FindAsync([bookId], ct);
+        await EnsureCoverCachedAsync(view, ct);
         return NawishtaEntityMapper.ToBook(view, state);
     }
 
@@ -83,6 +97,7 @@ public class NawishtaBookQueryService(NawishtaRawApiClient api, int remoteLibrar
                 continue;
             }
 
+            await EnsureCoverCachedAsync(view, ct);
             var book = NawishtaEntityMapper.ToBook(view, state);
             var file = book.Files.FirstOrDefault(f => f.Format == BookFormat.Epub) ?? book.Files.FirstOrDefault();
             entries.Add(new ContinueReadingEntry(book, file, state.Percentage, state.LastReadAt ?? DateTime.UtcNow));
@@ -103,10 +118,44 @@ public class NawishtaBookQueryService(NawishtaRawApiClient api, int remoteLibrar
             }
 
             var state = await shadow.BookStates.FindAsync([bookId], ct);
+            await EnsureCoverCachedAsync(view, ct);
             books.Add(NawishtaEntityMapper.ToBook(view, state));
         }
 
         return books;
+    }
+
+    // Best-effort - a failed cover fetch (network blip, Nawishta's own file-serving bug - see
+    // issue inshapardaz/api#50) degrades to "no cover shown" for this one book, not a failed
+    // request for the whole list.
+    private async Task EnsureCoverCachedAsync(BookView view, CancellationToken ct)
+    {
+        if (view.Id is not { } bookId || view.Links?.Any(l => l.Rel == "image") != true)
+        {
+            return;
+        }
+
+        var relativePath = $"{bookId}/cover.jpg";
+        if (cacheManager.Exists(libraryId, relativePath))
+        {
+            return;
+        }
+
+        try
+        {
+            var cover = await api.DownloadBookCoverAsync(remoteLibraryId, bookId, ct);
+            if (cover is null)
+            {
+                return;
+            }
+
+            using var stream = new MemoryStream(cover.Value.Bytes);
+            await cacheManager.WriteAsync(libraryId, relativePath, stream, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Swallowed on purpose - see this method's own doc comment.
+        }
     }
 
     public async Task<(int SecondsRead, double? Percentage)> GetReadingStatsAsync(int bookId, CancellationToken ct = default)

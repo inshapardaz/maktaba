@@ -125,6 +125,27 @@ public class NawishtaRawApiClient(HttpClient httpClient, string serverUrl)
         return (bytes, mimeType, fileName);
     }
 
+    /// <summary>The book's own "image" (cover) link, same {libraries}/files/{fileId}-via-
+    /// FileController.GetLibraryFile mechanism as a content's "download" link (see Nawishta's
+    /// BookRenderer.Render - both go through the exact same file-serving endpoint). Null if the
+    /// book has no cover set at all (a book.Links with no "image" rel), distinct from that
+    /// endpoint failing (an exception) - callers should treat "no cover" and "cover fetch failed"
+    /// differently (the former is normal, the latter is worth logging).</summary>
+    public async Task<(byte[] Bytes, string? MimeType)?> DownloadBookCoverAsync(int libraryId, int bookId, CancellationToken ct)
+    {
+        var book = await GetBookByIdAsync(libraryId, bookId, ct);
+        var imageUrl = book?.Links?.FirstOrDefault(l => l.Rel == "image")?.Href;
+        if (imageUrl is null)
+        {
+            return null;
+        }
+
+        using var response = await httpClient.GetAsync(imageUrl, HttpCompletionOption.ResponseHeadersRead, ct);
+        await ThrowIfErrorAsync(response, ct);
+        var bytes = await response.Content.ReadAsByteArrayAsync(ct);
+        return (bytes, response.Content.Headers.ContentType?.MediaType);
+    }
+
     private class NawishtaContentDescription
     {
         [JsonPropertyName("fileName")]

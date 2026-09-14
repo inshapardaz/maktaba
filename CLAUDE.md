@@ -582,6 +582,35 @@ comment) rather than letting `ImportService` fail confusingly partway through. A
 (re-pull book/author/series list) and content-management support are still open work, not built in
 this pass.
 
+**Book covers are eagerly cached, not lazy like content** - every "does this book have a cover"
+check (`BookEndpoints.cs`'s `GET ""`/`{id}`/`recently-added`/`continue-reading`) goes through
+`CoverLocator.Find`, a synchronous, disk-only check with no way to trigger a download itself.
+Content files can stay lazy (`NawishtaStorageProvider.GetLocalPathAsync` downloads on first real
+read, via the async `GET /{id}/cover`/`GET /{id}/file` endpoints) because nothing needs to know
+*in advance* whether a file exists - but a cover's presence has to be known before that async path
+is ever reached, or the frontend never even requests the image. `NawishtaBookQueryService.
+EnsureCoverCachedAsync` (called after mapping every book in `ListAsync`/`GetByIdAsync`/
+`ListRecentlyAddedAsync`/`ListContinueReadingAsync`) downloads and caches a book's cover
+(`{bookId}/cover.jpg`, via a new `NawishtaRawApiClient.DownloadBookCoverAsync` that follows the
+book's own `image` link the same way content follows its `download` link) up front, bounded by
+whatever page size/limit was already requested - best-effort, a failed fetch just leaves that one
+book without a cover rather than failing the whole list. **Confirmed live that book cover images
+hit the exact same upstream bug as content downloads** ([inshapardaz/api#50](https://github.com/inshapardaz/api/issues/50)
+- both go through `FileController.GetLibraryFile`), so this is currently correctly-implemented but
+not yet visibly working until that's fixed server-side - `NawishtaStorageProvider.ExistsAsync`
+also had to gain a real (not just disk-cache-based) check for the same reason, used by the async
+`CoverLocator.FindAsync` path `GET /{id}/cover` itself goes through.
+
+**The Nawishta server URL is never shown as a field** in `NawishtaConnectModal`/`ReconnectModal` -
+fixed to `NAWISHTA_DEFAULT_SERVER_URL` (`https://api.nawishta.co.uk`) internally. Unlike S3/Google
+Drive/OneDrive (third-party services with real self-hosted/alternate-endpoint use cases), Nawishta
+is the one server Maktaba's own developer runs, so a URL field would only invite typos into a value
+that's never meant to vary. Both forms show a short privacy note (`librariesSettings.
+nawishtaPrivacyNote`) next to the email/password fields - true today: `nawishtaLogin` sends the
+password straight through to Nawishta's own `/Accounts/authenticate` and only the resulting
+`NawishtaCredential` (access/refresh tokens) is ever passed to `window.maktaba.saveCloudCredential`
+for encrypted, on-device persistence - the raw email/password are never written anywhere.
+
 ## Backend conventions
 
 - **Find-or-create by name**: `Maktaba.Data/Services/EntityResolvers.cs` (`ResolveAuthorsAsync`/

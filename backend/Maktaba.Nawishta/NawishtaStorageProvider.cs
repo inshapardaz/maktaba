@@ -1,5 +1,6 @@
 using Maktaba.Core.Services;
 using Maktaba.Core.Sync;
+using System.Linq;
 
 namespace Maktaba.Nawishta;
 
@@ -44,11 +45,24 @@ public class NawishtaStorageProvider(
             return cacheManager.GetLocalPath(libraryId, relativePath);
         }
 
+        if (TryParseCoverPath(relativePath, out var coverBookId))
+        {
+            var cover = await api.DownloadBookCoverAsync(remoteLibraryId, coverBookId, ct)
+                ?? throw new InvalidOperationException($"Nawishta book {coverBookId} has no cover.");
+            await CacheAsync(relativePath, cover.Bytes, ct);
+            return cacheManager.GetLocalPath(libraryId, relativePath);
+        }
+
         var (bookId, contentId) = ParseContentPath(relativePath);
         var (bytes, _, _) = await api.DownloadContentAsync(remoteLibraryId, bookId, contentId, ct);
+        await CacheAsync(relativePath, bytes, ct);
+        return cacheManager.GetLocalPath(libraryId, relativePath);
+    }
+
+    private async Task CacheAsync(string relativePath, byte[] bytes, CancellationToken ct)
+    {
         using var stream = new MemoryStream(bytes);
         await cacheManager.WriteAsync(libraryId, relativePath, stream, ct);
-        return cacheManager.GetLocalPath(libraryId, relativePath);
     }
 
     // relativePath is always "{bookId}/{contentId}{extension}" - see NawishtaEntityMapper.ToBook,
@@ -65,6 +79,23 @@ public class NawishtaStorageProvider(
         return (bookId, contentId);
     }
 
+    // CoverLocator.Find/FindAsync always probes "{FolderPath}/cover.jpg" (then .jpeg/.png) -
+    // FolderPath is just the book's own id (see NawishtaEntityMapper.ToBook), so a cover path looks
+    // like "{bookId}/cover.jpg" - distinguished from a content path (ParseContentPath above) by its
+    // second segment being the literal word "cover", not a numeric content id.
+    private static bool TryParseCoverPath(string relativePath, out int bookId)
+    {
+        var withoutExtension = Path.ChangeExtension(relativePath, null).Replace('\\', '/');
+        var parts = withoutExtension.Split('/', 2);
+        if (parts.Length == 2 && parts[1] == "cover" && int.TryParse(parts[0], out bookId))
+        {
+            return true;
+        }
+
+        bookId = 0;
+        return false;
+    }
+
     public Task NotifyWrittenAsync(string relativePath, CancellationToken ct = default) =>
         throw new NotSupportedException("Writing a file directly isn't supported for a Nawishta-backed library yet - see issue #111.");
 
@@ -76,8 +107,27 @@ public class NawishtaStorageProvider(
     public Task MoveAsync(string fromRelativePath, string toRelativePath, CancellationToken ct = default) =>
         throw new NotSupportedException("Moving a file isn't supported for a Nawishta-backed library.");
 
-    public Task<bool> ExistsAsync(string relativePath, CancellationToken ct = default) =>
-        Task.FromResult(cacheManager.Exists(libraryId, relativePath));
+    public async Task<bool> ExistsAsync(string relativePath, CancellationToken ct = default)
+    {
+        if (cacheManager.Exists(libraryId, relativePath))
+        {
+            return true;
+        }
+
+        // CoverLocator.FindAsync (the async, per-request cover-serving path - see BookEndpoints.cs's
+        // GET /{id}/cover) calls this *before* GetLocalPathAsync to decide whether a cover exists at
+        // all - unlike a real local/S3/Drive/OneDrive library, a Nawishta book's cover was never
+        // written to the cache ahead of time, so this has to actually ask Nawishta rather than just
+        // checking disk. CoverLocator tries "cover.jpg" first and stops at the first match (see its
+        // own CoverCandidates order), so this only ever does the real remote check once per request.
+        if (TryParseCoverPath(relativePath, out var bookId))
+        {
+            var book = await api.GetBookByIdAsync(remoteLibraryId, bookId, ct);
+            return book?.Links?.Any(l => l.Rel == "image") == true;
+        }
+
+        return false;
+    }
 
     public Task<bool> ExistsRemoteAsync(string relativePath, CancellationToken ct = default) =>
         Task.FromResult(false);

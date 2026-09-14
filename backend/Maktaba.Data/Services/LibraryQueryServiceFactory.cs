@@ -21,7 +21,9 @@ namespace Maktaba.Data.Services;
 public class LibraryQueryServiceFactory(MaktabaDbContext db, NawishtaSessionResolver nawishta) : ILibraryQueryServiceFactory
 {
     public IBookQueryService Books =>
-        nawishta.TryResolve(out var n) ? new NawishtaBookQueryService(n.Api, n.RemoteLibraryId, n.Shadow) : new EfBookQueryService(db);
+        nawishta.TryResolve(out var n)
+            ? new NawishtaBookQueryService(n.Api, n.RemoteLibraryId, n.Shadow, n.CacheManager, n.LibraryId)
+            : new EfBookQueryService(db);
 
     public IBrowseQueryService Browse =>
         nawishta.TryResolve(out var n) ? new NawishtaBrowseQueryService(n.Api, n.RemoteLibraryId, n.Shadow) : new EfBrowseQueryService(db);
