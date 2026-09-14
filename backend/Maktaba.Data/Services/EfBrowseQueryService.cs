@@ -48,21 +48,30 @@ public class EfBrowseQueryService(MaktabaDbContext db) : IBrowseQueryService
             .OrderBy(p => p)
             .ToListAsync(ct);
 
-    public async Task<IReadOnlyList<NamedGroupCount>> ListPublishersGroupedAsync(CancellationToken ct = default) =>
-        await db.Books
+    public async Task<IReadOnlyList<NamedGroupCount>> ListPublishersGroupedAsync(CancellationToken ct = default)
+    {
+        // EF Core can't translate a GroupBy().Select(g => new NamedGroupCount(...)) projecting
+        // straight into a record constructor here - project to an anonymous type (which does
+        // translate) and map to the record client-side instead.
+        var groups = await db.Books
             .Where(b => b.Publisher != null && b.Publisher != "")
             .GroupBy(b => b.Publisher!)
-            .Select(g => new NamedGroupCount(g.Key, g.Count()))
+            .Select(g => new { Name = g.Key, Count = g.Count() })
             .OrderBy(p => p.Name)
             .ToListAsync(ct);
+        return groups.Select(g => new NamedGroupCount(g.Name, g.Count)).ToList();
+    }
 
-    public async Task<IReadOnlyList<NamedGroupCount>> ListLanguagesGroupedAsync(CancellationToken ct = default) =>
-        await db.Books
+    public async Task<IReadOnlyList<NamedGroupCount>> ListLanguagesGroupedAsync(CancellationToken ct = default)
+    {
+        var groups = await db.Books
             .Where(b => b.Language != null && b.Language != "")
             .GroupBy(b => b.Language!)
-            .Select(g => new NamedGroupCount(g.Key, g.Count()))
+            .Select(g => new { Name = g.Key, Count = g.Count() })
             .OrderBy(l => l.Name)
             .ToListAsync(ct);
+        return groups.Select(g => new NamedGroupCount(g.Name, g.Count)).ToList();
+    }
 
     public async Task<IReadOnlyDictionary<ReadingStatus, int>> GetReadingStatusCountsAsync(CancellationToken ct = default)
     {
