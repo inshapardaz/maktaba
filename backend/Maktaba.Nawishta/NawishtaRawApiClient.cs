@@ -89,15 +89,51 @@ public class NawishtaRawApiClient(HttpClient httpClient, string serverUrl)
 
     /// <summary>Downloads one of a book's content files (BookView.Contents[i].Id) as raw bytes -
     /// see NawishtaBookQueryService's doc comment for why a "content" maps 1:1 to a Maktaba
-    /// BookFile. Returns (bytes, mimeType, fileName).</summary>
+    /// BookFile. Returns (bytes, mimeType, fileName).
+    ///
+    /// GET .../contents/{contentId} itself (confirmed live, against a real account) doesn't return
+    /// the file's bytes at all - it returns a BookContentView-shaped JSON description of the
+    /// content, whose own "self" link advertises an <c>accept: {mimeType}</c> that content
+    /// negotiation *might* satisfy, but its "download" link
+    /// (<c>/libraries/{libraryId}/files/{fileId}</c> - a different id than contentId entirely) is
+    /// what actually serves the bytes, confirmed by following it directly. This method always takes
+    /// that two-step route (fetch the description, follow its "download" link) rather than gambling
+    /// on Accept-header content negotiation against the first URL.</summary>
     public async Task<(byte[] Bytes, string? MimeType, string? FileName)> DownloadContentAsync(
         int libraryId, int bookId, long contentId, CancellationToken ct)
     {
-        using var response = await httpClient.GetAsync(
-            $"{_baseUrl}/libraries/{libraryId}/books/{bookId}/contents/{contentId}", HttpCompletionOption.ResponseHeadersRead, ct);
+        var description = await GetJsonAsync<NawishtaContentDescription>(
+            $"{_baseUrl}/libraries/{libraryId}/books/{bookId}/contents/{contentId}", ct);
+        var downloadUrl = description?.Links?.FirstOrDefault(l => l.Rel == "download")?.Href
+            ?? throw new InvalidOperationException($"Nawishta content {contentId} has no \"download\" link.");
+
+        using var response = await httpClient.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead, ct);
         await ThrowIfErrorAsync(response, ct);
         var bytes = await response.Content.ReadAsByteArrayAsync(ct);
-        return (bytes, response.Content.Headers.ContentType?.MediaType, response.Content.Headers.ContentDisposition?.FileName);
+        var mimeType = response.Content.Headers.ContentType?.MediaType ?? description?.MimeType;
+        var fileName = response.Content.Headers.ContentDisposition?.FileName ?? description?.FileName;
+        return (bytes, mimeType, fileName);
+    }
+
+    private class NawishtaContentDescription
+    {
+        [JsonPropertyName("fileName")]
+        public string? FileName { get; set; }
+
+        [JsonPropertyName("mimeType")]
+        public string? MimeType { get; set; }
+
+        [JsonPropertyName("links")]
+        public List<NawishtaLink>? Links { get; set; }
+    }
+
+    private class NawishtaLink
+    {
+        [JsonPropertyName("href")]
+        public string? Href { get; set; }
+
+        [JsonPropertyName("rel")]
+        public string? Rel { get; set; }
     }
 
     /// <summary>Uploads a new content file for a book (multipart, matching Nawishta's own

@@ -153,6 +153,19 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
             {
                 LibraryRootPath = entryToOpen.Path;
                 CurrentLibraryId = entryToOpen.Id;
+
+                // A Nawishta library auto-opened straight out of config.json bypasses ActivateAsync
+                // entirely (this constructor sets LibraryRootPath/CurrentLibraryId directly, above) -
+                // without this, the "library must be open" middleware's very first
+                // EnsureCurrentSchemaAsync call would see _schemaVerified == false and LibraryRootPath
+                // non-null and try to EnsureCreatedAsync a metadata.db against the synthetic
+                // "nawishta://{name}" display path, which isn't a real directory - "SQLite Error 14:
+                // unable to open database file", confirmed live. See ActivateAsync's own matching
+                // branch/doc comment for why a Nawishta library never has (or needs) a metadata.db.
+                if (entryToOpen.ProviderType == "nawishta")
+                {
+                    _schemaVerified = true;
+                }
             }
         }
         catch (Exception ex) when (ex is IOException or JsonException)

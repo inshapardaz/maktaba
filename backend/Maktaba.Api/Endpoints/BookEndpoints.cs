@@ -236,8 +236,27 @@ public static class BookEndpoints
             var fileDtos = new List<BookFileDto>();
             foreach (var f in book.Files)
             {
+                // A remote provider's GetLocalPathAsync can genuinely fail (a dead network, a
+                // revoked credential, or - confirmed live against a real Nawishta account - a
+                // server-side bug in its own advertised "download" link for some content) without
+                // that meaning the whole book detail view should 500: the title/authors/etc. below
+                // are still valid and worth showing, with this one file just not openable until
+                // whatever's wrong resolves. An empty AbsolutePath (BookFileDto's own type is
+                // non-nullable string, not worth a wire-contract change here) means "couldn't
+                // resolve this file right now" - opening it fails the same way any other missing/
+                // unreadable file already does.
+                string absolutePath;
+                try
+                {
+                    absolutePath = await storage.GetLocalPathAsync(f.FilePath, ct);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    absolutePath = "";
+                }
+
                 fileDtos.Add(new BookFileDto(
-                    IdCodec.Encode(f.Id), f.Format.ToString(), f.FileSizeBytes, await storage.GetLocalPathAsync(f.FilePath, ct), f.ContentHash,
+                    IdCodec.Encode(f.Id), f.Format.ToString(), f.FileSizeBytes, absolutePath, f.ContentHash,
                     await storage.GetWebViewUrlAsync(f.FilePath, ct)));
             }
 
