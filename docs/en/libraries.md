@@ -127,9 +127,10 @@ From the same list you can:
 - **Remove** a library from the list — this only removes it from Maktaba; your books and folder
   on disk are never deleted.
 
-**Relocate** and **Resync** are only available for a library stored on your own computer — a
-cloud library's location is its bucket/folder configuration, and it stays in sync automatically
-instead (see [Cloud libraries](#cloud-libraries) above).
+**Relocate** is only available for a library stored on your own computer — a cloud library's
+location is its bucket/folder configuration instead (see [Cloud libraries](#cloud-libraries)
+above). **Resync** works for a cloud library too, looking through its remote folder the same way -
+useful if a book you know is there isn't showing up yet.
 
 > **Tip:** Removing a library from Maktaba's list is always safe for your files. To actually
 > delete books, delete them from within Maktaba (or from the folder itself) — removing the

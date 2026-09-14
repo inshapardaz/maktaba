@@ -301,9 +301,15 @@ export function removeLibrary(id: string): Promise<void> {
 }
 
 // Switches to this library first (if it isn't already active) and rescans it - works from any row
-// in the Libraries list, not just the currently active one.
-export function resyncLibrary(id: string): Promise<{ bookCount: number }> {
-  return request<{ bookCount: number }>(`/api/libraries/${id}/resync`, { method: "POST" });
+// in the Libraries list, not just the currently active one. credential matters only when resyncing
+// a not-yet-active cloud library (see RescanContext.tsx, which fetches the saved one the same way
+// LibrarySwitchContext does before a plain switch) - omit it for a local library or one that's
+// already active.
+export function resyncLibrary<TCredential>(id: string, credential?: TCredential): Promise<{ bookCount: number }> {
+  return request<{ bookCount: number }>(`/api/libraries/${id}/resync`, {
+    method: "POST",
+    body: JSON.stringify({ credential: credential === undefined ? null : JSON.stringify(credential) }),
+  });
 }
 
 // The credential shape saved via window.maktaba.saveCloudCredential/getCloudCredential for an S3

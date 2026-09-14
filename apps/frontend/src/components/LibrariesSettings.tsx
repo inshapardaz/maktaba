@@ -182,7 +182,7 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
     // Runs via RescanContext (mounted at the app root) rather than local state, so the resync - and
     // its progress - survives this Settings modal being closed before it finishes; see
     // RescanContext.tsx and RescanStatusBar.tsx.
-    rescan.start({ id: entry.id, name: entry.name, isActive: entry.isActive }, refreshActiveLibrary);
+    rescan.start({ id: entry.id, name: entry.name, isActive: entry.isActive, providerType: entry.providerType }, refreshActiveLibrary);
   };
 
   const startRename = (entry: LibraryEntry) => {
@@ -373,20 +373,18 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
                     </ActionIcon>
                   </Tooltip>
                 )}
-                {entry.providerType === "local" && (
-                  <Tooltip label={t("librariesSettings.resync")}>
-                    <ActionIcon
-                      variant="subtle"
-                      color="gray"
-                      loading={rescan.libraryId === entry.id}
-                      disabled={rescan.isRunning && rescan.libraryId !== entry.id}
-                      onClick={() => handleResync(entry)}
-                      aria-label={t("librariesSettings.resync")}
-                    >
-                      <IconRefresh size={14} />
-                    </ActionIcon>
-                  </Tooltip>
-                )}
+                <Tooltip label={t("librariesSettings.resync")}>
+                  <ActionIcon
+                    variant="subtle"
+                    color="gray"
+                    loading={rescan.libraryId === entry.id}
+                    disabled={rescan.isRunning && rescan.libraryId !== entry.id}
+                    onClick={() => handleResync(entry)}
+                    aria-label={t("librariesSettings.resync")}
+                  >
+                    <IconRefresh size={14} />
+                  </ActionIcon>
+                </Tooltip>
                 {entry.isActive && entry.providerType === "local" && (
                   <Tooltip label={t("librariesSettings.migrateToCloud")}>
                     <ActionIcon
