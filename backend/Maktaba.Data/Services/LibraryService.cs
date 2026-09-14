@@ -325,6 +325,14 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
             return false;
         }
 
+        // Must run *before* removing the entry below - PushCurrentLibraryIfCloudAsync looks the
+        // active library back up in _libraries, so it would find nothing (silently skipping the
+        // push) if this ran after RemoveAt.
+        if (CurrentLibraryId == id)
+        {
+            await PushCurrentLibraryIfCloudAsync(ct);
+        }
+
         _libraries.RemoveAt(index);
 
         if (CurrentLibraryId == id)
@@ -345,29 +353,44 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
         return true;
     }
 
+    // Push whatever library is currently open, if it's cloud-backed, before leaving it - otherwise
+    // CloudSyncLifecycleService's periodic heartbeat starts targeting whatever comes next the
+    // moment CurrentLibraryId changes, so any edit made just before leaving (or since the last
+    // heartbeat) would only ever reach the cloud again if the user happens to reopen that library
+    // later and either waits for another heartbeat or clicks "Sync now" themselves. Best-effort: a
+    // failed push here shouldn't block leaving, so it's swallowed (and reported the same way the
+    // periodic heartbeat reports its own failures) rather than surfaced as the caller's own error.
+    //
+    // Callers must invoke this *before* doing anything that would stop CurrentLibraryId from
+    // resolving back to the outgoing entry - in particular, before removing it from _libraries
+    // (RemoveAsync's own bug this fixed: calling this after _libraries.RemoveAt(index) meant the
+    // lookup below always found nothing, silently skipping the push whenever the *active* cloud
+    // library was removed, stranding any not-yet-heartbeat-pushed edits on removal).
+    private async Task PushCurrentLibraryIfCloudAsync(CancellationToken ct)
+    {
+        if (CurrentLibraryId is not { } currentId
+            || _libraries.FirstOrDefault(l => l.Id == currentId) is not { ProviderType: not "local" })
+        {
+            return;
+        }
+
+        try
+        {
+            var currentStorage = _serviceProvider.GetRequiredService<IStorageProviderFactory>().Current;
+            await PushWithRetryAsync(currentStorage, ct);
+            _serviceProvider.GetRequiredService<ISyncStatusTracker>().Synced();
+        }
+        catch (Exception ex)
+        {
+            _serviceProvider.GetRequiredService<ISyncStatusTracker>().Failed(ex.Message);
+        }
+    }
+
     private async Task ActivateAsync(LibraryRegistryEntry entry, CancellationToken ct)
     {
-        // Push whatever library is currently open before switching away from it, if it's
-        // cloud-backed - otherwise CloudSyncLifecycleService's periodic heartbeat starts targeting
-        // the *new* library the moment CurrentLibraryId changes below, so any edit made just before
-        // switching (or since the last heartbeat) would only ever reach the cloud again if the user
-        // happens to reopen that old library and either waits for another heartbeat or clicks
-        // "Sync now" themselves. Best-effort: a failed push here shouldn't block switching to a
-        // different library, so it's swallowed (and reported the same way the periodic heartbeat
-        // reports its own failures) rather than surfaced as this call's own error.
-        if (CurrentLibraryId is { } previousId && previousId != entry.Id
-            && _libraries.FirstOrDefault(l => l.Id == previousId) is { ProviderType: not "local" })
+        if (CurrentLibraryId != entry.Id)
         {
-            try
-            {
-                var previousStorage = _serviceProvider.GetRequiredService<IStorageProviderFactory>().Current;
-                await PushWithRetryAsync(previousStorage, ct);
-                _serviceProvider.GetRequiredService<ISyncStatusTracker>().Synced();
-            }
-            catch (Exception ex)
-            {
-                _serviceProvider.GetRequiredService<ISyncStatusTracker>().Failed(ex.Message);
-            }
+            await PushCurrentLibraryIfCloudAsync(ct);
         }
 
         // entry.Path is a real local folder only for "local" - a cloud entry's Path is a synthetic
