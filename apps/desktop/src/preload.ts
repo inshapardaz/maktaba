@@ -54,6 +54,11 @@ contextBridge.exposeInMainWorld("maktaba", {
 
   trashPath: (filePath: string): Promise<void> => ipcRenderer.invoke("maktaba:trash-path", filePath),
 
+  // Best-effort cleanup for a book's now-possibly-empty author folder after trashPath removed the
+  // book's own folder - see BookRemovalResult.ParentFolderPath's doc comment for exactly when the
+  // backend hands one back. A no-op if the folder is missing or still has something in it.
+  trashPathIfEmpty: (folderPath: string): Promise<void> => ipcRenderer.invoke("maktaba:trash-path-if-empty", folderPath),
+
   // Opens a book's reader in its own top-level window so multiple books can be read at once;
   // re-invoking for the same bookId+format focuses the existing window instead of duplicating it.
   openReaderWindow: (bookId: string, format: "Epub" | "Pdf" | "Docx" | "Txt", title?: string): Promise<void> =>

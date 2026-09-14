@@ -553,9 +553,16 @@ export function updateBook(id: string, edit: BookEditRequest): Promise<void> {
 // from the remote store (and its local cache mirror) itself, so callers must NOT also call
 // window.maktaba.trashPath(folderPath) in that case (there's no local OS-trash-able folder for a
 // remote object the way there is for a real local library's file). Only call trashPath when this
-// is true.
-export function deleteBook(id: string): Promise<{ folderPath: string; requiresLocalTrash: boolean }> {
-  return request<{ folderPath: string; requiresLocalTrash: boolean }>(`/api/books/${id}`, { method: "DELETE" });
+// is true. parentFolderPath, when present, is the book's now-possibly-empty author folder - pass it
+// to window.maktaba.trashPathIfEmpty after trashPath succeeds (never unconditionally - see that
+// function's own doc comment); null for a periodical issue or a cloud library, where the backend
+// already either doesn't apply (issue) or already handled this itself (cloud).
+export function deleteBook(
+  id: string,
+): Promise<{ folderPath: string; requiresLocalTrash: boolean; parentFolderPath: string | null }> {
+  return request<{ folderPath: string; requiresLocalTrash: boolean; parentFolderPath: string | null }>(
+    `/api/books/${id}`, { method: "DELETE" },
+  );
 }
 
 // Issue #49: merges sourceBookId's files into targetId (skipping any the target already has, by

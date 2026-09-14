@@ -304,9 +304,12 @@ export function BookDetailPanel({ bookId, onClose, onRemoved, onSelectFilter }: 
     setRemoving(true);
     setRemoveError(null);
     try {
-      const { folderPath, requiresLocalTrash } = await deleteBook(bookId);
+      const { folderPath, requiresLocalTrash, parentFolderPath } = await deleteBook(bookId);
       if (requiresLocalTrash) {
         await window.maktaba.trashPath(folderPath);
+        if (parentFolderPath) {
+          await window.maktaba.trashPathIfEmpty(parentFolderPath);
+        }
       }
       onRemoved();
     } catch (err) {
