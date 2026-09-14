@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Text.Json.Serialization;
 using Maktaba.Core.Services;
+using Maktaba.Core.Sync;
 using Microsoft.Graph;
 using Microsoft.Graph.Drives.Item.Items.Item.CreateUploadSession;
 using Microsoft.Graph.Models;
@@ -28,6 +29,7 @@ namespace Maktaba.Cloud;
 public class OneDriveStorageProvider : IStorageProvider, IDisposable
 {
     private const string DatabaseRelativePath = "metadata.db";
+    private const string LockRelativePath = ".maktaba-lock";
 
     // Graph recommends upload session chunk sizes be a multiple of 320 KiB; this is comfortably
     // under the simple-PUT 4 MiB ceiling's replacement threshold while staying a reasonable chunk
@@ -359,6 +361,50 @@ public class OneDriveStorageProvider : IStorageProvider, IDisposable
         catch (ODataError ex) when (ex.ResponseStatusCode == 404)
         {
             return null;
+        }
+    }
+
+    public async Task<LibraryLockInfo?> ReadLockAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            var driveId = await MyDriveIdAsync(ct);
+            using var stream = await _graph.Drives[driveId].Root.ItemWithPath(EncodeItemPath(ToItemPath(LockRelativePath)))
+                .Content.GetAsync(cancellationToken: ct);
+            if (stream is null)
+            {
+                return null;
+            }
+
+            using var reader = new StreamReader(stream);
+            return LibraryLockInfo.TryParse(await reader.ReadToEndAsync(ct));
+        }
+        catch (ODataError ex) when (ex.ResponseStatusCode == 404)
+        {
+            return null;
+        }
+    }
+
+    public async Task WriteLockAsync(LibraryLockInfo lockInfo, CancellationToken ct = default)
+    {
+        var driveId = await MyDriveIdAsync(ct);
+        var itemPath = ToItemPath(LockRelativePath);
+        await EnsureParentFolderExistsAsync(itemPath, ct);
+
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(lockInfo.Serialize()));
+        await _graph.Drives[driveId].Root.ItemWithPath(EncodeItemPath(itemPath)).Content.PutAsync(stream, cancellationToken: ct);
+    }
+
+    public async Task DeleteLockAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            var driveId = await MyDriveIdAsync(ct);
+            await _graph.Drives[driveId].Root.ItemWithPath(EncodeItemPath(ToItemPath(LockRelativePath))).DeleteAsync(cancellationToken: ct);
+        }
+        catch (ODataError ex) when (ex.ResponseStatusCode == 404)
+        {
+            // Already gone/never written - nothing to release.
         }
     }
 
