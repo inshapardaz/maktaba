@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Alert, Button, Group, Image, Progress, Stack, Text } from "@mantine/core";
+import { Alert, Anchor, Button, Group, Image, Progress, Stack, Text } from "@mantine/core";
 import { IconAlertCircle, IconCircleCheck, IconRefresh } from "../icons";
 import type { UpdateStatus } from "../maktaba";
 import { useLanguage } from "../i18n/LanguageContext";
@@ -50,6 +50,23 @@ export function AboutSettings() {
           {versionQuery.data ? t("settings.version", { version: versionQuery.data }) : "…"}
         </Text>
       </Stack>
+
+      <Group gap="md" justify="center">
+        <Anchor href="https://github.com/inshapardaz/maktaba" target="_blank" rel="noreferrer" size="xs">
+          {t("settings.githubRepo")}
+        </Anchor>
+        <Anchor href="https://github.com/inshapardaz/maktaba/blob/main/privacy-policy.md" target="_blank" rel="noreferrer" size="xs">
+          {t("settings.privacyPolicy")}
+        </Anchor>
+        <Anchor
+          href="https://github.com/inshapardaz/maktaba/blob/main/terms-and-conditions.md"
+          target="_blank"
+          rel="noreferrer"
+          size="xs"
+        >
+          {t("settings.termsAndConditions")}
+        </Anchor>
+      </Group>
 
       <Button
         leftSection={<IconRefresh size={15} />}
