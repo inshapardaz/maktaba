@@ -232,6 +232,10 @@ public record NawishtaLoginResponseDto(NawishtaCredentialDto Credential, IReadOn
 
 public record NawishtaRefreshRequestDto(string ServerUrl, string RefreshToken);
 
+// Lists an already-authenticated account's libraries again (reusing a cached access token) so the
+// frontend can offer "connect another library" without asking for email/password a second time.
+public record NawishtaListLibrariesRequestDto(string ServerUrl, string AccessToken);
+
 public record BrowseGroupDto(string Id, string Name, int BookCount, bool HasImage = false);
 
 public record CreateCollectionRequestDto(string Name);

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ActionIcon,
@@ -36,7 +36,9 @@ import {
   connectCloudLibrary,
   getSyncStatus,
   listLibraries,
+  nawishtaListLibraries,
   nawishtaLogin,
+  nawishtaRefresh,
   openLibrary,
   relocateLibrary,
   removeLibrary,
@@ -277,7 +279,12 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
       <S3ConnectModal opened={s3ModalOpen} onClose={() => setS3ModalOpen(false)} onConnected={handleS3Connected} />
       <GoogleDriveConnectModal opened={googleModalOpen} onClose={() => setGoogleModalOpen(false)} onConnected={handleGoogleDriveConnected} />
       <OneDriveConnectModal opened={oneDriveModalOpen} onClose={() => setOneDriveModalOpen(false)} onConnected={handleOneDriveConnected} />
-      <NawishtaConnectModal opened={nawishtaModalOpen} onClose={() => setNawishtaModalOpen(false)} onConnected={handleNawishtaConnected} />
+      <NawishtaConnectModal
+        opened={nawishtaModalOpen}
+        onClose={() => setNawishtaModalOpen(false)}
+        onConnected={handleNawishtaConnected}
+        existingLibraryId={librariesQuery.data?.find((entry) => entry.providerType === "nawishta")?.id ?? null}
+      />
       <MigrationWizard
         opened={migratingLibraryId !== null}
         libraryId={migratingLibraryId ?? ""}
@@ -911,6 +918,11 @@ interface NawishtaConnectModalProps {
   opened: boolean;
   onClose: () => void;
   onConnected: () => void;
+  // The id of an already-registered Nawishta library, if one exists - lets this modal skip the
+  // email/password step entirely and reuse that library's cached credential (see the "reuse" effect
+  // below), since one Nawishta account can own several libraries (design addendum on issue #69) and
+  // re-typing the password for every one of them would be pointless.
+  existingLibraryId: string | null;
 }
 
 // Nawishta connect form (issue #114) - unlike the OAuth-based providers above, login is a plain
@@ -930,7 +942,7 @@ interface NawishtaConnectModalProps {
 // NAWISHTA_DEFAULT_SERVER_URL) purely because connectCloudLibrary's ProviderConfig needs one.
 const NAWISHTA_DEFAULT_SERVER_URL = "https://api.nawishta.co.uk";
 
-function NawishtaConnectModal({ opened, onClose, onConnected }: NawishtaConnectModalProps) {
+function NawishtaConnectModal({ opened, onClose, onConnected, existingLibraryId }: NawishtaConnectModalProps) {
   const { t } = useLanguage();
   const [serverUrl] = useState(NAWISHTA_DEFAULT_SERVER_URL);
   const [email, setEmail] = useState("");
@@ -940,6 +952,65 @@ function NawishtaConnectModal({ opened, onClose, onConnected }: NawishtaConnectM
   const [selectedLibraryId, setSelectedLibraryId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
+  // True while trying to silently reuse an already-connected library's cached credential on open -
+  // the login form stays hidden during this so the user doesn't see it flash before the picker
+  // (the common case) or briefly before falling back to it (the stale-credential case).
+  const [reusingCredential, setReusingCredential] = useState(false);
+
+  // On open, if another Nawishta library is already connected, try reusing its cached credential
+  // instead of showing the login form - reads it via window.maktaba.getCloudCredential (the same
+  // decrypt-on-demand path ReconnectModal/App.tsx's startup reconnect use), lists libraries with it,
+  // and if the access token has since gone stale (10-minute TTL), renews it first via its refresh
+  // token before falling back to asking the user to sign in again.
+  useEffect(() => {
+    if (!opened || existingLibraryId === null) {
+      return;
+    }
+
+    let cancelled = false;
+    setReusingCredential(true);
+    void (async () => {
+      try {
+        const stored = await window.maktaba.getCloudCredential(existingLibraryId);
+        if (!stored) {
+          return;
+        }
+        const cached = JSON.parse(stored) as NawishtaCredential;
+
+        let result: { credential: NawishtaCredential; libraries: NawishtaLibrarySummary[] };
+        try {
+          const found = await nawishtaListLibraries(serverUrl, cached.accessToken);
+          result = { credential: cached, libraries: found };
+        } catch {
+          const renewed = await nawishtaRefresh(serverUrl, cached.refreshToken);
+          const found = await nawishtaListLibraries(serverUrl, renewed.accessToken);
+          result = { credential: renewed, libraries: found };
+        }
+
+        if (cancelled) {
+          return;
+        }
+        setCredential(result.credential);
+        setLibraries(result.libraries);
+        if (result.libraries.length === 1) {
+          setSelectedLibraryId(String(result.libraries[0].id));
+          setName(result.libraries[0].name);
+        }
+      } catch {
+        // Couldn't reuse it (stale refresh token, revoked account, offline, ...) - silently fall
+        // back to the normal email/password form rather than surfacing an error for something the
+        // user never directly asked for.
+      } finally {
+        if (!cancelled) {
+          setReusingCredential(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [opened, existingLibraryId, serverUrl]);
 
   const loginMutation = useMutation({
     mutationFn: () => nawishtaLogin(serverUrl.trim(), email.trim(), password),
@@ -985,6 +1056,7 @@ function NawishtaConnectModal({ opened, onClose, onConnected }: NawishtaConnectM
     setSelectedLibraryId(null);
     setName("");
     setError(null);
+    setReusingCredential(false);
   };
 
   const canLogin = email.trim().length > 0 && password.length > 0;
@@ -1000,7 +1072,11 @@ function NawishtaConnectModal({ opened, onClose, onConnected }: NawishtaConnectM
       title={t("librariesSettings.connectNawishta")}
     >
       <Stack gap="sm">
-        {credential === null ? (
+        {reusingCredential ? (
+          <Text size="sm" c="dimmed">
+            {t("librariesSettings.nawishtaReusingCredential")}
+          </Text>
+        ) : credential === null ? (
           <>
             <TextInput
               label={t("librariesSettings.nawishtaEmail")}
@@ -1050,7 +1126,7 @@ function NawishtaConnectModal({ opened, onClose, onConnected }: NawishtaConnectM
         )}
 
         <Group justify="flex-end">
-          {credential === null ? (
+          {reusingCredential ? null : credential === null ? (
             <Button disabled={!canLogin} loading={loginMutation.isPending} onClick={() => loginMutation.mutate()}>
               {t("librariesSettings.nawishtaSignIn")}
             </Button>

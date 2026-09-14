@@ -634,6 +634,31 @@ originally only excluded `"local"` from `entry.isActive && entry.providerType !=
 cloud provider including Nawishta got a sync-now button that meant nothing for it (no metadata.db to
 push - `NawishtaStorageProvider.PushDatabaseAsync` is a no-op). Now excludes `"nawishta"` explicitly.
 
+**Provider icon**: `providerIcons.tsx`'s `PROVIDER_ICONS.nawishta` is `IconWorldSearch` (a globe),
+not the generic `IconCloud` every other provider badge uses - Nawishta is a remote, server-hosted
+library catalog reached over the web, not raw cloud file storage the way S3/OneDrive/Google Drive
+are, so it reads better with a visually distinct icon.
+
+**Connecting a second library from the same Nawishta account skips the login form.** One Nawishta
+account can own several libraries (design addendum on issue #69), and re-typing the password for
+each one would be pointless - `NawishtaConnectModal` now takes an `existingLibraryId` prop
+(`LibrariesSettings.tsx` passes the id of any already-registered `"nawishta"` entry, or `null`) and,
+on open, tries reusing that library's already-cached credential before ever showing the email/
+password fields: `window.maktaba.getCloudCredential(existingLibraryId)` (the same decrypt-on-demand
+IPC path `App.tsx`'s startup reconnect and `ReconnectModal` already use) → a new
+`POST /api/nawishta/libraries` endpoint (`INawishtaAuthService.ListLibrariesAsync`, factored out of
+`LoginAsync`'s own library-listing call) lists the account's libraries with that access token → if
+the access token has gone stale (10-minute TTL - the common case, since this is by definition a
+second connect happening sometime *after* the first), falls back to `POST /api/nawishta/refresh`
+(the existing renew endpoint, now also exposed to the frontend as `nawishtaRefresh` in `api.ts`)
+before retrying the list call once. Any failure in this chain (revoked account, offline, a refresh
+token that's also expired) silently falls back to the normal email/password form rather than
+surfacing an error for something the user never directly asked for - `reusingCredential` state just
+shows a brief "Reusing your existing Nawishta sign-in…" message while this runs. The picked
+library's `remoteLibraryId` still goes through the exact same `connectCloudLibrary`/
+`saveCloudCredential` flow as a fresh login once "Connect" is clicked - only how `credential`/
+`libraries` state gets populated differs.
+
 ## Backend conventions
 
 - **Find-or-create by name**: `Maktaba.Data/Services/EntityResolvers.cs` (`ResolveAuthorsAsync`/

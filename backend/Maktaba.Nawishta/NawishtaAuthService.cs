@@ -26,6 +26,13 @@ public interface INawishtaAuthService
     Task<NawishtaLoginResult> LoginAsync(string serverUrl, string email, string password, CancellationToken ct = default);
 
     Task<NawishtaCredential> RefreshAsync(string serverUrl, string refreshToken, CancellationToken ct = default);
+
+    /// <summary>Lists the account's libraries using an already-issued access token, without a fresh
+    /// email/password login - lets the frontend offer "add another library from this account" once
+    /// one Nawishta library is already connected, reusing its cached credential instead of asking
+    /// the user to sign in again (one Nawishta account can own several libraries - see the design
+    /// addendum on issue #69).</summary>
+    Task<IReadOnlyList<NawishtaLibrarySummary>> ListLibrariesAsync(string serverUrl, string accessToken, CancellationToken ct = default);
 }
 
 public class NawishtaAuthService(HttpClient httpClient) : INawishtaAuthService
@@ -46,19 +53,40 @@ public class NawishtaAuthService(HttpClient httpClient) : INawishtaAuthService
         httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", credential.AccessToken);
         try
         {
-            var libraryClient = new LibraryClient(baseUrl, httpClient);
-            var page = await libraryClient.GetLibrariesAsync(null, 1, 200, ct);
-            var libraries = (page.Data ?? [])
-                .Where(l => l.Id is not null && l.Name is not null)
-                .Select(l => new NawishtaLibrarySummary(l.Id!.Value, l.Name!, l.Description))
-                .ToList();
-
+            var libraries = await FetchLibrariesAsync(baseUrl, ct);
             return new NawishtaLoginResult(credential, libraries);
         }
         finally
         {
             httpClient.DefaultRequestHeaders.Authorization = null;
         }
+    }
+
+    public async Task<IReadOnlyList<NawishtaLibrarySummary>> ListLibrariesAsync(string serverUrl, string accessToken, CancellationToken ct = default)
+    {
+        var baseUrl = serverUrl.TrimEnd('/');
+
+        // Same DefaultRequestHeaders dance as LoginAsync's own try/finally - see that method's
+        // comment for why this is safe (this call owns httpClient for its own duration).
+        httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        try
+        {
+            return await FetchLibrariesAsync(baseUrl, ct);
+        }
+        finally
+        {
+            httpClient.DefaultRequestHeaders.Authorization = null;
+        }
+    }
+
+    private async Task<IReadOnlyList<NawishtaLibrarySummary>> FetchLibrariesAsync(string baseUrl, CancellationToken ct)
+    {
+        var libraryClient = new LibraryClient(baseUrl, httpClient);
+        var page = await libraryClient.GetLibrariesAsync(null, 1, 200, ct);
+        return (page.Data ?? [])
+            .Where(l => l.Id is not null && l.Name is not null)
+            .Select(l => new NawishtaLibrarySummary(l.Id!.Value, l.Name!, l.Description))
+            .ToList();
     }
 
     public async Task<NawishtaCredential> RefreshAsync(string serverUrl, string refreshToken, CancellationToken ct = default)
