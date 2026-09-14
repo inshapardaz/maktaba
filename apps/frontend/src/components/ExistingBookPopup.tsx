@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Alert, Badge, Button, Center, Group, Image, Loader, Modal, Stack, Text } from "@mantine/core";
 import { IconAlertCircle } from "../icons";
 import { coverUrl, getBook } from "../api";
+import { useCoverAvailability } from "../coverAvailability";
 import { useLanguage } from "../i18n/LanguageContext";
 import { SpineCover } from "./SpineCover";
 
@@ -18,6 +19,7 @@ export function ExistingBookPopup({ bookId, onClose }: ExistingBookPopupProps) {
   const { t } = useLanguage();
   const bookQuery = useQuery({ queryKey: ["book", bookId], queryFn: () => getBook(bookId) });
   const book = bookQuery.data;
+  const cover = useCoverAvailability(book?.id ?? "", book?.coverVersion, book?.hasCover ?? false);
 
   return (
     <Modal opened onClose={onClose} title={t("duplicate.existingBookTitle")} size="sm">
@@ -36,7 +38,7 @@ export function ExistingBookPopup({ bookId, onClose }: ExistingBookPopupProps) {
 
         {book && (
           <Group align="flex-start" gap="md" wrap="nowrap">
-            {book.hasCover ? (
+            {cover.available ? (
               <Image
                 src={coverUrl(book.id, book.coverVersion)}
                 alt=""
@@ -45,6 +47,7 @@ export function ExistingBookPopup({ bookId, onClose }: ExistingBookPopupProps) {
                 fit="cover"
                 radius="sm"
                 style={{ flexShrink: 0, border: "1px solid var(--mantine-color-default-border)" }}
+                onError={cover.onError}
               />
             ) : (
               <SpineCover

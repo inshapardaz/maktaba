@@ -12,6 +12,7 @@ import {
   type ContinueReadingBook,
 } from "../api";
 import { setBookDragData } from "../bookDrag";
+import { useCoverAvailability, useShouldAttemptCloudAsset } from "../coverAvailability";
 import { useLanguage } from "../i18n/LanguageContext";
 import { getStoredShowIssuesInGrid } from "../periodicalSettings";
 import { useReaderLauncher } from "../ReaderLauncherContext";
@@ -45,10 +46,32 @@ function SectionLabel({ children }: { children: string }) {
 // avoids a cramped row of overlapping avatars when a book has several authors.
 function AuthorAvatar({ authorRefs, size }: { authorRefs: AuthorRef[]; size: number }) {
   const first = authorRefs[0];
+  const shouldAttempt = useShouldAttemptCloudAsset(first?.hasImage ?? false) && first != null;
   return (
-    <Avatar src={first?.hasImage ? authorImageUrl(first.id) : null} size={size} radius="xl" style={{ flexShrink: 0 }}>
+    <Avatar src={shouldAttempt ? authorImageUrl(first.id) : null} size={size} radius="xl" style={{ flexShrink: 0 }}>
       <IconUser size={Math.round(size * 0.55)} />
     </Avatar>
+  );
+}
+
+// Small standalone component (rather than inlining into inProgress.map's body below) purely so
+// useCoverAvailability's per-item onError/failed state can be a proper hook call - hooks can't be
+// called directly inside a loop.
+function InProgressCover({ book }: { book: ContinueReadingBook }) {
+  const cover = useCoverAvailability(book.id, book.coverVersion, book.hasCover);
+  return cover.available ? (
+    <Image
+      src={coverUrl(book.id, book.coverVersion)}
+      alt=""
+      w={36}
+      h={54}
+      fit="cover"
+      radius={4}
+      style={{ flexShrink: 0, border: "1px solid var(--mantine-color-default-border)" }}
+      onError={cover.onError}
+    />
+  ) : (
+    <SpineCover id={book.id} title={book.title} width={36} height={54} titleSize={7} padding={4} />
   );
 }
 
@@ -116,6 +139,7 @@ export function HomeView({ onSelectBook, onSelectFilter }: HomeViewProps) {
   const inProgress = rest.slice(0, MAX_CONTINUE_READING - 1);
   const hasMoreContinueReading = items.length > MAX_CONTINUE_READING;
   const recentBooks = recentlyAddedQuery.data ?? [];
+  const lastReadCover = useCoverAvailability(lastRead?.id ?? "", lastRead?.coverVersion, lastRead?.hasCover ?? false);
 
   // Only reachable when the whole library is empty (no books at all) - a library with books but
   // none in progress still has the Recently Added shelf below to show.
@@ -156,7 +180,7 @@ export function HomeView({ onSelectBook, onSelectFilter }: HomeViewProps) {
                 onClick={() => onSelectBook(lastRead.id)}
                 style={{ flexShrink: 0 }}
               >
-                {lastRead.hasCover ? (
+                {lastReadCover.available ? (
                   <Image
                     src={coverUrl(lastRead.id, lastRead.coverVersion)}
                     alt=""
@@ -165,6 +189,7 @@ export function HomeView({ onSelectBook, onSelectFilter }: HomeViewProps) {
                     fit="cover"
                     radius="md"
                     style={{ border: "1px solid var(--mantine-color-default-border)", boxShadow: "var(--mantine-shadow-md)" }}
+                    onError={lastReadCover.onError}
                   />
                 ) : (
                   <SpineCover
@@ -261,19 +286,7 @@ export function HomeView({ onSelectBook, onSelectFilter }: HomeViewProps) {
                     style={{ flex: 1, minWidth: 0 }}
                   >
                     <Group gap="sm" wrap="nowrap">
-                      {book.hasCover ? (
-                        <Image
-                          src={coverUrl(book.id, book.coverVersion)}
-                          alt=""
-                          w={36}
-                          h={54}
-                          fit="cover"
-                          radius={4}
-                          style={{ flexShrink: 0, border: "1px solid var(--mantine-color-default-border)" }}
-                        />
-                      ) : (
-                        <SpineCover id={book.id} title={book.title} width={36} height={54} titleSize={7} padding={4} />
-                      )}
+                      <InProgressCover book={book} />
                       <Stack gap={2} style={{ minWidth: 0 }}>
                         <Text fw={600} size="sm" truncate="end">
                           {book.title}

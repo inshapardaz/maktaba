@@ -72,6 +72,7 @@ import {
 import { useLanguage } from "../i18n/LanguageContext";
 import { formatDuration } from "../readingTime";
 import { displaySubtitle, displayTitle } from "../issueDisplay";
+import { shouldAttemptCloudAsset, useCoverAvailability, useLibraryProviderType } from "../coverAvailability";
 import { invalidateLibraryQueries } from "../queries";
 import { READING_STATUS_COLOR, READING_STATUS_LABEL_KEY } from "../readingStatus";
 import { useReaderLauncher } from "../ReaderLauncherContext";
@@ -350,6 +351,9 @@ export function BookDetailPanel({ bookId, onClose, onRemoved, onSelectFilter }: 
       .join(" · ")
     : "";
 
+  const cover = useCoverAvailability(book?.id ?? "", book?.coverVersion, book?.hasCover ?? false);
+  const providerType = useLibraryProviderType();
+
   return (
     <Modal opened onClose={onClose} centered size={560} padding="lg">
       {isLoading && (
@@ -367,7 +371,7 @@ export function BookDetailPanel({ bookId, onClose, onRemoved, onSelectFilter }: 
       {book && (
         <Stack gap="md">
           <Group align="flex-start" gap="md">
-            {book.hasCover ? (
+            {cover.available ? (
               <Image
                 src={coverUrl(book.id, book.coverVersion)}
                 alt=""
@@ -380,6 +384,7 @@ export function BookDetailPanel({ bookId, onClose, onRemoved, onSelectFilter }: 
                   border: "1px solid var(--mantine-color-default-border)",
                   boxShadow: "var(--mantine-shadow-sm)",
                 }}
+                onError={cover.onError}
               />
             ) : (
               <SpineCover
@@ -420,7 +425,11 @@ export function BookDetailPanel({ bookId, onClose, onRemoved, onSelectFilter }: 
                       onClick={() => handleSelectFilter({ kind: "authorId", id: author.id, name: author.name })}
                     >
                       <Group gap={6} wrap="nowrap">
-                        <Avatar src={author.hasImage ? authorImageUrl(author.id) : null} size={36} radius="xl">
+                        <Avatar
+                          src={shouldAttemptCloudAsset(author.hasImage, providerType) ? authorImageUrl(author.id) : null}
+                          size={36}
+                          radius="xl"
+                        >
                           <IconUser size={18} />
                         </Avatar>
                         <Text fw={500}>{author.name}</Text>

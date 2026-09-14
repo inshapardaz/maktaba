@@ -36,6 +36,7 @@ import {
   type MetadataDetails,
   type PeriodicalFrequency,
 } from "../api";
+import { shouldAttemptCloudAsset } from "../coverAvailability";
 import { buildCreatableData } from "../creatableSelect";
 import { useLanguage } from "../i18n/LanguageContext";
 import type { TranslationKey } from "../i18n/translations";
@@ -278,6 +279,7 @@ export function BookEditForm({ bookId, onClose, onSaved }: BookEditFormProps) {
   // keeps warm, so this is a cache read, not an extra request.
   const libraryQuery = useQuery({ queryKey: ["library"], queryFn: getCurrentLibrary });
   const periodicalsEnabled = libraryQuery.data?.periodicalsEnabled ?? true;
+  const providerType = libraryQuery.data?.providerType;
   const periodicalsQuery = useQuery({ queryKey: ["periodicals"], queryFn: listPeriodicals, enabled: periodicalsEnabled });
   const collectionOptions = buildCollectionOptions(collectionsQuery.data ?? [], collectionSearch, t);
 
@@ -431,7 +433,11 @@ export function BookEditForm({ bookId, onClose, onSaved }: BookEditFormProps) {
                   const author = authorsByName.get(String(option.value).toLowerCase());
                   return (
                     <Group gap="xs" wrap="nowrap">
-                      <Avatar src={author?.hasImage ? authorImageUrl(author.id) : null} size={20} radius="xl">
+                      <Avatar
+                        src={author && shouldAttemptCloudAsset(author.hasImage, providerType) ? authorImageUrl(author.id) : null}
+                        size={20}
+                        radius="xl"
+                      >
                         <IconUser size={12} />
                       </Avatar>
                       <span>{option.label}</span>
@@ -444,7 +450,11 @@ export function BookEditForm({ bookId, onClose, onSaved }: BookEditFormProps) {
                   return (
                     <Pill withRemoveButton onRemove={onRemove}>
                       <Group gap={4} wrap="nowrap">
-                        <Avatar src={author?.hasImage ? authorImageUrl(author.id) : null} size={14} radius="xl">
+                        <Avatar
+                          src={author && shouldAttemptCloudAsset(author.hasImage, providerType) ? authorImageUrl(author.id) : null}
+                          size={14}
+                          radius="xl"
+                        >
                           <IconUser size={9} />
                         </Avatar>
                         <span>{option.label}</span>
