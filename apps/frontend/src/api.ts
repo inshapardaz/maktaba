@@ -367,6 +367,20 @@ export function syncNow(): Promise<void> {
   return request<void>("/api/libraries/sync-now", { method: "POST" });
 }
 
+// Cloud Sync Core - polled by TitleBar.tsx's SyncStatusIndicator to show a small persistent
+// synced/syncing/error icon for the active library, reflecting CloudSyncLifecycleService's
+// periodic background heartbeat (not just the manual Sync Now button, which LibrarySyncContext
+// already tracks on its own). Always "Idle" for a local library - see ISyncStatusTracker.cs.
+export interface SyncStatus {
+  state: "Idle" | "Syncing" | "Error";
+  lastSyncedAtUtc: string | null;
+  errorMessage: string | null;
+}
+
+export function getSyncStatus(): Promise<SyncStatus> {
+  return request<SyncStatus>("/api/libraries/sync-status");
+}
+
 // Migration wizard (Cloud: Phase 3) - moves the active library to a new provider. All of these
 // operate on whichever library is currently active; there's no "migrate this other library"
 // variant, matching how Sync Now/Resync are scoped.
