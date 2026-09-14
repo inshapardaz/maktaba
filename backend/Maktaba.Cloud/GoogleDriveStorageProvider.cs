@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
 using Maktaba.Core.Services;
+using Maktaba.Core.Sync;
 
 namespace Maktaba.Cloud;
 
@@ -25,6 +26,7 @@ namespace Maktaba.Cloud;
 public class GoogleDriveStorageProvider : IStorageProvider, IDisposable
 {
     private const string DatabaseRelativePath = "metadata.db";
+    private const string LockRelativePath = ".maktaba-lock";
     private const string ApiBase = "https://www.googleapis.com/drive/v3";
     private const string UploadBase = "https://www.googleapis.com/upload/drive/v3";
     private const string FolderMimeType = "application/vnd.google-apps.folder";
@@ -213,7 +215,7 @@ public class GoogleDriveStorageProvider : IStorageProvider, IDisposable
         }
     }
 
-    private async Task SimpleUploadAsync(string? existingId, string parentId, string name, FileStream stream, CancellationToken ct)
+    private async Task SimpleUploadAsync(string? existingId, string parentId, string name, Stream stream, CancellationToken ct)
     {
         var boundary = Guid.NewGuid().ToString("N");
         using var content = new MultipartContent("related", boundary);
@@ -415,6 +417,51 @@ public class GoogleDriveStorageProvider : IStorageProvider, IDisposable
         var body = await response.Content.ReadFromJsonAsync<FileListResponse>(cancellationToken: ct);
         var modifiedTime = body?.Files?.FirstOrDefault()?.ModifiedTime;
         return modifiedTime is null ? null : DateTimeOffset.Parse(modifiedTime, null, System.Globalization.DateTimeStyles.RoundtripKind);
+    }
+
+    public async Task<LibraryLockInfo?> ReadLockAsync(CancellationToken ct = default)
+    {
+        var itemId = await FindItemIdAsync(ToItemPath(LockRelativePath), ct);
+        if (itemId is null)
+        {
+            return null;
+        }
+
+        var request = await AuthorizedAsync(HttpMethod.Get, $"{ApiBase}/files/{itemId}?alt=media", ct);
+        using var response = await _http.SendAsync(request, ct);
+        response.EnsureSuccessStatusCode();
+        return LibraryLockInfo.TryParse(await response.Content.ReadAsStringAsync(ct));
+    }
+
+    public async Task WriteLockAsync(LibraryLockInfo lockInfo, CancellationToken ct = default)
+    {
+        var itemPath = ToItemPath(LockRelativePath);
+        var lastSlash = itemPath.LastIndexOf('/');
+        var parentPath = lastSlash < 0 ? "" : itemPath[..lastSlash];
+        var leafName = lastSlash < 0 ? itemPath : itemPath[(lastSlash + 1)..];
+
+        var parentId = await ResolveFolderIdAsync(parentPath, createIfMissing: true, ct)
+            ?? throw new InvalidOperationException("Could not resolve or create the library's root folder for the lock marker.");
+        var existingId = await FindChildAsync(parentId, leafName, ct);
+
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(lockInfo.Serialize()));
+        await SimpleUploadAsync(existingId, parentId, leafName, stream, ct);
+    }
+
+    public async Task DeleteLockAsync(CancellationToken ct = default)
+    {
+        var itemId = await FindItemIdAsync(ToItemPath(LockRelativePath), ct);
+        if (itemId is null)
+        {
+            return;
+        }
+
+        var request = await AuthorizedAsync(HttpMethod.Delete, $"{ApiBase}/files/{itemId}", ct);
+        using var response = await _http.SendAsync(request, ct);
+        if (response.StatusCode != System.Net.HttpStatusCode.NotFound)
+        {
+            response.EnsureSuccessStatusCode();
+        }
     }
 
     // Diagnostic-only, same purpose as S3StorageProvider/OneDriveStorageProvider's ToString().

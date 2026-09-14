@@ -95,6 +95,12 @@ computer — open **Settings → Libraries** and click the cloud-upload icon nex
 Maktaba will confirm before briefly closing the library to sync it safely, then reopen it
 automatically.
 
+A cloud library can only be open on one device at a time. If you try to open one that's already
+open elsewhere, Maktaba tells you which device is using it instead of opening it anyway — closing
+it there (or switching to a different library) frees it up for this device right away. If that
+other device is offline or has crashed, Maktaba lets you back in automatically after a couple of
+minutes.
+
 ### Moving an existing local library to the cloud
 
 If you already have a library on your own computer and want to move it to cloud storage instead
