@@ -417,7 +417,21 @@ function App() {
   // actually fails.
   useEffect(() => {
     if (librarySwitch.error) {
-      notifications.show({ color: "red", title: t("app.switchFailedTitle"), message: librarySwitch.error });
+      // A missing-credential failure has no fix from a plain error toast alone - "Open" can't
+      // collect a fresh one, only the key-icon Reconnect action in Settings -> Libraries can - so
+      // jump straight there instead of leaving the user to guess where to go (see
+      // LibrarySwitchContext.needsReconnect's own comment for why this specific error is common:
+      // credentials are in-memory only, cleared every backend restart, and only the last-active
+      // library gets auto-reconnected on startup).
+      notifications.show({
+        color: "red",
+        title: t("app.switchFailedTitle"),
+        message: librarySwitch.needsReconnect ? t("app.switchNeedsReconnect") : librarySwitch.error,
+      });
+      if (librarySwitch.needsReconnect) {
+        setSettingsTab("libraries");
+        setSettingsOpen(true);
+      }
       librarySwitch.dismissError();
     }
   }, [librarySwitch.error, librarySwitch, t]);

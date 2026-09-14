@@ -350,6 +350,7 @@ const en = {
   "app.syncFailedTitle": "Sync failed",
   "app.switchingLibrary": "Switching library…",
   "app.switchFailedTitle": "Couldn't switch library",
+  "app.switchNeedsReconnect": "This library's saved sign-in has expired. Use the key icon next to it here to reconnect.",
   "app.syncConfirmTitle": "Sync to cloud now?",
   "app.syncConfirmMessage": "This will briefly close your library to sync it safely, then reopen it. Continue?",
 
@@ -881,6 +882,7 @@ const ur: TranslationDict = {
   "app.syncFailedTitle": "ہم آہنگی ناکام ہوئی",
   "app.switchingLibrary": "لائبریری تبدیل ہو رہی ہے…",
   "app.switchFailedTitle": "لائبریری تبدیل نہ ہو سکی",
+  "app.switchNeedsReconnect": "اس لائبریری کا محفوظ شدہ سائن ان ختم ہو گیا ہے۔ دوبارہ مربوط ہونے کے لیے یہاں اس کے ساتھ موجود چابی آئیکن استعمال کریں۔",
   "app.syncConfirmTitle": "ابھی کلاؤڈ سے ہم آہنگ کریں؟",
   "app.syncConfirmMessage": "یہ محفوظ طریقے سے ہم آہنگ کرنے کے لیے آپ کی لائبریری کو مختصر وقت کے لیے بند کر دے گا، پھر دوبارہ کھول دے گا۔ جاری رکھیں؟",
 

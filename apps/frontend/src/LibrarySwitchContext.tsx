@@ -11,6 +11,13 @@ interface LibrarySwitchContextValue {
   // stale content until everything flips over at once with no visible transition.
   isSwitching: boolean;
   error: string | null;
+  // True alongside `error` specifically when the backend rejected the switch because this cloud
+  // library's credential was never supplied this session (ICloudCredentialCache is in-memory only,
+  // cleared every backend restart - only the last-active library gets auto-reconnected on startup,
+  // see App.tsx's cloudReconnectQuery). Plain "Open" has no way to collect a fresh credential, so a
+  // dead-end error toast isn't actionable on its own - App.tsx uses this to also jump straight to
+  // Settings -> Libraries, where the key-icon Reconnect action actually solves it.
+  needsReconnect: boolean;
   // onSuccess is caller-supplied (rather than baked in here) because what should happen after a
   // successful switch differs by caller - App.tsx's handleLibraryChanged resets a bunch of its own
   // view state (selection, nav history, current view) that this context has no business knowing
@@ -30,9 +37,11 @@ export function LibrarySwitchProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const [isSwitching, setIsSwitching] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [needsReconnect, setNeedsReconnect] = useState(false);
 
   function switchTo(id: string, onSuccess?: () => void) {
     setError(null);
+    setNeedsReconnect(false);
     setIsSwitching(true);
     openLibraryById(id)
       .then(() => {
@@ -41,15 +50,23 @@ export function LibrarySwitchProvider({ children }: { children: ReactNode }) {
         invalidateLibraryQueries(queryClient);
         onSuccess?.();
       })
-      .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+      .catch((err) => {
+        const message = err instanceof Error ? err.message : String(err);
+        setError(message);
+        setNeedsReconnect(message.includes("credentials haven't been supplied"));
+      })
       .finally(() => setIsSwitching(false));
   }
 
   const value: LibrarySwitchContextValue = {
     isSwitching,
     error,
+    needsReconnect,
     switchTo,
-    dismissError: () => setError(null),
+    dismissError: () => {
+      setError(null);
+      setNeedsReconnect(false);
+    },
   };
 
   return <LibrarySwitchContext.Provider value={value}>{children}</LibrarySwitchContext.Provider>;
