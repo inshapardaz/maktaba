@@ -4,6 +4,7 @@ using Maktaba.Core.Services;
 using Maktaba.Data;
 using Maktaba.Data.Services;
 using Maktaba.Metadata;
+using Maktaba.Nawishta;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -66,6 +67,12 @@ builder.Services.AddHttpClient<IMetadataLookupService, OpenLibraryMetadataLookup
     client.DefaultRequestHeaders.UserAgent.ParseAdd("Maktaba/1.0 (+https://github.com/inshapardaz/maktaba)");
     client.Timeout = TimeSpan.FromSeconds(10);
 });
+
+// Nawishta epic #108 - the generated *Client classes (Maktaba.Nawishta.Generated) each take a
+// baseUrl explicitly, so one pooled HttpClient (no fixed BaseAddress) is reused across logins
+// against whatever server URL the user types in, the same way IMetadataLookupService's typed
+// client above is a fixed-target instance of the same AddHttpClient<TInterface, TImpl> pattern.
+builder.Services.AddHttpClient<INawishtaAuthService, NawishtaAuthService>();
 
 var app = builder.Build();
 
@@ -138,6 +145,7 @@ app.MapPost("/shutdown", (IHostApplicationLifetime lifetime) =>
 app.MapGet("/api/hello", () => Results.Ok(new { message = "Hello from Maktaba.Api" }));
 
 app.MapLibraryEndpoints();
+app.MapNawishtaEndpoints();
 app.MapBookEndpoints();
 app.MapBrowseEndpoints();
 app.MapCollectionEndpoints();
