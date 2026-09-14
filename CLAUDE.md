@@ -523,10 +523,30 @@ unreliable** - `NawishtaRawApiClient` (see its own doc comment) works around the
 schemas by deserializing into the request-side model classes NSwag *did* generate. Separately,
 confirmed live against a real account: `GET .../books/{bookId}/contents/{contentId}` returns a
 `BookContentView`-shaped JSON description (not file bytes) whose own `download` link is what should
-serve them - `DownloadContentAsync` follows that link, but the link itself currently 404s for at
-least the content tested against (a real bug on Nawishta's own side, not fixable from this
-codebase). `BookEndpoints.cs`'s `GET /{id}` degrades gracefully (empty `AbsolutePath` for that one
-file, not a 500) rather than assuming this always works.
+serve them - `DownloadContentAsync` follows that link, but the link itself currently 404s for
+*every* content tested (4 different books' content, across two separate live sessions - traced to
+`FileController.GetLibraryFile`/`GetFileQuery`/`FileRepository.GetFileById` returning null/empty
+`FilePath`; suspected but unconfirmed root cause is the per-request tenant-connection resolution
+issue #42 already flags on that repo). Filed upstream rather than silently worked around:
+[inshapardaz/api#50](https://github.com/inshapardaz/api/issues/50) (the download link) and
+[inshapardaz/api#51](https://github.com/inshapardaz/api/issues/51) (the missing response schemas -
+traced to most controller actions returning plain `Task<IActionResult>` with no
+`[ProducesResponseType]`, unlike `AccountsController.Authenticate`'s own `ActionResult<T>` pattern,
+which Swashbuckle *can* infer a schema from). `BookEndpoints.cs`'s `GET /{id}` degrades gracefully
+(empty `AbsolutePath` for that one file, not a 500) rather than assuming download always works.
+
+**Write-path field semantics confirmed against Nawishta's own reference editor**
+(`C:\code\inshapardaz\library-editor`, the real React app real Nawishta users edit libraries with) -
+`NawishtaBookMutationService.ResolveAuthorsAsync`/`ResolveSeriesAsync` do a find-or-create by name
+(same pattern `Maktaba.Data/Services/EntityResolvers.cs` already uses locally), since a book's
+`Authors`/`SeriesId` must reference *existing* ids - confirmed via `authorsSelect.jsx`/
+`seriesSelect.jsx`, which pick from an existing list or explicitly `POST /authors`/`/series` first,
+never resolve a bare name server-side on the book `PUT` itself. `Book.Tags` is left untouched on
+edit (the reference client never edits it at all - absent from `bookForm.jsx` entirely).
+`UploadContentAsync` sends `language` as a query parameter, not a multipart form field, matching
+`books.api.js`'s `addBookContent`. The author/series resolution fix (not the upload fix - Nawishta's
+own download bug above made a full round-trip not worth attempting) was live-verified: a no-op edit
+correctly matched the existing author rather than creating a duplicate.
 
 **Making a Nawishta library the *active* one needed real `LibraryService`/`CloudSyncLifecycleService`
 changes** - the whole app treats `LibraryRootPath != null` as "a library is open" (this middleware,
