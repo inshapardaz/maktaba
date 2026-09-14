@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using Maktaba.Core.Services;
+using Maktaba.Core.Sync;
 
 namespace Maktaba.Data.Services;
 
@@ -93,4 +94,10 @@ public class LocalFileSystemProvider(ILibraryPathProvider libraryPath) : IStorag
 
     public Task<DateTimeOffset?> GetRemoteDatabaseLastModifiedAsync(CancellationToken ct = default) =>
         Task.FromResult<DateTimeOffset?>(null);
+
+    public Task<LibraryLockInfo?> ReadLockAsync(CancellationToken ct = default) => Task.FromResult<LibraryLockInfo?>(null);
+
+    public Task WriteLockAsync(LibraryLockInfo lockInfo, CancellationToken ct = default) => Task.CompletedTask;
+
+    public Task DeleteLockAsync(CancellationToken ct = default) => Task.CompletedTask;
 }

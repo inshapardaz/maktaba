@@ -4,6 +4,7 @@ import path from "path";
 import { pathToFileURL } from "url";
 import { gunzipSync } from "zlib";
 import JSZip from "jszip";
+import { connectOneDrive } from "./oneDriveAuth";
 import { connectGoogleDrive } from "./googleDriveAuth";
 
 const EBOOK_EXTENSIONS = new Set([".epub", ".pdf", ".docx", ".txt"]);
@@ -217,6 +218,30 @@ export function registerNativeHandlers(getWindow: () => BrowserWindow | null): v
     await shell.trashItem(filePath);
   });
 
+  // Issue: deleting the last book by an author left its now-empty author folder behind on disk
+  // forever (see BookRemovalResult.ParentFolderPath's own comment for why only a plain book's
+  // parent - never a periodical issue's - is ever passed here). Only trashes the folder if it's
+  // genuinely empty *right now* - checked here, right after the caller's own maktaba:trash-path
+  // call for the book folder itself actually completed, rather than the backend guessing ahead of
+  // time whether it will end up empty. Silently does nothing if the folder is missing (ENOENT - the
+  // trash operation for the book folder above may have already taken it, or it never existed) or
+  // still has something in it (a file the user placed there Maktaba doesn't know about, for
+  // instance) - this is pure best-effort tidiness, never something a caller should treat as
+  // required to succeed.
+  ipcMain.handle("maktaba:trash-path-if-empty", async (_event, folderPath: string) => {
+    let entries: string[];
+    try {
+      entries = await fs.readdir(folderPath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+      throw error;
+    }
+
+    if (entries.length === 0) {
+      await shell.trashItem(folderPath);
+    }
+  });
+
   ipcMain.handle("maktaba:pick-stardict-zip", async () => {
     const win = getWindow();
     if (!win) return null;
@@ -360,17 +385,33 @@ export function registerNativeHandlers(getWindow: () => BrowserWindow | null): v
     await fs.rm(path.join(cloudCredentialsDir(), `${id}.enc`), { force: true });
   });
 
-  // Cloud: Phase 5 (#99) - the interactive Google Drive sign-in step (system browser + loopback
-  // listener) can only run here, never in the renderer or the .NET backend. Returns the token set
-  // straight to the renderer, same as OneDrive's connectOneDrive and S3's credential fields - it's
-  // responsible for handing them to the backend (to register/verify the library) and to
-  // saveCloudCredential (to persist them), rather than introducing a third credential-handling
-  // pattern.
+  // Cloud: Phase 4/5 (#96/#99) - the interactive OneDrive/Google Drive sign-in step (system browser
+  // + loopback listener) can only run here, never in the renderer or the .NET backend. Returns the
+  // token set straight to the renderer, same as S3's credential fields - it's responsible for
+  // handing them to the backend (to register/verify the library) and to saveCloudCredential (to
+  // persist them), rather than introducing a separate credential-handling pattern per provider.
   //
-  // Only one attempt is ever tracked at a time (the connect dialog is a singleton) - a fresh call
-  // aborts whatever attempt (if any) is still pending before starting its own, so closing the
-  // dialog and immediately reopening it to retry can't leak an orphaned listener still waiting on
-  // its old port for the rest of the timeout.
+  // Only one attempt per provider is ever tracked at a time (the connect dialog is a singleton) - a
+  // fresh call aborts whatever attempt (if any) is still pending before starting its own, so closing
+  // the dialog and immediately reopening it to retry can't leak an orphaned listener still waiting
+  // on its old port for the rest of the timeout.
+  let oneDriveConnectAbort: AbortController | null = null;
+
+  ipcMain.handle("maktaba:connect-onedrive", () => {
+    oneDriveConnectAbort?.abort();
+    const controller = new AbortController();
+    oneDriveConnectAbort = controller;
+    return connectOneDrive(controller.signal).finally(() => {
+      if (oneDriveConnectAbort === controller) {
+        oneDriveConnectAbort = null;
+      }
+    });
+  });
+
+  ipcMain.handle("maktaba:cancel-onedrive-connect", () => {
+    oneDriveConnectAbort?.abort();
+  });
+
   let googleDriveConnectAbort: AbortController | null = null;
 
   ipcMain.handle("maktaba:connect-google-drive", () => {

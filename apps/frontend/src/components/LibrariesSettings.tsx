@@ -44,6 +44,7 @@ import {
   testS3Connection,
   type GoogleDriveCredential,
   type LibraryEntry,
+  type OneDriveCredential,
   type S3Credential,
 } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
@@ -200,6 +201,7 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
 
   const [s3ModalOpen, setS3ModalOpen] = useState(false);
   const [googleModalOpen, setGoogleModalOpen] = useState(false);
+  const [oneDriveModalOpen, setOneDriveModalOpen] = useState(false);
   const [migratingLibraryId, setMigratingLibraryId] = useState<string | null>(null);
   const [reconnectingEntry, setReconnectingEntry] = useState<LibraryEntry | null>(null);
 
@@ -211,6 +213,12 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
 
   const handleGoogleDriveConnected = () => {
     setGoogleModalOpen(false);
+    invalidateLibraries();
+    refreshActiveLibrary();
+  };
+
+  const handleOneDriveConnected = () => {
+    setOneDriveModalOpen(false);
     invalidateLibraries();
     refreshActiveLibrary();
   };
@@ -233,6 +241,14 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
           >
             {t("librariesSettings.connectGoogleDrive")}
           </Button>
+          <Button
+            size="sm"
+            variant="default"
+            leftSection={<PROVIDER_ICONS.onedrive size={14} />}
+            onClick={() => setOneDriveModalOpen(true)}
+          >
+            {t("librariesSettings.connectOneDrive")}
+          </Button>
           <Button size="sm" leftSection={<IconPlus size={14} />} onClick={() => void handleAdd()} loading={addBusy}>
             {t("librariesSettings.addLibrary")}
           </Button>
@@ -241,6 +257,7 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
 
       <S3ConnectModal opened={s3ModalOpen} onClose={() => setS3ModalOpen(false)} onConnected={handleS3Connected} />
       <GoogleDriveConnectModal opened={googleModalOpen} onClose={() => setGoogleModalOpen(false)} onConnected={handleGoogleDriveConnected} />
+      <OneDriveConnectModal opened={oneDriveModalOpen} onClose={() => setOneDriveModalOpen(false)} onConnected={handleOneDriveConnected} />
       <MigrationWizard
         opened={migratingLibraryId !== null}
         libraryId={migratingLibraryId ?? ""}
@@ -733,6 +750,134 @@ function GoogleDriveConnectModal({ opened, onClose, onConnected }: GoogleDriveCo
   );
 }
 
+interface OneDriveConnectModalProps {
+  opened: boolean;
+  onClose: () => void;
+  onConnected: () => void;
+}
+
+// OneDrive connect form (Cloud: Phase 4) - same shape as GoogleDriveConnectModal above (an
+// interactive sign-in rather than typed credentials, so nothing to "test" ahead of time), just
+// against window.maktaba.connectOneDrive()/cancelOneDriveConnect() instead. Folder is relative to
+// the signed-in account's OneDrive root, optional (root itself otherwise).
+function OneDriveConnectModal({ opened, onClose, onConnected }: OneDriveConnectModalProps) {
+  const { t } = useLanguage();
+  const [name, setName] = useState("");
+  const [folder, setFolder] = useState("");
+  const [tokens, setTokens] = useState<OneDriveCredential | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const canSubmit = name.trim().length > 0 && tokens !== null;
+
+  const signInMutation = useMutation({
+    mutationFn: () => window.maktaba.connectOneDrive(),
+    onSuccess: (result) => {
+      setTokens(result);
+      setError(null);
+    },
+    onError: (err) => {
+      setTokens(null);
+      setError(err instanceof Error ? err.message : String(err));
+    },
+  });
+
+  const connectMutation = useMutation({
+    mutationFn: async () => {
+      if (!tokens) {
+        throw new Error("Sign in with Microsoft first.");
+      }
+
+      const providerConfig: Record<string, string> = {};
+      if (folder.trim()) {
+        providerConfig.folder = folder.trim();
+      }
+
+      const entry = await connectCloudLibrary(name.trim(), "onedrive", providerConfig, tokens);
+      await window.maktaba.saveCloudCredential(entry.id, JSON.stringify(tokens));
+      return entry;
+    },
+    onSuccess: () => {
+      reset();
+      onConnected();
+    },
+    onError: (err) => setError(err instanceof Error ? err.message : String(err)),
+  });
+
+  const reset = () => {
+    setName("");
+    setFolder("");
+    setTokens(null);
+    setError(null);
+  };
+
+  const cancelPendingSignIn = () => {
+    if (signInMutation.isPending) {
+      void window.maktaba.cancelOneDriveConnect();
+    }
+  };
+
+  return (
+    <Modal
+      opened={opened}
+      onClose={() => {
+        cancelPendingSignIn();
+        reset();
+        onClose();
+      }}
+      title={t("librariesSettings.connectOneDrive")}
+    >
+      <Stack gap="sm">
+        <TextInput
+          label={t("librariesSettings.oneDriveName")}
+          value={name}
+          onChange={(e) => setName(e.currentTarget.value)}
+        />
+        <TextInput
+          label={t("librariesSettings.oneDriveFolder")}
+          placeholder={t("librariesSettings.oneDriveFolderPlaceholder")}
+          value={folder}
+          onChange={(e) => setFolder(e.currentTarget.value)}
+        />
+
+        {tokens ? (
+          <Alert color="green" icon={<IconCheck size={18} />}>
+            {t("librariesSettings.oneDriveSignedIn")}
+          </Alert>
+        ) : signInMutation.isPending ? (
+          <Group gap="xs">
+            <Button variant="default" leftSection={<IconExternalLink size={14} />} loading style={{ flex: 1 }}>
+              {t("librariesSettings.oneDriveSignIn")}
+            </Button>
+            <Button variant="subtle" color="red" onClick={cancelPendingSignIn}>
+              {t("common.cancel")}
+            </Button>
+          </Group>
+        ) : (
+          <Button
+            variant="default"
+            leftSection={<IconExternalLink size={14} />}
+            onClick={() => signInMutation.mutate()}
+          >
+            {t("librariesSettings.oneDriveSignIn")}
+          </Button>
+        )}
+
+        {error && (
+          <Alert color="red" icon={<IconAlertCircle size={18} />}>
+            {error}
+          </Alert>
+        )}
+
+        <Group justify="flex-end">
+          <Button disabled={!canSubmit} loading={connectMutation.isPending} onClick={() => connectMutation.mutate()}>
+            {t("librariesSettings.s3Connect")}
+          </Button>
+        </Group>
+      </Stack>
+    </Modal>
+  );
+}
+
 interface ReconnectModalProps {
   // null = closed. Kept as the whole entry (not just an id) so the modal can show the library's
   // name without a separate lookup, and so closing it doesn't need to clear a second piece of state.
@@ -745,32 +890,34 @@ interface ReconnectModalProps {
 // key with the storage provider, or to recover a library whose saved credential is missing/invalid
 // (see docs/en/libraries.md's "If a cloud library won't reconnect"). Branches on providerType: S3
 // asks for the access key/secret again (bucket/region/prefix/endpoint are already on the registry
-// entry and aren't being changed here); an OAuth-based provider like Google Drive instead offers a
-// "Sign in again" button, the same interactive flow ConnectModal's own sign-in step uses - there's
-// no typed secret to re-enter for those.
+// entry and aren't being changed here); an OAuth-based provider (Google Drive, OneDrive) instead
+// offers a "Sign in again" button, the same interactive flow each ConnectModal's own sign-in step
+// uses - there's no typed secret to re-enter for those.
 function ReconnectModal({ entry, onClose, onReconnected }: ReconnectModalProps) {
   const { t } = useLanguage();
   const [accessKeyId, setAccessKeyId] = useState("");
   const [secretAccessKey, setSecretAccessKey] = useState("");
-  const [googleTokens, setGoogleTokens] = useState<GoogleDriveCredential | null>(null);
+  const [oauthTokens, setOauthTokens] = useState<GoogleDriveCredential | OneDriveCredential | null>(null);
   const [error, setError] = useState<string | null>(null);
   const isGoogleDrive = entry?.providerType === "googledrive";
+  const isOneDrive = entry?.providerType === "onedrive";
+  const isOAuthProvider = isGoogleDrive || isOneDrive;
 
   const reset = () => {
     setAccessKeyId("");
     setSecretAccessKey("");
-    setGoogleTokens(null);
+    setOauthTokens(null);
     setError(null);
   };
 
-  const googleSignInMutation = useMutation({
-    mutationFn: () => window.maktaba.connectGoogleDrive(),
+  const oauthSignInMutation = useMutation({
+    mutationFn: () => (isOneDrive ? window.maktaba.connectOneDrive() : window.maktaba.connectGoogleDrive()),
     onSuccess: (result) => {
-      setGoogleTokens(result);
+      setOauthTokens(result);
       setError(null);
     },
     onError: (err) => {
-      setGoogleTokens(null);
+      setOauthTokens(null);
       setError(err instanceof Error ? err.message : String(err));
     },
   });
@@ -780,11 +927,11 @@ function ReconnectModal({ entry, onClose, onReconnected }: ReconnectModalProps) 
       if (!entry) {
         return;
       }
-      const credential: S3Credential | GoogleDriveCredential | null = isGoogleDrive
-        ? googleTokens
+      const credential: S3Credential | GoogleDriveCredential | OneDriveCredential | null = isOAuthProvider
+        ? oauthTokens
         : { accessKeyId, secretAccessKey };
       if (!credential) {
-        throw new Error("Sign in with Google first.");
+        throw new Error("Sign in first.");
       }
       await reopenCloudLibrary(entry.id, credential);
       await window.maktaba.saveCloudCredential(entry.id, JSON.stringify(credential));
@@ -796,13 +943,13 @@ function ReconnectModal({ entry, onClose, onReconnected }: ReconnectModalProps) 
     onError: (err) => setError(err instanceof Error ? err.message : String(err)),
   });
 
-  const canSubmit = isGoogleDrive
-    ? googleTokens !== null
+  const canSubmit = isOAuthProvider
+    ? oauthTokens !== null
     : accessKeyId.trim().length > 0 && secretAccessKey.length > 0;
 
-  const cancelPendingGoogleSignIn = () => {
-    if (googleSignInMutation.isPending) {
-      void window.maktaba.cancelGoogleDriveConnect();
+  const cancelPendingOAuthSignIn = () => {
+    if (oauthSignInMutation.isPending) {
+      void (isOneDrive ? window.maktaba.cancelOneDriveConnect() : window.maktaba.cancelGoogleDriveConnect());
     }
   };
 
@@ -810,7 +957,7 @@ function ReconnectModal({ entry, onClose, onReconnected }: ReconnectModalProps) 
     <Modal
       opened={entry !== null}
       onClose={() => {
-        cancelPendingGoogleSignIn();
+        cancelPendingOAuthSignIn();
         reset();
         onClose();
       }}
@@ -820,17 +967,17 @@ function ReconnectModal({ entry, onClose, onReconnected }: ReconnectModalProps) 
         <Text size="sm" c="dimmed">
           {t("librariesSettings.reconnectDescription")}
         </Text>
-        {isGoogleDrive ? (
-          googleTokens ? (
+        {isOAuthProvider ? (
+          oauthTokens ? (
             <Alert color="green" icon={<IconCheck size={18} />}>
-              {t("librariesSettings.googleDriveSignedIn")}
+              {isOneDrive ? t("librariesSettings.oneDriveSignedIn") : t("librariesSettings.googleDriveSignedIn")}
             </Alert>
-          ) : googleSignInMutation.isPending ? (
+          ) : oauthSignInMutation.isPending ? (
             <Group gap="xs">
               <Button variant="default" leftSection={<IconExternalLink size={14} />} loading style={{ flex: 1 }}>
-                {t("librariesSettings.googleDriveSignIn")}
+                {isOneDrive ? t("librariesSettings.oneDriveSignIn") : t("librariesSettings.googleDriveSignIn")}
               </Button>
-              <Button variant="subtle" color="red" onClick={cancelPendingGoogleSignIn}>
+              <Button variant="subtle" color="red" onClick={cancelPendingOAuthSignIn}>
                 {t("common.cancel")}
               </Button>
             </Group>
@@ -838,9 +985,9 @@ function ReconnectModal({ entry, onClose, onReconnected }: ReconnectModalProps) 
             <Button
               variant="default"
               leftSection={<IconExternalLink size={14} />}
-              onClick={() => googleSignInMutation.mutate()}
+              onClick={() => oauthSignInMutation.mutate()}
             >
-              {t("librariesSettings.googleDriveSignIn")}
+              {isOneDrive ? t("librariesSettings.oneDriveSignIn") : t("librariesSettings.googleDriveSignIn")}
             </Button>
           )
         ) : (

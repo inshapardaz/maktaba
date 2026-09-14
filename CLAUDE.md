@@ -37,8 +37,8 @@ Backend (ASP.NET Core Minimal API, backend/Maktaba.sln)
   Maktaba.Metadata  — EPUB (VersOne.Epub) / PDF (PdfPig + PDFtoImage) metadata+cover extraction
   Maktaba.Cloud     — cloud storage provider SDKs, isolated from Maktaba.Data the same way
                        Maktaba.Metadata isolates format-parsing SDKs (S3StorageProvider,
-                       GoogleDriveStorageProvider today; OneDrive lands the same way once its own
-                       Azure AD app registration is sorted out) - see "Cloud storage" below
+                       GoogleDriveStorageProvider, OneDriveStorageProvider today; Nawishta would
+                       land the same way) - see "Cloud storage" below
   Maktaba.Tests     — nearly empty (one placeholder test); this project has no real test suite,
                        verification is build + live HTTP/UI smoke testing (see below)
 ```
@@ -89,17 +89,18 @@ registered library, only one active at a time.
 A library's `ProviderType` (on its `LibraryRegistryEntry`, `Maktaba.Core/Services/ILibraryService.cs`)
 is `"local"` (default, unchanged behavior) or a cloud provider — `"s3"` (real Amazon S3 or any
 S3-compatible provider: MinIO/Backblaze B2/DigitalOcean Spaces/Cloudflare R2/IDrive e2/self-hosted,
-via an optional `Endpoint` in `ProviderConfig`, `Maktaba.Cloud/S3ProviderOptions.cs`) or
-`"googledrive"` (`Maktaba.Cloud/GoogleDriveProviderOptions.cs`) today. `IStorageProvider`
-(`Maktaba.Core/Services/IStorageProvider.cs`) is the abstraction every file-touching service goes
-through instead of raw `System.IO` - `LocalFileSystemProvider` is a pass-through for local
-libraries; `S3StorageProvider`/`GoogleDriveStorageProvider` each keep a local cache mirror
-(`ICloudCacheManager`, under `{userData}/CloudCache/{libraryId}/`) in sync with the remote store, so
-reads/writes above the provider layer still just work with plain local paths (offline reading of
-already-cached books included). `StorageProviderFactory` resolves the right one per the active
-library, keyed by `(libraryId, providerType, credentialHash)` so a library migrated from one
-provider to another (or reconnected with a changed credential) never accidentally reuses a cached
-instance built for the old one.
+via an optional `Endpoint` in `ProviderConfig`, `Maktaba.Cloud/S3ProviderOptions.cs`), `"googledrive"`
+(`Maktaba.Cloud/GoogleDriveProviderOptions.cs`), or `"onedrive"` (`Maktaba.Cloud/OneDriveProviderOptions.cs`)
+today. `IStorageProvider` (`Maktaba.Core/Services/IStorageProvider.cs`) is the abstraction every
+file-touching service goes through instead of raw `System.IO` - `LocalFileSystemProvider` is a
+pass-through for local libraries; `S3StorageProvider`/`GoogleDriveStorageProvider`/
+`OneDriveStorageProvider` each keep a local cache mirror (`ICloudCacheManager`, under
+`{userData}/CloudCache/{libraryId}/`) in sync with the remote store, so reads/writes above the
+provider layer still just work with plain local paths (offline reading of already-cached books
+included). `StorageProviderFactory` resolves the right one per the active library, keyed by
+`(libraryId, providerType, credentialHash)` so a library migrated from one provider to another (or
+reconnected with a changed credential) never accidentally reuses a cached instance built for the old
+one.
 
 **Google Drive specifics** (`GoogleDriveStorageProvider.cs`) - unlike S3's flat keyspace or a
 path-addressable filesystem, Drive links every file/folder to its parent purely by id (and even
@@ -135,10 +136,12 @@ rotated:
    - User type: **External** (Maktaba isn't a Google Workspace organization, so "Internal" isn't
      an option).
    - Branding: **App name** (e.g. "Maktaba"), **User support email**, **Developer contact
-     information** are required; **Authorized domains** and the App home page/Privacy
-     policy/Terms of service links should all be left **blank** - Maktaba has no public web
-     presence, and Authorized domains would need Google Search Console domain-ownership
-     verification that doesn't apply here anyway. Leaving these blank works fine at this scope.
+     information** are required. **Privacy policy link**/**Terms of service link** can point at
+     `https://inshapardaz.github.io/maktaba/privacy-policy`/`.../terms-and-conditions` (see "Help &
+     onboarding" below - GitHub Pages, deployed from `docs/`). **Authorized domains** should stay
+     **blank** - it would need Google Search Console domain-ownership verification that doesn't
+     apply here (the redirect target is a loopback address, not `github.io`), so leaving it empty
+     works fine at this scope even with the two links above filled in.
    - **Data access / Scopes** → Add or Remove Scopes → add all three: `.../auth/drive.file`,
      `.../auth/userinfo.email`, `.../auth/userinfo.profile` (must match `SCOPES` in
      `googleDriveAuth.ts` exactly, or the authorize request fails).
@@ -170,6 +173,59 @@ Troubleshooting notes from actually setting this up once already:
   developer-approved testers" means the signing-in account isn't on the Test users list yet (or the
   consent screen hasn't been published) - see steps 4/7/8 above.
 
+**OneDrive specifics** (`OneDriveStorageProvider.cs`) - unlike Drive's id-based addressing, Graph's
+path-based item addressing (`/drive/root:/{itemPath}:/...`, via `ItemWithPath`) lets this provider
+address items by path the same way `S3StorageProvider` addresses objects by key, so there's no
+path→id cache to maintain the way Google Drive needs one. Talks to the signed-in account's OneDrive
+via the Microsoft Graph SDK (`Microsoft.Graph`) rather than raw HTTP, since Graph's own SDK is
+already a dependency-worthy, well-typed client (unlike Drive v3, where a raw `HttpClient` avoided
+pulling in a whole extra generated-client dependency). Sign-in is OAuth2 with PKCE via the same
+provider-agnostic loopback listener Google Drive uses (`apps/desktop/src/oneDriveAuth.ts` +
+`apps/desktop/src/oauthLoopback.ts`) - unlike Google's Desktop app client type, an Azure AD "Mobile
+and desktop applications" public client needs no `client_secret` at all (PKCE alone is sufficient),
+so `CLIENT_ID` is a plain hardcoded constant in both `oneDriveAuth.ts` and
+`OneDriveStorageProvider.cs`'s `OneDriveTokenManager` (not a secret, so no build-time generation
+step like Google's `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` is needed - see
+`scripts/generate-google-oauth-config.mjs` for that one's reasoning) - **both need updating together
+once a real Azure AD app registration exists; they still hold a `00000000-0000-0000-0000-000000000000`
+placeholder as of this phase, so OneDrive sign-in will fail until that's done** (see the walkthrough
+below). `oauthLoopback.ts`'s `loopbackHost` parameter is `"localhost"` for this provider (Microsoft's
+identity platform requires the registered redirect URI to be the literal hostname `"localhost"`,
+any port ignored when matching) rather than Google's `"127.0.0.1"` - see that function's own doc
+comment for why the two providers need different loopback hostnames at all.
+
+**Setting up the Azure AD app registration** (one-time, done once for the whole app - end users
+never do any of this themselves). Needed whenever `CLIENT_ID` has to be created or rotated:
+
+1. [portal.azure.com](https://portal.azure.com) → sign in with a personal Microsoft account (a
+   plain outlook.com/hotmail.com/live.com account, or any Microsoft account - this does **not**
+   need an Azure subscription or any paid tier; Entra ID's free tier covers app registrations).
+2. **Microsoft Entra ID → App registrations → New registration**:
+   - **Name**: any name (e.g. "Maktaba").
+   - **Supported account types**: **Personal Microsoft accounts only** - Maktaba targets OneDrive
+     Personal, not OneDrive for Business/SharePoint, so this is what makes the `/consumers/`
+     endpoint (rather than `/common/`) the correct one in both `oneDriveAuth.ts` and
+     `OneDriveTokenManager` - registering under a broader option here and leaving those endpoints
+     as `/consumers/` is a common source of "application not found in directory" errors.
+   - **Redirect URI**: platform **"Mobile and desktop applications"**, then check the box for the
+     pre-listed `http://localhost` option (no port - Microsoft's identity platform ignores the port
+     when matching a `localhost` redirect URI for this platform type, letting `oauthLoopback.ts`
+     pick a fresh free port every sign-in without needing one fixed port reserved for Maktaba).
+3. Copy the **Application (client) ID** from the registration's Overview page into the `CLIENT_ID`
+   constant in both `oneDriveAuth.ts` and `OneDriveStorageProvider.cs`'s `OneDriveTokenManager` -
+   both need updating together, they must match. No client secret to create - a "Mobile and desktop
+   applications" redirect URI platform is a public client by definition, and **Certificates &
+   secrets** should stay empty.
+4. **API permissions** - `Files.ReadWrite`, `offline_access`, and `User.Read` (matching `SCOPES` in
+   `oneDriveAuth.ts`) should already be present as delegated Microsoft Graph permissions by default
+   for a new registration; if not, **Add a permission → Microsoft Graph → Delegated permissions**
+   and add them there. No admin consent is needed for any of these (none are marked "requires admin
+   consent") since they're all standard user-delegated permissions - each signing-in user consents
+   for themselves on first sign-in.
+5. No publisher verification/consent-screen review step exists for a personal-account-only
+   registration the way Google's OAuth consent screen has a Testing/Production split - once the
+   Application (client) ID is in place, any Microsoft personal account can sign in immediately.
+
 **metadata.db stays local even for a cloud library** — only pulled/pushed as a whole file
 (`IStorageProvider.PullDatabaseAsync`/`PushDatabaseAsync`), pulled on library open, pushed on a
 timer (`CloudSyncLifecycleService`, every 5 min), via the manual "sync to cloud now" button
@@ -181,9 +237,31 @@ and best-effort on app shutdown (`POST /shutdown` → `IHostApplicationLifetime.
 `CloudSyncLifecycleService.StopAsync`, requested by `apps/desktop/src/sidecar.ts`'s
 `stopSidecarGracefully` before falling back to a hard kill - a plain `process.kill()` alone doesn't
 work for this on Windows, see that function's doc comment). Concurrency model is single-writer,
-last-write-wins — no reconciliation logic, the file is just replaced wholesale, so don't have the
-same cloud library open on two devices at once (an accidental double-open silently loses whichever
-side pushes second).
+last-write-wins — no reconciliation logic, the file is just replaced wholesale.
+
+**Cloud library locking** guards against the "same library open on two devices at once" case the
+above would otherwise silently lose data on. `IStorageProvider.ReadLockAsync`/`WriteLockAsync`/
+`DeleteLockAsync` (implemented per-provider - S3/Google Drive/OneDrive each just read/write/delete a
+plain `.maktaba-lock` text object directly against the remote store, always bypassing the local
+cache mirror since the whole point is seeing what a *different* device just wrote) read/write
+`LibraryLockInfo` (`Maktaba.Core/Sync/LibraryLockInfo.cs` - device name, a per-install machine id,
+and an acquired-at timestamp; `IsStale` treats one older than 2 minutes as abandoned rather than
+blocking forever on a crashed/killed holder). `LibraryService.ActivateAsync` is what actually
+enforces this: before pulling/pushing a cloud library's database, it calls `ReadLockAsync` and
+throws (surfaced to the frontend as a plain error message, same path as any other failed open) if a
+non-stale lock belongs to a different device, otherwise writes its own. `CloudSyncLifecycleService`
+runs a second, much shorter-interval (`60s`, comfortably under the 2-minute staleness window) timer
+loop refreshing the lock for as long as this process has the library open, and releases it (best-
+effort, alongside the existing DB push) both on switching/removing the active library
+(`LibraryService.PushCurrentLibraryIfCloudAsync`) and on `StopAsync` (app shutdown) - so a clean
+close/switch lets another device in immediately rather than making it wait out the full staleness
+window. `LibraryMigrationService.ExcludedFileNames` already excluded `.maktaba-lock` from being
+migrated as ordinary book content (predates this feature - see that field's own comment), since a
+lock marker means something different in the *target* location's context than a copied file would.
+This narrows, but doesn't eliminate, the risk: it's still not a real merge, and there's a small
+unavoidable window (between two devices' own lock checks) any advisory lock has - treat it as a
+strong deterrent against the common case (opening a library on a second device while forgetting it's
+open on the first), not a hard guarantee.
 
 **`ActivateAsync` doesn't pull unconditionally.** `IStorageProvider.GetRemoteDatabaseLastModifiedAsync`
 (implemented per-provider - S3's object `LastModified`, Google Drive's `modifiedTime` field, null
@@ -219,14 +297,44 @@ that no retry count fixes. Both `LibraryService.ActivateAsync` (pull) and the `/
 (push) do this already for any non-local provider - if a new code path ever touches
 `metadata.db`'s bytes directly for a cloud library, it needs the same treatment.
 
+**Deleting a book/periodical from a cloud library actually deletes it remotely.** `BookRemovalService.RemoveAsync`/
+`PeriodicalService.DeleteAsync` return `RequiresLocalTrash` (true only for `"local"`) alongside the
+folder path - for a local library, nothing changed: the frontend still moves that folder to the OS
+trash itself (`window.maktaba.trashPath`), same as always. For a cloud library, the *backend* now
+calls `IStorageProvider.DeleteAsync(folderPath, recursive: true, ct)` itself (best-effort - a failed
+remote delete logs a warning but doesn't block removing the DB rows) before returning, and the
+frontend skips `trashPath` entirely when `RequiresLocalTrash` is false. Before this, only the DB row
+was ever removed for a cloud library - the actual files (and every issue's, for a periodical) stayed
+orphaned in the remote store forever, since `window.maktaba.trashPath` is a pure local-disk
+operation with zero cloud awareness. Every call site that deletes a book/periodical
+(`BookDetailPanel.tsx`, `DeleteBooksConfirmDialog.tsx`, `MergeConfirmDialog.tsx`'s source-book
+cleanup, `PeriodicalDetailView.tsx` (both issue and periodical delete), `PeriodicalsView.tsx`) now
+checks this flag the same way. Per-file deletion (`BookEditService`'s `RemoveFileAsync`/replace-file
+paths) was never affected - those already called `Storage.DeleteAsync` directly rather than routing
+through the frontend's OS-trash flow at all.
+
+Deleting a plain book (not a periodical issue) also cleans up its now-possibly-empty author folder
+("{Author Sort Name}/{Book Title} (sqid)", see `LibraryPathBuilder`) - purely a derived grouping
+with no identity of its own once nothing files under it, unlike a periodical issue's parent (its
+periodical's own folder, which has an independent identity - a `Periodical` DB row that still
+exists), which is never pruned this way. `BookRemovalResult.ParentFolderPath` carries the path to
+check, only ever set for a local library and never for an issue. For a cloud library, `RemoveAsync`
+already handles this itself (an `EnumerateAsync` check before deleting the parent, both best-effort,
+same as the book folder's own delete). For a local library, the caller does the actual check -
+`window.maktaba.trashPathIfEmpty` (native.ts), called only *after* the book's own folder has
+actually been trashed, so it's checking real, current state rather than the backend guessing ahead
+of time - a no-op if the folder is missing or still has something in it (a file the user placed
+there Maktaba doesn't know about, say).
+
 Frontend surface: `LibrariesSettings.tsx`'s "Connect S3-compatible library…" form (bucket/region/
-subfolder/endpoint/access key/secret, with a "Test connection" step) and "Connect Google Drive…"
-form (name/optional folder, plus a "Sign in with Google" button instead of typed credentials - a
-successful sign-in already proves the credential works, so there's no separate test step), a
-provider badge, and a sync-to-cloud button - all only ever rendered for a non-local library, so a
-local-only user sees nothing new. The key-icon "Reconnect…" action (re-supplying a stale/missing
-credential without disconnecting the whole library) branches the same way: typed access key/secret
-for S3, a "Sign in again" button for an OAuth-based provider. `connectCloudLibrary`/
+subfolder/endpoint/access key/secret, with a "Test connection" step) and its "Connect Google
+Drive…"/"Connect OneDrive…" forms (name/optional folder, plus a "Sign in with Google"/"Sign in with
+Microsoft" button instead of typed credentials - a successful sign-in already proves the credential
+works, so there's no separate test step), a provider badge, and a sync-to-cloud button - all only
+ever rendered for a non-local library, so a local-only user sees nothing new. The key-icon
+"Reconnect…" action (re-supplying a stale/missing credential without disconnecting the whole
+library) branches the same way: typed access key/secret for S3, a "Sign in again" button for either
+OAuth-based provider. `connectCloudLibrary`/
 `reopenCloudLibrary` (`api.ts`) are generic over the credential shape - neither they nor the backend
 endpoints care about a specific provider's credential JSON, only that it round-trips as an opaque
 string. `components/providerIcons.tsx` is the one shared per-provider icon map (a bold "G" glyph
@@ -444,6 +552,18 @@ without a build step: `docs/.vitepress/config.ts` (sidebar), `scripts/build-help
 referenced from markdown (`docs/screenshots/*.svg`) are currently all placeholder graphics (copies
 of `_placeholder-source.svg`) — see `docs/SCREENSHOTS.md` for the capture checklist of what each
 one should eventually show.
+
+The same `docs/` tree is also **published to GitHub Pages** (`.github/workflows/pages.yml`, runs
+`npm run docs:build` then `actions/deploy-pages` on every `main` push touching `docs/**`) at
+`https://inshapardaz.github.io/maktaba/` - `docs/.vitepress/config.ts`'s `base: "/maktaba/"` matches
+that project-site path (needed for every generated asset/link to resolve correctly once actually
+deployed there; doesn't affect the in-app Help window at all, which reads the same source `.md`
+files directly rather than going through this build - see below). This is also where
+`docs/privacy-policy.md`/`docs/terms-and-conditions.md` live - English-only (no `docs/ur/`
+counterpart, and not part of `topics.cjs`'s help-topic list, just each locale's `themeConfig.nav`)
+pages for `AboutSettings.tsx`'s Privacy Policy/Terms & Conditions links and cloud provider OAuth
+consent screens (see the Google Cloud project walkthrough above) that need a stable public URL -
+edit them directly (not the old repo-root copies, which were moved into `docs/` once this existed).
 
 The same `docs/` markdown is also the **offline in-app Help**, shown in its own top-level window
 (`HelpWindow.tsx`) rather than a Settings tab — help content is multi-page and screenshot-heavy

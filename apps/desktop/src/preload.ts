@@ -54,6 +54,11 @@ contextBridge.exposeInMainWorld("maktaba", {
 
   trashPath: (filePath: string): Promise<void> => ipcRenderer.invoke("maktaba:trash-path", filePath),
 
+  // Best-effort cleanup for a book's now-possibly-empty author folder after trashPath removed the
+  // book's own folder - see BookRemovalResult.ParentFolderPath's doc comment for exactly when the
+  // backend hands one back. A no-op if the folder is missing or still has something in it.
+  trashPathIfEmpty: (folderPath: string): Promise<void> => ipcRenderer.invoke("maktaba:trash-path-if-empty", folderPath),
+
   // Opens a book's reader in its own top-level window so multiple books can be read at once;
   // re-invoking for the same bookId+format focuses the existing window instead of duplicating it.
   openReaderWindow: (bookId: string, format: "Epub" | "Pdf" | "Docx" | "Txt", title?: string): Promise<void> =>
@@ -196,6 +201,19 @@ contextBridge.exposeInMainWorld("maktaba", {
 
   deleteCloudCredential: (ref: string): Promise<void> =>
     ipcRenderer.invoke("maktaba:delete-cloud-credential", ref),
+
+  // Cloud: Phase 4 (#96) - runs the interactive OneDrive sign-in (opens the system browser,
+  // resolves once it redirects back to a temporary loopback listener). Rejects if the user closes
+  // the browser without completing sign-in, denies consent, is cancelled (see below), or it times
+  // out.
+  connectOneDrive: (): Promise<{ accessToken: string; refreshToken: string; expiresAt: number }> =>
+    ipcRenderer.invoke("maktaba:connect-onedrive"),
+
+  // Stops a still-pending connectOneDrive() call immediately - see native.ts's
+  // oneDriveConnectAbort. The pending connectOneDrive() promise rejects as a result of this;
+  // callers don't need to do anything else to "cancel" their own await.
+  cancelOneDriveConnect: (): Promise<void> =>
+    ipcRenderer.invoke("maktaba:cancel-onedrive-connect"),
 
   // Cloud: Phase 5 (#99) - runs the interactive Google Drive sign-in (opens the system browser,
   // resolves once it redirects back to a temporary loopback listener). Rejects if the user closes

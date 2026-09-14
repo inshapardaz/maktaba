@@ -2,10 +2,12 @@ using Maktaba.Core.Entities;
 using Maktaba.Core.Naming;
 using Maktaba.Core.Services;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace Maktaba.Data.Services;
 
-public class PeriodicalService(MaktabaDbContext db, IStorageProviderFactory storageFactory) : IPeriodicalService
+public class PeriodicalService(
+    MaktabaDbContext db, IStorageProviderFactory storageFactory, ILogger<PeriodicalService> logger) : IPeriodicalService
 {
     private IStorageProvider Storage => storageFactory.Current;
 
@@ -143,18 +145,31 @@ public class PeriodicalService(MaktabaDbContext db, IStorageProviderFactory stor
 
         var absoluteFolder = await Storage.GetLocalPathAsync(periodical.FolderPath, ct);
 
+        // A cloud-backed library has no OS trash to defer to - see BookRemovalService's identical
+        // reasoning. Best-effort: doesn't block removing the DB rows below on a failed remote
+        // delete.
+        var requiresLocalTrash = Storage.ProviderType == "local";
+        if (!requiresLocalTrash)
+        {
+            try
+            {
+                await Storage.DeleteAsync(periodical.FolderPath, recursive: true, ct);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Failed to delete periodical folder \"{FolderPath}\" from the cloud provider.", periodical.FolderPath);
+            }
+        }
+
         // Removing each issue Book row cascades to its BookAuthors/BookSeries/BookTags/BookFiles/
         // Identifiers/Bookmarks/Notes/ReadingProgress via their required FK to Book, same as a
         // single book's own delete endpoint (see BookRemovalService) - and PeriodicalTags cascades
-        // off the Periodical row the same way. Only the DB rows are removed here; every issue
-        // physically lives nested inside the periodical's own folder, so the caller trashes that
-        // one path afterward to remove all of it (cover + every issue) in one reversible OS-trash
-        // move, rather than this doing a direct/permanent filesystem delete itself.
+        // off the Periodical row the same way.
         db.Books.RemoveRange(periodical.Issues);
         db.Periodicals.Remove(periodical);
         await db.SaveChangesAsync(ct);
 
-        return new PeriodicalDeleteResult(PeriodicalDeleteOutcome.Deleted, absoluteFolder);
+        return new PeriodicalDeleteResult(PeriodicalDeleteOutcome.Deleted, absoluteFolder, requiresLocalTrash);
     }
 
     public async Task<Periodical?> SaveCoverAsync(
