@@ -361,8 +361,7 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
             try
             {
                 var previousStorage = _serviceProvider.GetRequiredService<IStorageProviderFactory>().Current;
-                SqliteConnection.ClearAllPools();
-                await previousStorage.PushDatabaseAsync(ct);
+                await PushWithRetryAsync(previousStorage, ct);
                 _serviceProvider.GetRequiredService<ISyncStatusTracker>().Synced();
             }
             catch (Exception ex)
@@ -410,7 +409,7 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
                     var sidecarPath = dbPath + suffix;
                     if (File.Exists(sidecarPath))
                     {
-                        File.Delete(sidecarPath);
+                        await DeleteWithRetryAsync(sidecarPath, ct);
                     }
                 }
             }
@@ -430,6 +429,52 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
         await db.Database.EnsureCreatedAsync(ct);
 
         SaveConfig();
+    }
+
+    // A few retries (same shape as CloudCacheManager.MoveWithRetryAsync) around the outgoing
+    // library's push in ActivateAsync above - clearing the SQLite connection pool only releases
+    // *idle/pooled* connections, not one an in-flight request elsewhere is still actively using at
+    // the exact moment a switch begins (a book list still loading when the user clicks "Open" on a
+    // different library, say). That's a genuinely transient window, not a real failure, so it's
+    // worth a short retry before this is reported as a sync error rather than failing on the first
+    // overlap.
+    private static async Task PushWithRetryAsync(IStorageProvider storage, CancellationToken ct)
+    {
+        const int maxAttempts = 5;
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                SqliteConnection.ClearAllPools();
+                await storage.PushDatabaseAsync(ct);
+                return;
+            }
+            catch (Exception ex) when ((ex is IOException or UnauthorizedAccessException) && attempt < maxAttempts)
+            {
+                await Task.Delay(200 * attempt, ct);
+            }
+        }
+    }
+
+    // Same reasoning/shape as PushWithRetryAsync above and CloudCacheManager.MoveWithRetryAsync -
+    // a stale -wal/-shm sidecar can still be transiently held open by something (antivirus, a
+    // just-exited connection pool entry that hasn't fully released the OS handle yet) for a moment
+    // after SqliteConnection.ClearAllPools() returns.
+    private static async Task DeleteWithRetryAsync(string path, CancellationToken ct)
+    {
+        const int maxAttempts = 5;
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                File.Delete(path);
+                return;
+            }
+            catch (Exception ex) when ((ex is IOException or UnauthorizedAccessException) && attempt < maxAttempts)
+            {
+                await Task.Delay(200 * attempt, ct);
+            }
+        }
     }
 
     /// <summary>
