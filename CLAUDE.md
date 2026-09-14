@@ -181,9 +181,31 @@ and best-effort on app shutdown (`POST /shutdown` → `IHostApplicationLifetime.
 `CloudSyncLifecycleService.StopAsync`, requested by `apps/desktop/src/sidecar.ts`'s
 `stopSidecarGracefully` before falling back to a hard kill - a plain `process.kill()` alone doesn't
 work for this on Windows, see that function's doc comment). Concurrency model is single-writer,
-last-write-wins — no reconciliation logic, the file is just replaced wholesale, so don't have the
-same cloud library open on two devices at once (an accidental double-open silently loses whichever
-side pushes second).
+last-write-wins — no reconciliation logic, the file is just replaced wholesale.
+
+**Cloud library locking** guards against the "same library open on two devices at once" case the
+above would otherwise silently lose data on. `IStorageProvider.ReadLockAsync`/`WriteLockAsync`/
+`DeleteLockAsync` (implemented per-provider - S3/Google Drive/OneDrive each just read/write/delete a
+plain `.maktaba-lock` text object directly against the remote store, always bypassing the local
+cache mirror since the whole point is seeing what a *different* device just wrote) read/write
+`LibraryLockInfo` (`Maktaba.Core/Sync/LibraryLockInfo.cs` - device name, a per-install machine id,
+and an acquired-at timestamp; `IsStale` treats one older than 2 minutes as abandoned rather than
+blocking forever on a crashed/killed holder). `LibraryService.ActivateAsync` is what actually
+enforces this: before pulling/pushing a cloud library's database, it calls `ReadLockAsync` and
+throws (surfaced to the frontend as a plain error message, same path as any other failed open) if a
+non-stale lock belongs to a different device, otherwise writes its own. `CloudSyncLifecycleService`
+runs a second, much shorter-interval (`60s`, comfortably under the 2-minute staleness window) timer
+loop refreshing the lock for as long as this process has the library open, and releases it (best-
+effort, alongside the existing DB push) both on switching/removing the active library
+(`LibraryService.PushCurrentLibraryIfCloudAsync`) and on `StopAsync` (app shutdown) - so a clean
+close/switch lets another device in immediately rather than making it wait out the full staleness
+window. `LibraryMigrationService.ExcludedFileNames` already excluded `.maktaba-lock` from being
+migrated as ordinary book content (predates this feature - see that field's own comment), since a
+lock marker means something different in the *target* location's context than a copied file would.
+This narrows, but doesn't eliminate, the risk: it's still not a real merge, and there's a small
+unavoidable window (between two devices' own lock checks) any advisory lock has - treat it as a
+strong deterrent against the common case (opening a library on a second device while forgetting it's
+open on the first), not a hard guarantee.
 
 **`ActivateAsync` doesn't pull unconditionally.** `IStorageProvider.GetRemoteDatabaseLastModifiedAsync`
 (implemented per-provider - S3's object `LastModified`, Google Drive's `modifiedTime` field, null
