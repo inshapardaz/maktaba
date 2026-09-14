@@ -30,9 +30,9 @@ You can just click the **Open** button to switch the library as active in settin
 ## Cloud libraries
 
 Besides a folder on your own computer, a library can also live in cloud storage — an S3-compatible
-bucket, or your own Google Drive. Your book files and metadata database are kept there, so the same
-library can be reached from more than one computer, with each device keeping a local copy for fast,
-offline reading.
+bucket, your own Google Drive, or your own OneDrive. Your book files and metadata database are kept
+there, so the same library can be reached from more than one computer, with each device keeping a
+local copy for fast, offline reading.
 
 ### Connecting an S3-compatible library
 
@@ -72,6 +72,20 @@ your Google password is never seen by Maktaba itself. Once you approve access, c
 **Connect**. Maktaba saves the sign-in encrypted on your own computer (via your operating system's
 own secure storage) so you won't need to sign in again on this device.
 
+### Connecting a OneDrive library
+
+From **Settings → Libraries**, click **Connect OneDrive…** and fill in:
+
+- **Library name** — the label Maktaba shows you for this library.
+- **Folder within OneDrive** *(optional)* — if you want this library to live inside a particular
+  folder of your OneDrive rather than at its root (useful for keeping it separate from everything
+  else you keep in OneDrive). Maktaba creates the folder if it doesn't already exist.
+
+Click **Sign in with Microsoft** — this opens your normal web browser to Microsoft's own sign-in
+page, so your Microsoft password is never seen by Maktaba itself. Once you approve access, come
+back and click **Connect**. Maktaba saves the sign-in encrypted on your own computer (via your
+operating system's own secure storage) so you won't need to sign in again on this device.
+
 ### Keeping a cloud library in sync
 
 Maktaba automatically pulls the latest copy of your library's database when you open it, and
@@ -80,6 +94,12 @@ latest changes reach the cloud right away — for example, right before switchin
 computer — open **Settings → Libraries** and click the cloud-upload icon next to the library.
 Maktaba will confirm before briefly closing the library to sync it safely, then reopen it
 automatically.
+
+A cloud library can only be open on one device at a time. If you try to open one that's already
+open elsewhere, Maktaba tells you which device is using it instead of opening it anyway — closing
+it there (or switching to a different library) frees it up for this device right away. If that
+other device is offline or has crashed, Maktaba lets you back in automatically after a couple of
+minutes.
 
 ### Moving an existing local library to the cloud
 
@@ -105,15 +125,15 @@ the active one, and click **Migrate to cloud…**. A wizard walks you through it
 
 Occasionally Maktaba can't reach a cloud library when starting up — most often because of a
 network problem, or because its saved sign-in no longer works (for example, if you changed your S3
-provider's access key, or revoked Maktaba's access to your Google account). When this happens,
-Maktaba shows the error along with the same library list from Settings, so you can open a different
-library immediately rather than being stuck. Once the underlying problem is fixed, switch back to
-the cloud library to pick up where you left off.
+provider's access key, or revoked Maktaba's access to your Google or Microsoft account). When this
+happens, Maktaba shows the error along with the same library list from Settings, so you can open a
+different library immediately rather than being stuck. Once the underlying problem is fixed, switch
+back to the cloud library to pick up where you left off.
 
 If the credential itself is the problem, click the key icon next to that library in
 **Settings → Libraries**. For an S3-compatible library, re-enter its access key and secret key; for
-a Google Drive library, click **Sign in again**. Either way this updates the saved credential
-without needing to reconnect the whole library from scratch.
+a Google Drive or OneDrive library, click **Sign in again**. Either way this updates the saved
+credential without needing to reconnect the whole library from scratch.
 
 ## Renaming, moving, or removing a library
 
