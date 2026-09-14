@@ -394,6 +394,29 @@ public class GoogleDriveStorageProvider : IStorageProvider, IDisposable
 
     public Task PushDatabaseAsync(CancellationToken ct = default) => NotifyWrittenAsync(DatabaseRelativePath, ct);
 
+    public async Task<DateTimeOffset?> GetRemoteDatabaseLastModifiedAsync(CancellationToken ct = default)
+    {
+        var itemPath = ToItemPath(DatabaseRelativePath);
+        var lastSlash = itemPath.LastIndexOf('/');
+        var parentPath = lastSlash < 0 ? "" : itemPath[..lastSlash];
+        var leafName = lastSlash < 0 ? itemPath : itemPath[(lastSlash + 1)..];
+
+        var parentId = await ResolveFolderIdAsync(parentPath, createIfMissing: false, ct);
+        if (parentId is null)
+        {
+            return null;
+        }
+
+        var query = Uri.EscapeDataString($"'{parentId}' in parents and name = '{EscapeQueryLiteral(leafName)}' and trashed = false");
+        var request = await AuthorizedAsync(
+            HttpMethod.Get, $"{ApiBase}/files?q={query}&fields=files(modifiedTime)&spaces=drive&pageSize=1", ct);
+        using var response = await _http.SendAsync(request, ct);
+        response.EnsureSuccessStatusCode();
+        var body = await response.Content.ReadFromJsonAsync<FileListResponse>(cancellationToken: ct);
+        var modifiedTime = body?.Files?.FirstOrDefault()?.ModifiedTime;
+        return modifiedTime is null ? null : DateTimeOffset.Parse(modifiedTime, null, System.Globalization.DateTimeStyles.RoundtripKind);
+    }
+
     // Diagnostic-only, same purpose as S3StorageProvider/OneDriveStorageProvider's ToString().
     public override string ToString() =>
         $"googledrive folder={(string.IsNullOrEmpty(_options.Folder) ? "(My Drive root)" : _options.Folder)}";
@@ -401,7 +424,10 @@ public class GoogleDriveStorageProvider : IStorageProvider, IDisposable
     private sealed record DriveFile(
         [property: JsonPropertyName("id")] string? Id,
         [property: JsonPropertyName("name")] string? Name,
-        [property: JsonPropertyName("mimeType")] string? MimeType);
+        [property: JsonPropertyName("mimeType")] string? MimeType,
+        // RFC 3339 timestamp string (Drive's own format) - only requested/populated by
+        // GetRemoteDatabaseLastModifiedAsync's query, null in every other response shape here.
+        [property: JsonPropertyName("modifiedTime")] string? ModifiedTime = null);
 
     private sealed record FileListResponse(
         [property: JsonPropertyName("files")] List<DriveFile>? Files,

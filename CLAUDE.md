@@ -185,6 +185,19 @@ last-write-wins — no reconciliation logic, the file is just replaced wholesale
 same cloud library open on two devices at once (an accidental double-open silently loses whichever
 side pushes second).
 
+**`ActivateAsync` doesn't pull unconditionally.** `IStorageProvider.GetRemoteDatabaseLastModifiedAsync`
+(implemented per-provider - S3's object `LastModified`, Google Drive's `modifiedTime` field, null
+for `LocalFileSystemProvider`) is compared against the local cache mirror's own
+`File.GetLastWriteTimeUtc` before deciding to pull: if the local copy is already at least as fresh
+(it has unpushed edits, or was already caught up), `ActivateAsync` pushes instead of pulling -
+still last-write-wins, not a real merge, but it stops a plain re-open/switch of a library that was
+already open here from silently discarding local edits just because *some* remote copy exists,
+which unconditionally pulling on every activation used to do. `ActivateAsync` also holds
+`_schemaCheckLock` (shared with `EnsureCurrentSchemaAsync`) for its whole pull-or-push+create
+sequence now, closing a race where a concurrent request (a stray background poll, an in-flight
+image load that started before a switch) could call `EnsureCreatedAsync` against the same library's
+not-yet-fully-pulled database path, surfacing as "access is denied".
+
 **Credentials never reach this backend's disk.** The Electron main process encrypts them via
 `safeStorage` (`apps/desktop/src/native.ts`'s `maktaba:*-cloud-credential` IPC, keyed by an opaque
 `CredentialRef` — currently always just the library's own id) - this .NET process can't decrypt

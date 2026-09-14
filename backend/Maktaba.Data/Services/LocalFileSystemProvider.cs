@@ -90,4 +90,7 @@ public class LocalFileSystemProvider(ILibraryPathProvider libraryPath) : IStorag
         Task.FromResult(libraryPath.DatabasePath!);
 
     public Task PushDatabaseAsync(CancellationToken ct = default) => Task.CompletedTask;
+
+    public Task<DateTimeOffset?> GetRemoteDatabaseLastModifiedAsync(CancellationToken ct = default) =>
+        Task.FromResult<DateTimeOffset?>(null);
 }

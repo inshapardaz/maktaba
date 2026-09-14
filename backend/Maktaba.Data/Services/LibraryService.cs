@@ -381,52 +381,109 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
         CurrentLibraryId = entry.Id;
         _schemaVerified = false;
 
-        // Cloud Sync Core: pull the remote copy of metadata.db (if any) into the local cache before
-        // EF ever opens it, so an existing cloud library's DB isn't shadowed by a freshly-created
-        // empty one below. A no-op for a local library (LocalFileSystemProvider.PullDatabaseAsync
-        // just returns DatabasePath) - CurrentLibraryId/LibraryRootPath are already set above, so
-        // the factory resolves the right provider for the library being activated.
-        var storage = _serviceProvider.GetRequiredService<IStorageProviderFactory>().Current;
-
-        if (entry.ProviderType != "local")
+        // Sharing _schemaCheckLock with EnsureCurrentSchemaAsync (below) closes a real race: the
+        // instant CurrentLibraryId/LibraryRootPath flip above, any *other* concurrent request
+        // (a background poll, an in-flight image load that started before the switch, ...) that
+        // hits the "library must be open" middleware sees _schemaVerified == false and
+        // LibraryRootPath non-null and would happily call EnsureCreatedAsync against this same
+        // library's database path itself - while the pull below is still downloading/moving that
+        // exact file into place. Holding this lock for the whole pull+create sequence (not just
+        // EnsureCurrentSchemaAsync's own probe) forces any such request to simply wait its turn
+        // instead of colliding with an in-progress pull, surfacing as "access is denied".
+        await _schemaCheckLock.WaitAsync(ct);
+        try
         {
-            // Microsoft.Data.Sqlite defaults to WAL mode, which keeps a memory-mapped
-            // "{db}-shm" file (plus a "{db}-wal" journal) alongside metadata.db for as long as any
-            // connection - even a pooled one left over from earlier in this same process, e.g. a
-            // previous EnsureCurrentSchemaAsync probe - has it open. Overwriting metadata.db without
-            // releasing that first is exactly what turned "Access to the path is denied" from a
-            // transient, retryable failure (CloudCacheManager's own retry loop) into a persistent
-            // one no amount of retrying fixed: the lock was never going to release on its own. Only
-            // relevant for a cloud-backed library, whose PullDatabaseAsync is about to *replace* the
-            // local cache copy - for "local", PullDatabaseAsync never touches the file at all, and
-            // clearing pools/deleting WAL/SHM there would risk losing not-yet-checkpointed local
-            // writes for no reason.
-            SqliteConnection.ClearAllPools();
-            if (DatabasePath is { } dbPath)
+            // Cloud Sync Core: pull the remote copy of metadata.db (if any) into the local cache
+            // before EF ever opens it, so an existing cloud library's DB isn't shadowed by a
+            // freshly-created empty one below. A no-op for a local library
+            // (LocalFileSystemProvider.PullDatabaseAsync just returns DatabasePath) -
+            // CurrentLibraryId/LibraryRootPath are already set above, so the factory resolves the
+            // right provider for the library being activated.
+            var storage = _serviceProvider.GetRequiredService<IStorageProviderFactory>().Current;
+            var shouldPull = true;
+
+            if (entry.ProviderType != "local")
             {
-                foreach (var suffix in new[] { "-wal", "-shm" })
+                // Compare the remote's last-modified time for metadata.db against the local cache
+                // mirror's own last-write time before deciding to overwrite it. Single-writer/
+                // last-write-wins still applies (this isn't a real merge - see the cloud storage
+                // epic's documented concurrency model), but it stops a plain re-open/switch from
+                // unconditionally discarding local edits that haven't been pushed yet just because
+                // *some* remote copy exists - a real data-loss risk the unconditional pull this
+                // replaced had. A local cache mirror that's never been pulled into on this device
+                // always pulls - there's nothing local to protect yet.
+                if (DatabasePath is { } existingPath && File.Exists(existingPath))
                 {
-                    var sidecarPath = dbPath + suffix;
-                    if (File.Exists(sidecarPath))
+                    var remoteModified = await storage.GetRemoteDatabaseLastModifiedAsync(ct);
+                    var localModified = File.GetLastWriteTimeUtc(existingPath);
+                    if (remoteModified is not null && remoteModified.Value.UtcDateTime <= localModified)
                     {
-                        await DeleteWithRetryAsync(sidecarPath, ct);
+                        shouldPull = false;
+                    }
+                }
+
+                if (shouldPull)
+                {
+                    // Microsoft.Data.Sqlite defaults to WAL mode, which keeps a memory-mapped
+                    // "{db}-shm" file (plus a "{db}-wal" journal) alongside metadata.db for as long as any
+                    // connection - even a pooled one left over from earlier in this same process, e.g. a
+                    // previous EnsureCurrentSchemaAsync probe - has it open. Overwriting metadata.db without
+                    // releasing that first is exactly what turned "Access to the path is denied" from a
+                    // transient, retryable failure (CloudCacheManager's own retry loop) into a persistent
+                    // one no amount of retrying fixed: the lock was never going to release on its own. Only
+                    // relevant when actually about to *replace* the local cache copy - skipped entirely
+                    // when shouldPull is false above, since nothing here is being overwritten in that case.
+                    SqliteConnection.ClearAllPools();
+                    if (DatabasePath is { } dbPath)
+                    {
+                        foreach (var suffix in new[] { "-wal", "-shm" })
+                        {
+                            var sidecarPath = dbPath + suffix;
+                            if (File.Exists(sidecarPath))
+                            {
+                                await DeleteWithRetryAsync(sidecarPath, ct);
+                            }
+                        }
                     }
                 }
             }
+
+            if (shouldPull)
+            {
+                await storage.PullDatabaseAsync(ct);
+            }
+            else
+            {
+                // Local is at least as fresh as remote - push it up instead of silently overwriting
+                // it, so a remote that's genuinely behind catches back up rather than staying stale
+                // indefinitely (PushWithRetryAsync does its own ClearAllPools()).
+                await PushWithRetryAsync(storage, ct);
+            }
+
+            // SQLite needs the parent folder to already exist before it can create a new file there.
+            // For "local" that's entry.Path itself (already created above). For a cloud library it's the
+            // local cache mirror folder - PullDatabaseAsync only creates it when a remote metadata.db
+            // actually exists to download; a brand-new library (nothing pushed yet) leaves it missing,
+            // which made EnsureCreatedAsync below fail with "SQLite Error 14: unable to open database
+            // file" the first time anyone connected to a fresh bucket/prefix.
+            Directory.CreateDirectory(Path.GetDirectoryName(DatabasePath)!);
+
+            using var db = MaktabaDbContextFactory.Create(this);
+            await db.Database.EnsureCreatedAsync(ct);
+            // Deliberately *not* setting _schemaVerified = true here - EnsureCreatedAsync only
+            // creates a *missing* file, it doesn't check whether an existing one (e.g. a database
+            // just pulled from an older Maktaba version) matches today's EF model. Leaving
+            // _schemaVerified false means the first request after this activation still runs the
+            // full EnsureCurrentSchemaAsync check (schema compare, rebuild, and - important - the
+            // "library must be open" middleware's own rescan-after-rebuild step, which this method
+            // has no equivalent for) exactly as before this lock was added; this section only
+            // needed to stop a concurrent request from doing that same EnsureCreatedAsync
+            // concurrently with the pull above, not to duplicate the rest of that logic.
         }
-
-        await storage.PullDatabaseAsync(ct);
-
-        // SQLite needs the parent folder to already exist before it can create a new file there.
-        // For "local" that's entry.Path itself (already created above). For a cloud library it's the
-        // local cache mirror folder - PullDatabaseAsync only creates it when a remote metadata.db
-        // actually exists to download; a brand-new library (nothing pushed yet) leaves it missing,
-        // which made EnsureCreatedAsync below fail with "SQLite Error 14: unable to open database
-        // file" the first time anyone connected to a fresh bucket/prefix.
-        Directory.CreateDirectory(Path.GetDirectoryName(DatabasePath)!);
-
-        using var db = MaktabaDbContextFactory.Create(this);
-        await db.Database.EnsureCreatedAsync(ct);
+        finally
+        {
+            _schemaCheckLock.Release();
+        }
 
         SaveConfig();
     }
