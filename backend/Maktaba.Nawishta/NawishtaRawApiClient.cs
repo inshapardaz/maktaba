@@ -75,6 +75,16 @@ public class NawishtaRawApiClient(HttpClient httpClient, string serverUrl)
     public async Task<NawishtaPageView<CategoryView>> GetCategoriesAsync(int libraryId, CancellationToken ct) =>
         await GetJsonAsync<NawishtaPageView<CategoryView>>($"{_baseUrl}/libraries/{libraryId}/categories?pageSize=1000", ct) ?? new();
 
+    // Payload shapes ({name} / {name, authorType}) confirmed against Nawishta's own reference
+    // editor (library-editor's authorsSelect.jsx/seriesSelect.jsx) - matching find-or-create
+    // semantics NawishtaBookMutationService.ResolveAuthorsAsync/ResolveSeriesAsync build on, the
+    // same pattern Maktaba's own EntityResolvers.cs already uses for local libraries.
+    public Task<AuthorView?> CreateAuthorAsync(int libraryId, string name, CancellationToken ct) =>
+        PostJsonAsync<AuthorView>($"{_baseUrl}/libraries/{libraryId}/authors", new { name, authorType = "writer" }, ct);
+
+    public Task<SeriesView?> CreateSeriesAsync(int libraryId, string name, CancellationToken ct) =>
+        PostJsonAsync<SeriesView>($"{_baseUrl}/libraries/{libraryId}/series", new { name }, ct);
+
     public Task<BookView?> CreateBookAsync(int libraryId, BookView body, CancellationToken ct) =>
         PostJsonAsync<BookView>($"{_baseUrl}/libraries/{libraryId}/books", body, ct);
 
@@ -140,6 +150,9 @@ public class NawishtaRawApiClient(HttpClient httpClient, string serverUrl)
     /// UpdateBookImageAsync/UpdateLibraryImageAsync convention for file uploads elsewhere in the
     /// generated client). <paramref name="language"/> is required by Nawishta's content model
     /// (BookContentView.Language) - defaults to the book's own language field.</summary>
+    // language goes on the query string, not as a multipart form field - confirmed against
+    // Nawishta's own reference editor (library-editor's books.api.js addBookContent, which builds
+    // the URL via `url.searchParams.set("language", language)` before POSTing just a "file" part).
     public async Task<BookContentView?> UploadContentAsync(
         int libraryId, int bookId, string fileName, string mimeType, string language, Stream content, CancellationToken ct)
     {
@@ -147,9 +160,9 @@ public class NawishtaRawApiClient(HttpClient httpClient, string serverUrl)
         using var fileContent = new StreamContent(content);
         fileContent.Headers.ContentType = MediaTypeHeaderValue.Parse(mimeType);
         form.Add(fileContent, "file", fileName);
-        form.Add(new StringContent(language), "language");
 
-        using var response = await httpClient.PostAsync($"{_baseUrl}/libraries/{libraryId}/books/{bookId}/contents", form, ct);
+        var url = $"{_baseUrl}/libraries/{libraryId}/books/{bookId}/contents?language={Uri.EscapeDataString(language)}";
+        using var response = await httpClient.PostAsync(url, form, ct);
         await ThrowIfErrorAsync(response, ct);
         var text = await response.Content.ReadAsStringAsync(ct);
         return string.IsNullOrWhiteSpace(text) ? null : JsonSerializer.Deserialize<BookContentView>(text, JsonOptions);
