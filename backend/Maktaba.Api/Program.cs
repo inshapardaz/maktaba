@@ -56,6 +56,7 @@ builder.Services.AddSingleton<IRescanProgressTracker, RescanProgressTracker>();
 builder.Services.AddSingleton<ICalibreConverter, CalibreConverter>();
 builder.Services.AddScoped<IBookConversionService, BookConversionService>();
 builder.Services.AddScoped<IPeriodicalService, PeriodicalService>();
+builder.Services.AddScoped<ILibraryQueryServiceFactory, LibraryQueryServiceFactory>();
 
 // Issue #24: Open Library's free public API, standing in for Goodreads (whose API has had no
 // new-consumer access since 2020) - see IMetadataLookupService's doc comment. A descriptive

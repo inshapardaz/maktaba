@@ -13,15 +13,9 @@ public static class BrowseEndpoints
 {
     public static void MapBrowseEndpoints(this WebApplication app)
     {
-        app.MapGet("/api/authors", async (MaktabaDbContext db, IStorageProviderFactory storageFactory, CancellationToken ct) =>
+        app.MapGet("/api/authors", async (ILibraryQueryServiceFactory queryServices, IStorageProviderFactory storageFactory, CancellationToken ct) =>
         {
-            // IdCodec.Encode can't be translated to SQL, so the raw int id is projected first and
-            // encoded afterwards, in memory.
-            var authors = await db.Authors
-                .Where(a => a.BookAuthors.Count > 0)
-                .OrderBy(a => a.Name)
-                .Select(a => new { a.Id, a.Name, Count = a.BookAuthors.Count })
-                .ToListAsync();
+            var authors = await queryServices.Browse.ListAuthorsAsync(ct);
 
             var root = await storageFactory.Current.GetLocalPathAsync("", ct);
             var result = authors.Select(a => new BrowseGroupDto(
@@ -32,7 +26,7 @@ public static class BrowseEndpoints
             // Those books are otherwise unreachable from this sidebar list since it only enumerates
             // rows in the Authors table, so a sentinel "unknown" group (matched directly in
             // BookEndpoints.cs's authorId filter, not via IdCodec) is appended when any exist.
-            var unknownCount = await db.Books.CountAsync(b => !b.BookAuthors.Any());
+            var unknownCount = await queryServices.Browse.CountBooksWithoutAuthorAsync(ct);
             if (unknownCount > 0)
             {
                 result.Add(new BrowseGroupDto("unknown", "", unknownCount));
@@ -41,23 +35,15 @@ public static class BrowseEndpoints
             return Results.Ok(result);
         });
 
-        app.MapGet("/api/series", async (MaktabaDbContext db) =>
+        app.MapGet("/api/series", async (ILibraryQueryServiceFactory queryServices, CancellationToken ct) =>
         {
-            var series = await db.Series
-                .Where(s => s.BookSeries.Count > 0)
-                .OrderBy(s => s.Name)
-                .Select(s => new { s.Id, s.Name, Count = s.BookSeries.Count })
-                .ToListAsync();
+            var series = await queryServices.Browse.ListSeriesAsync(ct);
             return Results.Ok(series.Select(s => new BrowseGroupDto(IdCodec.Encode(s.Id), s.Name, s.Count)));
         });
 
-        app.MapGet("/api/tags", async (MaktabaDbContext db) =>
+        app.MapGet("/api/tags", async (ILibraryQueryServiceFactory queryServices, CancellationToken ct) =>
         {
-            var tags = await db.Tags
-                .Where(t => t.BookTags.Count > 0)
-                .OrderBy(t => t.Name)
-                .Select(t => new { t.Id, t.Name, Count = t.BookTags.Count })
-                .ToListAsync();
+            var tags = await queryServices.Browse.ListTagsAsync(ct);
             return Results.Ok(tags.Select(t => new BrowseGroupDto(IdCodec.Encode(t.Id), t.Name, t.Count)));
         });
 
@@ -65,14 +51,9 @@ public static class BrowseEndpoints
         // autocomplete - unlike Authors/Series/Tags, Publisher is a plain string field on Book
         // (find-or-create only in the loose sense of "suggest a match", never its own entity/table),
         // so this returns bare strings rather than BrowseGroupDto with an id/count.
-        app.MapGet("/api/publishers", async (MaktabaDbContext db) =>
+        app.MapGet("/api/publishers", async (ILibraryQueryServiceFactory queryServices, CancellationToken ct) =>
         {
-            var publishers = await db.Books
-                .Where(b => b.Publisher != null && b.Publisher != "")
-                .Select(b => b.Publisher!)
-                .Distinct()
-                .OrderBy(p => p)
-                .ToListAsync();
+            var publishers = await queryServices.Browse.ListPublishersAsync(ct);
             return Results.Ok(publishers);
         });
 
@@ -81,14 +62,9 @@ public static class BrowseEndpoints
         // BrowseGroup, but grouped straight off the string column rather than a join table. The
         // publisher name itself doubles as the "id" (there's no int primary key to encode/decode),
         // which is why /api/books' publisher filter matches it directly rather than via IdCodec.
-        app.MapGet("/api/publishers/grouped", async (MaktabaDbContext db) =>
+        app.MapGet("/api/publishers/grouped", async (ILibraryQueryServiceFactory queryServices, CancellationToken ct) =>
         {
-            var publishers = await db.Books
-                .Where(b => b.Publisher != null && b.Publisher != "")
-                .GroupBy(b => b.Publisher!)
-                .Select(g => new { Name = g.Key, Count = g.Count() })
-                .OrderBy(p => p.Name)
-                .ToListAsync();
+            var publishers = await queryServices.Browse.ListPublishersGroupedAsync(ct);
             return Results.Ok(publishers.Select(p => new BrowseGroupDto(p.Name, p.Name, p.Count)));
         });
 
@@ -97,27 +73,17 @@ public static class BrowseEndpoints
         // plain string column on Book (an ISO 639-1 code, see BookEditForm.tsx's LANGUAGE_CODES),
         // not its own entity/table, so the code itself doubles as the BrowseGroup "id" and the
         // frontend translates it to a display name (language.<code> i18n keys) for rendering.
-        app.MapGet("/api/languages/grouped", async (MaktabaDbContext db) =>
+        app.MapGet("/api/languages/grouped", async (ILibraryQueryServiceFactory queryServices, CancellationToken ct) =>
         {
-            var languages = await db.Books
-                .Where(b => b.Language != null && b.Language != "")
-                .GroupBy(b => b.Language!)
-                .Select(g => new { Name = g.Key, Count = g.Count() })
-                .OrderBy(l => l.Name)
-                .ToListAsync();
+            var languages = await queryServices.Browse.ListLanguagesGroupedAsync(ct);
             return Results.Ok(languages.Select(l => new BrowseGroupDto(l.Name, l.Name, l.Count)));
         });
 
-        app.MapGet("/api/reading-statuses", async (MaktabaDbContext db) =>
+        app.MapGet("/api/reading-statuses", async (ILibraryQueryServiceFactory queryServices, CancellationToken ct) =>
         {
-            var counts = await db.Books
-                .GroupBy(b => b.ReadingStatus)
-                .Select(g => new { Status = g.Key, Count = g.Count() })
-                .ToListAsync();
-
             // Every status is always returned, even with a zero count, so the sidebar can render a
             // stable Unread/Reading/Finished list without special-casing missing entries.
-            var byStatus = counts.ToDictionary(c => c.Status, c => c.Count);
+            var byStatus = await queryServices.Browse.GetReadingStatusCountsAsync(ct);
             var all = Enum.GetValues<ReadingStatus>()
                 .Select(status => new ReadingStatusCountDto(status.ToString(), byStatus.GetValueOrDefault(status)));
 

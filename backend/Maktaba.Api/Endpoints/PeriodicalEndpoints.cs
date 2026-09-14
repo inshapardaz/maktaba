@@ -13,26 +13,11 @@ public static class PeriodicalEndpoints
     {
         var group = app.MapGroup("/api/periodicals");
 
-        group.MapGet("", async (MaktabaDbContext db, IStorageProviderFactory storageFactory, CancellationToken ct) =>
+        group.MapGet("", async (ILibraryQueryServiceFactory queryServices, IStorageProviderFactory storageFactory, CancellationToken ct) =>
         {
             var root = await storageFactory.Current.GetLocalPathAsync("", ct);
 
-            var periodicals = await db.Periodicals
-                .OrderBy(p => p.SortName)
-                .Select(p => new
-                {
-                    p.Id,
-                    p.Name,
-                    p.Description,
-                    p.Frequency,
-                    p.Language,
-                    p.Publisher,
-                    p.Editor,
-                    p.FolderPath,
-                    IssueCount = p.Issues.Count,
-                    Tags = p.PeriodicalTags.Select(pt => pt.Tag.Name).ToList(),
-                })
-                .ToListAsync();
+            var periodicals = await queryServices.Periodicals.ListAsync(ct);
 
             return Results.Ok(periodicals.Select(p => new PeriodicalDto(
                 IdCodec.Encode(p.Id),
@@ -42,8 +27,8 @@ public static class PeriodicalEndpoints
                 p.Language,
                 p.Publisher,
                 p.Editor,
-                [.. p.Tags],
-                p.IssueCount,
+                [.. p.PeriodicalTags.Select(pt => pt.Tag.Name)],
+                p.Issues.Count,
                 CoverLocator.Find(root, p.FolderPath) is not null)));
         });
 
@@ -102,7 +87,7 @@ public static class PeriodicalEndpoints
             return Results.Created($"/api/periodicals/{dto.Id}", dto);
         });
 
-        group.MapGet("/{id}", async (string id, MaktabaDbContext db, IStorageProviderFactory storageFactory, CancellationToken ct) =>
+        group.MapGet("/{id}", async (string id, ILibraryQueryServiceFactory queryServices, IStorageProviderFactory storageFactory, CancellationToken ct) =>
         {
             if (!IdCodec.TryDecode(id, out var periodicalId))
             {
@@ -111,22 +96,7 @@ public static class PeriodicalEndpoints
 
             var root = await storageFactory.Current.GetLocalPathAsync("", ct);
 
-            var periodical = await db.Periodicals
-                .Where(p => p.Id == periodicalId)
-                .Select(p => new
-                {
-                    p.Id,
-                    p.Name,
-                    p.Description,
-                    p.Frequency,
-                    p.Language,
-                    p.Publisher,
-                    p.Editor,
-                    p.FolderPath,
-                    IssueCount = p.Issues.Count,
-                    Tags = p.PeriodicalTags.Select(pt => pt.Tag.Name).ToList(),
-                })
-                .FirstOrDefaultAsync();
+            var periodical = await queryServices.Periodicals.GetByIdAsync(periodicalId, ct);
 
             if (periodical is null)
             {
@@ -135,8 +105,9 @@ public static class PeriodicalEndpoints
 
             return Results.Ok(new PeriodicalDto(
                 IdCodec.Encode(periodical.Id), periodical.Name, periodical.Description, periodical.Frequency.ToString(),
-                periodical.Language, periodical.Publisher, periodical.Editor, [.. periodical.Tags],
-                periodical.IssueCount, CoverLocator.Find(root, periodical.FolderPath) is not null));
+                periodical.Language, periodical.Publisher, periodical.Editor,
+                [.. periodical.PeriodicalTags.Select(pt => pt.Tag.Name)],
+                periodical.Issues.Count, CoverLocator.Find(root, periodical.FolderPath) is not null));
         });
 
         group.MapPut("/{id}", async (

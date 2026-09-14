@@ -411,6 +411,37 @@ match — that's fine, each id is only ever decoded against the one table it's l
 routes take a plain `{id}` string and `IdCodec.TryDecode` it, returning 404 on failure rather than
 throwing.
 
+## Query services (Nawishta epic, read-path abstraction)
+
+`ILibraryQueryServiceFactory` (`Maktaba.Core/Services/ILibraryQueryServiceFactory.cs`) resolves four
+read-path services for the active library - `Books` (`IBookQueryService`), `Browse`
+(`IBrowseQueryService` - authors/series/tags/publishers/languages/reading-status groups),
+`Collections` (`ICollectionQueryService`), `Periodicals` (`IPeriodicalQueryService`) - mirroring
+`IStorageProviderFactory`'s own "one factory, resolved per active library's ProviderType" shape.
+`Maktaba.Data/Services/LibraryQueryServiceFactory.cs` (registered scoped, not singleton - needs a
+fresh `MaktabaDbContext` per request) is the only implementation today, wrapping
+`EfBookQueryService`/`EfBrowseQueryService`/`EfCollectionQueryService`/`EfPeriodicalQueryService` -
+a **literal, behavior-preserving move** of logic that used to live inline in
+`BookEndpoints.cs`/`BrowseEndpoints.cs`/`CollectionEndpoints.cs`/`PeriodicalEndpoints.cs`'s GET
+lambdas as raw `MaktabaDbContext` LINQ, not a rewrite. Cover lookups, storage-path resolution, and
+DTO construction all stay in the endpoint layer (they depend on `IStorageProviderFactory`/
+`CoverLocator`, which live above/outside `Maktaba.Core`) - these interfaces only ever answer "which
+books/authors/series/etc., in what order, how many", returning the same `Book`/`Periodical`/etc.
+domain entities (or small new read-model records like `EntityGroupCount`) a REST-backed
+implementation would map remote API responses into.
+
+This exists because of a Nawishta epic finding (issue #106's spike): the epic's own design doc
+assumed read-side service interfaces (`IBookService`, etc.) already existed as a seam for a second,
+REST-backed implementation to plug into - they didn't. Every read for Books/Authors/Series/Tags/
+Collections/Periodicals was raw inline EF directly in endpoint lambdas; only *writes*
+(`IBookEditService`, `IBookRemovalService`, `IImportService`, `IPeriodicalService`) had interfaces.
+This is Phase A of that epic - the prerequisite seam, EF-backed only. A future
+`ProviderType == "nawishta"` branch in `LibraryQueryServiceFactory` (not yet written) is the only
+case that would ever return a different implementation; every provider today (including S3/Google
+Drive/OneDrive, whose *files* live remotely but whose metadata stays local) still resolves to the
+same EF-backed services, since only a library's file storage differs today, not where its metadata
+lives.
+
 ## Backend conventions
 
 - **Find-or-create by name**: `Maktaba.Data/Services/EntityResolvers.cs` (`ResolveAuthorsAsync`/

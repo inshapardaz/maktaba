@@ -1,6 +1,7 @@
 using Maktaba.Api.Dtos;
 using Maktaba.Core.Entities;
 using Maktaba.Core.Ids;
+using Maktaba.Core.Services;
 using Maktaba.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -18,12 +19,9 @@ public static class CollectionEndpoints
     {
         var group = app.MapGroup("/api/collections");
 
-        group.MapGet("", async (MaktabaDbContext db) =>
+        group.MapGet("", async (ILibraryQueryServiceFactory queryServices, CancellationToken ct) =>
         {
-            var collections = await db.Collections
-                .OrderBy(c => c.Name)
-                .Select(c => new { c.Id, c.Name, Count = c.BookCollections.Count })
-                .ToListAsync();
+            var collections = await queryServices.Collections.ListAsync(ct);
             return Results.Ok(collections.Select(c => new BrowseGroupDto(IdCodec.Encode(c.Id), c.Name, c.Count)));
         });
 
