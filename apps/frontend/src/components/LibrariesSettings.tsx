@@ -17,10 +17,12 @@ import {
 } from "@mantine/core";
 import {
   IconAlertCircle,
+  IconAlertTriangle,
   IconBooks,
   IconCheck,
   IconCloud,
   IconCloudUpload,
+  IconExternalLink,
   IconFolderOpen,
   IconKey,
   IconPencil,
@@ -31,15 +33,16 @@ import {
 } from "../icons";
 import {
   connectCloudLibrary,
+  getSyncStatus,
   listLibraries,
   openLibrary,
-  openLibraryById,
   relocateLibrary,
   removeLibrary,
   renameLibrary,
   reopenCloudLibrary,
   setLibraryPeriodicalsEnabled,
   testS3Connection,
+  type GoogleDriveCredential,
   type LibraryEntry,
   type S3Credential,
 } from "../api";
@@ -47,8 +50,10 @@ import { useLanguage } from "../i18n/LanguageContext";
 import { invalidateLibraryQueries } from "../queries";
 import { useRescan } from "../RescanContext";
 import { useLibrarySync } from "../LibrarySyncContext";
+import { useLibrarySwitch } from "../LibrarySwitchContext";
 import { EMPTY_S3_FIELDS, isS3FieldsComplete, S3CredentialFields, type S3FieldsValue } from "./S3CredentialFields";
 import { MigrationWizard } from "./MigrationWizard";
+import { PROVIDER_ICONS } from "./providerIcons";
 
 // Provider names are proper nouns/brand names, not translated - same convention as file format
 // labels (EPUB/PDF/...) elsewhere in this app. Only "local" is reachable today; the rest land with
@@ -72,6 +77,10 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
   const queryClient = useQueryClient();
 
   const librariesQuery = useQuery({ queryKey: ["libraries"], queryFn: listLibraries });
+  // Same query key/cadence as TitleBar.tsx's SyncStatusIndicator, which is already polling this -
+  // sharing the key means this doesn't add a second independent poll, just a second consumer of
+  // the same cached result.
+  const syncStatusQuery = useQuery({ queryKey: ["syncStatus"], queryFn: getSyncStatus, refetchInterval: 10_000 });
 
   const [addBusy, setAddBusy] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
@@ -83,6 +92,7 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
 
   const rescan = useRescan();
   const librarySync = useLibrarySync();
+  const librarySwitch = useLibrarySwitch();
 
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -112,15 +122,6 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
       setAddBusy(false);
     }
   };
-
-  const switchMutation = useMutation({
-    mutationFn: (id: string) => openLibraryById(id),
-    onSuccess: () => {
-      invalidateLibraries();
-      refreshActiveLibrary();
-    },
-    onError: (err) => setActionError(err instanceof Error ? err.message : String(err)),
-  });
 
   const renameMutation = useMutation({
     mutationFn: ({ id, name }: { id: string; name: string }) => renameLibrary(id, name),
@@ -181,7 +182,7 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
     // Runs via RescanContext (mounted at the app root) rather than local state, so the resync - and
     // its progress - survives this Settings modal being closed before it finishes; see
     // RescanContext.tsx and RescanStatusBar.tsx.
-    rescan.start({ id: entry.id, name: entry.name, isActive: entry.isActive }, refreshActiveLibrary);
+    rescan.start({ id: entry.id, name: entry.name, isActive: entry.isActive, providerType: entry.providerType }, refreshActiveLibrary);
   };
 
   const startRename = (entry: LibraryEntry) => {
@@ -198,11 +199,18 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
   };
 
   const [s3ModalOpen, setS3ModalOpen] = useState(false);
+  const [googleModalOpen, setGoogleModalOpen] = useState(false);
   const [migratingLibraryId, setMigratingLibraryId] = useState<string | null>(null);
   const [reconnectingEntry, setReconnectingEntry] = useState<LibraryEntry | null>(null);
 
   const handleS3Connected = () => {
     setS3ModalOpen(false);
+    invalidateLibraries();
+    refreshActiveLibrary();
+  };
+
+  const handleGoogleDriveConnected = () => {
+    setGoogleModalOpen(false);
     invalidateLibraries();
     refreshActiveLibrary();
   };
@@ -214,8 +222,16 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
           {t("librariesSettings.description")}
         </Text>
         <Group gap="xs">
-          <Button size="sm" variant="default" leftSection={<IconCloud size={14} />} onClick={() => setS3ModalOpen(true)}>
+          <Button size="sm" variant="default" leftSection={<PROVIDER_ICONS.s3 size={14} />} onClick={() => setS3ModalOpen(true)}>
             {t("librariesSettings.connectS3")}
+          </Button>
+          <Button
+            size="sm"
+            variant="default"
+            leftSection={<PROVIDER_ICONS.googledrive size={14} />}
+            onClick={() => setGoogleModalOpen(true)}
+          >
+            {t("librariesSettings.connectGoogleDrive")}
           </Button>
           <Button size="sm" leftSection={<IconPlus size={14} />} onClick={() => void handleAdd()} loading={addBusy}>
             {t("librariesSettings.addLibrary")}
@@ -224,6 +240,7 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
       </Group>
 
       <S3ConnectModal opened={s3ModalOpen} onClose={() => setS3ModalOpen(false)} onConnected={handleS3Connected} />
+      <GoogleDriveConnectModal opened={googleModalOpen} onClose={() => setGoogleModalOpen(false)} onConnected={handleGoogleDriveConnected} />
       <MigrationWizard
         opened={migratingLibraryId !== null}
         libraryId={migratingLibraryId ?? ""}
@@ -268,7 +285,9 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
       )}
 
       <Stack gap="xs">
-        {librariesQuery.data?.map((entry) => (
+        {librariesQuery.data?.map((entry) => {
+          const ProviderIcon = entry.providerType !== "local" ? PROVIDER_ICONS[entry.providerType] : undefined;
+          return (
           <Stack
             key={entry.id}
             gap={6}
@@ -314,7 +333,12 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
                     </Badge>
                   )}
                   {entry.providerType !== "local" && (
-                    <Badge size="xs" variant="outline" color="gray">
+                    <Badge
+                      size="xs"
+                      variant="outline"
+                      color="gray"
+                      leftSection={ProviderIcon ? <ProviderIcon size={11} /> : undefined}
+                    >
                       {PROVIDER_LABELS[entry.providerType] ?? entry.providerType}
                     </Badge>
                   )}
@@ -326,8 +350,8 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
                   <Button
                     size="xs"
                     variant="default"
-                    loading={switchMutation.isPending && switchMutation.variables === entry.id}
-                    onClick={() => switchMutation.mutate(entry.id)}
+                    loading={librarySwitch.isSwitching}
+                    onClick={() => librarySwitch.switchTo(entry.id, refreshActiveLibrary)}
                   >
                     {t("librariesSettings.open")}
                   </Button>
@@ -349,20 +373,18 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
                     </ActionIcon>
                   </Tooltip>
                 )}
-                {entry.providerType === "local" && (
-                  <Tooltip label={t("librariesSettings.resync")}>
-                    <ActionIcon
-                      variant="subtle"
-                      color="gray"
-                      loading={rescan.libraryId === entry.id}
-                      disabled={rescan.isRunning && rescan.libraryId !== entry.id}
-                      onClick={() => handleResync(entry)}
-                      aria-label={t("librariesSettings.resync")}
-                    >
-                      <IconRefresh size={14} />
-                    </ActionIcon>
-                  </Tooltip>
-                )}
+                <Tooltip label={t("librariesSettings.resync")}>
+                  <ActionIcon
+                    variant="subtle"
+                    color="gray"
+                    loading={rescan.libraryId === entry.id}
+                    disabled={rescan.isRunning && rescan.libraryId !== entry.id}
+                    onClick={() => handleResync(entry)}
+                    aria-label={t("librariesSettings.resync")}
+                  >
+                    <IconRefresh size={14} />
+                  </ActionIcon>
+                </Tooltip>
                 {entry.isActive && entry.providerType === "local" && (
                   <Tooltip label={t("librariesSettings.migrateToCloud")}>
                     <ActionIcon
@@ -454,8 +476,20 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
                 </Text>
               </Stack>
             )}
+
+            {/* ISyncStatusTracker (the backend behind TitleBar.tsx's SyncStatusIndicator) only
+                ever tracks the *active* library - so this can only ever be shown for entry.isActive,
+                never any other row. Inline here (not just the title bar icon) so the actual error
+                message is reachable somewhere that doesn't disappear if the failure happened while
+                Settings was closed and the title bar's own tooltip was never seen. */}
+            {entry.isActive && syncStatusQuery.data?.state === "Error" && (
+              <Alert color="red" icon={<IconAlertTriangle size={14} />} py={6}>
+                <Text size="xs">{t("librariesSettings.syncErrorInline", { message: syncStatusQuery.data.errorMessage ?? "" })}</Text>
+              </Alert>
+            )}
           </Stack>
-        ))}
+          );
+        })}
       </Stack>
     </Stack>
   );
@@ -566,6 +600,139 @@ function S3ConnectModal({ opened, onClose, onConnected }: S3ConnectModalProps) {
   );
 }
 
+interface GoogleDriveConnectModalProps {
+  opened: boolean;
+  onClose: () => void;
+  onConnected: () => void;
+}
+
+// Google Drive connect form (Cloud: Phase 5) - unlike S3's typed-in access key/secret, the
+// credential here only ever comes from window.maktaba.connectGoogleDrive()'s interactive sign-in
+// (opens the system browser, waits for the OAuth redirect - see oauthLoopback.ts/googleDriveAuth.ts),
+// so this form has nothing to "test" ahead of time the way S3ConnectModal's Test Connection does -
+// a successful sign-in already proves the credential works. Folder is optional (root of My Drive
+// otherwise), matching S3's optional subfolder-within-bucket field.
+function GoogleDriveConnectModal({ opened, onClose, onConnected }: GoogleDriveConnectModalProps) {
+  const { t } = useLanguage();
+  const [name, setName] = useState("");
+  const [folder, setFolder] = useState("");
+  const [tokens, setTokens] = useState<GoogleDriveCredential | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const canSubmit = name.trim().length > 0 && tokens !== null;
+
+  const signInMutation = useMutation({
+    mutationFn: () => window.maktaba.connectGoogleDrive(),
+    onSuccess: (result) => {
+      setTokens(result);
+      setError(null);
+    },
+    onError: (err) => {
+      setTokens(null);
+      setError(err instanceof Error ? err.message : String(err));
+    },
+  });
+
+  const connectMutation = useMutation({
+    mutationFn: async () => {
+      if (!tokens) {
+        throw new Error("Sign in with Google first.");
+      }
+
+      const providerConfig: Record<string, string> = {};
+      if (folder.trim()) {
+        providerConfig.folder = folder.trim();
+      }
+
+      const entry = await connectCloudLibrary(name.trim(), "googledrive", providerConfig, tokens);
+      await window.maktaba.saveCloudCredential(entry.id, JSON.stringify(tokens));
+      return entry;
+    },
+    onSuccess: () => {
+      reset();
+      onConnected();
+    },
+    onError: (err) => setError(err instanceof Error ? err.message : String(err)),
+  });
+
+  const reset = () => {
+    setName("");
+    setFolder("");
+    setTokens(null);
+    setError(null);
+  };
+
+  // Stops a still-pending sign-in (native.ts's loopback listener otherwise just sits waiting for
+  // up to 3 minutes on its own) so closing the dialog - or a failed attempt the user wants to
+  // retry - doesn't leave the button stuck in a loading state with no way out.
+  const cancelPendingSignIn = () => {
+    if (signInMutation.isPending) {
+      void window.maktaba.cancelGoogleDriveConnect();
+    }
+  };
+
+  return (
+    <Modal
+      opened={opened}
+      onClose={() => {
+        cancelPendingSignIn();
+        reset();
+        onClose();
+      }}
+      title={t("librariesSettings.connectGoogleDrive")}
+    >
+      <Stack gap="sm">
+        <TextInput
+          label={t("librariesSettings.googleDriveName")}
+          value={name}
+          onChange={(e) => setName(e.currentTarget.value)}
+        />
+        <TextInput
+          label={t("librariesSettings.googleDriveFolder")}
+          placeholder={t("librariesSettings.googleDriveFolderPlaceholder")}
+          value={folder}
+          onChange={(e) => setFolder(e.currentTarget.value)}
+        />
+
+        {tokens ? (
+          <Alert color="green" icon={<IconCheck size={18} />}>
+            {t("librariesSettings.googleDriveSignedIn")}
+          </Alert>
+        ) : signInMutation.isPending ? (
+          <Group gap="xs">
+            <Button variant="default" leftSection={<IconExternalLink size={14} />} loading style={{ flex: 1 }}>
+              {t("librariesSettings.googleDriveSignIn")}
+            </Button>
+            <Button variant="subtle" color="red" onClick={cancelPendingSignIn}>
+              {t("common.cancel")}
+            </Button>
+          </Group>
+        ) : (
+          <Button
+            variant="default"
+            leftSection={<IconExternalLink size={14} />}
+            onClick={() => signInMutation.mutate()}
+          >
+            {t("librariesSettings.googleDriveSignIn")}
+          </Button>
+        )}
+
+        {error && (
+          <Alert color="red" icon={<IconAlertCircle size={18} />}>
+            {error}
+          </Alert>
+        )}
+
+        <Group justify="flex-end">
+          <Button disabled={!canSubmit} loading={connectMutation.isPending} onClick={() => connectMutation.mutate()}>
+            {t("librariesSettings.s3Connect")}
+          </Button>
+        </Group>
+      </Stack>
+    </Modal>
+  );
+}
+
 interface ReconnectModalProps {
   // null = closed. Kept as the whole entry (not just an id) so the modal can show the library's
   // name without a separate lookup, and so closing it doesn't need to clear a second piece of state.
@@ -576,27 +743,49 @@ interface ReconnectModalProps {
 
 // Re-supplies an already-registered cloud library's credential - needed after rotating an access
 // key with the storage provider, or to recover a library whose saved credential is missing/invalid
-// (see docs/en/libraries.md's "If a cloud library won't reconnect"). Unlike S3ConnectModal, this
-// only asks for the access key/secret - bucket/region/prefix/endpoint are already on the registry
-// entry and aren't being changed here.
+// (see docs/en/libraries.md's "If a cloud library won't reconnect"). Branches on providerType: S3
+// asks for the access key/secret again (bucket/region/prefix/endpoint are already on the registry
+// entry and aren't being changed here); an OAuth-based provider like Google Drive instead offers a
+// "Sign in again" button, the same interactive flow ConnectModal's own sign-in step uses - there's
+// no typed secret to re-enter for those.
 function ReconnectModal({ entry, onClose, onReconnected }: ReconnectModalProps) {
   const { t } = useLanguage();
   const [accessKeyId, setAccessKeyId] = useState("");
   const [secretAccessKey, setSecretAccessKey] = useState("");
+  const [googleTokens, setGoogleTokens] = useState<GoogleDriveCredential | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const isGoogleDrive = entry?.providerType === "googledrive";
 
   const reset = () => {
     setAccessKeyId("");
     setSecretAccessKey("");
+    setGoogleTokens(null);
     setError(null);
   };
+
+  const googleSignInMutation = useMutation({
+    mutationFn: () => window.maktaba.connectGoogleDrive(),
+    onSuccess: (result) => {
+      setGoogleTokens(result);
+      setError(null);
+    },
+    onError: (err) => {
+      setGoogleTokens(null);
+      setError(err instanceof Error ? err.message : String(err));
+    },
+  });
 
   const reconnectMutation = useMutation({
     mutationFn: async () => {
       if (!entry) {
         return;
       }
-      const credential: S3Credential = { accessKeyId, secretAccessKey };
+      const credential: S3Credential | GoogleDriveCredential | null = isGoogleDrive
+        ? googleTokens
+        : { accessKeyId, secretAccessKey };
+      if (!credential) {
+        throw new Error("Sign in with Google first.");
+      }
       await reopenCloudLibrary(entry.id, credential);
       await window.maktaba.saveCloudCredential(entry.id, JSON.stringify(credential));
     },
@@ -607,12 +796,21 @@ function ReconnectModal({ entry, onClose, onReconnected }: ReconnectModalProps) 
     onError: (err) => setError(err instanceof Error ? err.message : String(err)),
   });
 
-  const canSubmit = accessKeyId.trim().length > 0 && secretAccessKey.length > 0;
+  const canSubmit = isGoogleDrive
+    ? googleTokens !== null
+    : accessKeyId.trim().length > 0 && secretAccessKey.length > 0;
+
+  const cancelPendingGoogleSignIn = () => {
+    if (googleSignInMutation.isPending) {
+      void window.maktaba.cancelGoogleDriveConnect();
+    }
+  };
 
   return (
     <Modal
       opened={entry !== null}
       onClose={() => {
+        cancelPendingGoogleSignIn();
         reset();
         onClose();
       }}
@@ -622,16 +820,43 @@ function ReconnectModal({ entry, onClose, onReconnected }: ReconnectModalProps) 
         <Text size="sm" c="dimmed">
           {t("librariesSettings.reconnectDescription")}
         </Text>
-        <TextInput
-          label={t("librariesSettings.s3AccessKey")}
-          value={accessKeyId}
-          onChange={(e) => setAccessKeyId(e.currentTarget.value)}
-        />
-        <PasswordInput
-          label={t("librariesSettings.s3SecretKey")}
-          value={secretAccessKey}
-          onChange={(e) => setSecretAccessKey(e.currentTarget.value)}
-        />
+        {isGoogleDrive ? (
+          googleTokens ? (
+            <Alert color="green" icon={<IconCheck size={18} />}>
+              {t("librariesSettings.googleDriveSignedIn")}
+            </Alert>
+          ) : googleSignInMutation.isPending ? (
+            <Group gap="xs">
+              <Button variant="default" leftSection={<IconExternalLink size={14} />} loading style={{ flex: 1 }}>
+                {t("librariesSettings.googleDriveSignIn")}
+              </Button>
+              <Button variant="subtle" color="red" onClick={cancelPendingGoogleSignIn}>
+                {t("common.cancel")}
+              </Button>
+            </Group>
+          ) : (
+            <Button
+              variant="default"
+              leftSection={<IconExternalLink size={14} />}
+              onClick={() => googleSignInMutation.mutate()}
+            >
+              {t("librariesSettings.googleDriveSignIn")}
+            </Button>
+          )
+        ) : (
+          <>
+            <TextInput
+              label={t("librariesSettings.s3AccessKey")}
+              value={accessKeyId}
+              onChange={(e) => setAccessKeyId(e.currentTarget.value)}
+            />
+            <PasswordInput
+              label={t("librariesSettings.s3SecretKey")}
+              value={secretAccessKey}
+              onChange={(e) => setSecretAccessKey(e.currentTarget.value)}
+            />
+          </>
+        )}
 
         {error && (
           <Alert color="red" icon={<IconAlertCircle size={18} />}>

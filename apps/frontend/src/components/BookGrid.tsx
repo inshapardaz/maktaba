@@ -9,6 +9,7 @@ import { useLanguage } from "../i18n/LanguageContext";
 import { displaySubtitle, displayTitle } from "../issueDisplay";
 import { useReaderLauncher } from "../ReaderLauncherContext";
 import { READING_STATUS_COLOR, READING_STATUS_LABEL_KEY } from "../readingStatus";
+import { useCoverAvailability } from "../coverAvailability";
 import { BookEditForm } from "./BookEditForm";
 import { MergeConfirmDialog } from "./MergeConfirmDialog";
 import { SpineCover } from "./SpineCover";
@@ -57,6 +58,7 @@ function BookCard({ book, index, selected, selectedIds, onSelect, onEdit, onMerg
   // obscure whatever's underneath the cursor at the drop target.
   const [isDragging, setIsDragging] = useState(false);
   const readableFormats = book.formats.filter(isReadableFormat);
+  const cover = useCoverAvailability(book.id, book.coverVersion, book.hasCover);
 
   const handleRead = async (format?: ReadableFormat) => {
     if (loadingRead) return;
@@ -126,7 +128,7 @@ function BookCard({ book, index, selected, selectedIds, onSelect, onEdit, onMerg
       }}
     >
       <Box pos="relative">
-        {book.hasCover ? (
+        {cover.available ? (
           <Image
             src={coverUrl(book.id, book.coverVersion)}
             alt=""
@@ -136,6 +138,7 @@ function BookCard({ book, index, selected, selectedIds, onSelect, onEdit, onMerg
             fit="cover"
             radius="sm"
             style={{ border: "1px solid var(--mantine-color-default-border)", boxShadow: "var(--mantine-shadow-sm)" }}
+            onError={cover.onError}
           />
         ) : (
           <SpineCover

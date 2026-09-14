@@ -36,8 +36,9 @@ Backend (ASP.NET Core Minimal API, backend/Maktaba.sln)
                        (Services/*.cs), CoverLocator, EbookFileHelpers
   Maktaba.Metadata  — EPUB (VersOne.Epub) / PDF (PdfPig + PDFtoImage) metadata+cover extraction
   Maktaba.Cloud     — cloud storage provider SDKs, isolated from Maktaba.Data the same way
-                       Maktaba.Metadata isolates format-parsing SDKs (S3StorageProvider today;
-                       OneDrive/Google Drive land the same way later) - see "Cloud storage" below
+                       Maktaba.Metadata isolates format-parsing SDKs (S3StorageProvider,
+                       GoogleDriveStorageProvider today; OneDrive lands the same way once its own
+                       Azure AD app registration is sorted out) - see "Cloud storage" below
   Maktaba.Tests     — nearly empty (one placeholder test); this project has no real test suite,
                        verification is build + live HTTP/UI smoke testing (see below)
 ```
@@ -86,25 +87,116 @@ registered library, only one active at a time.
 ## Cloud storage
 
 A library's `ProviderType` (on its `LibraryRegistryEntry`, `Maktaba.Core/Services/ILibraryService.cs`)
-is `"local"` (default, unchanged behavior) or a cloud provider — `"s3"` today, covering both real
-Amazon S3 and any S3-compatible provider (MinIO/Backblaze B2/DigitalOcean Spaces/Cloudflare
-R2/IDrive e2/self-hosted), via an optional `Endpoint` in `ProviderConfig`
-(`Maktaba.Cloud/S3ProviderOptions.cs`). `IStorageProvider` (`Maktaba.Core/Services/IStorageProvider.cs`)
-is the abstraction every file-touching service goes through instead of raw `System.IO` -
-`LocalFileSystemProvider` is a pass-through for local libraries; `S3StorageProvider` keeps a local
-cache mirror (`ICloudCacheManager`, under `{userData}/CloudCache/{libraryId}/`) in sync with the
-bucket, so reads/writes above the provider layer still just work with plain local paths (offline
-reading of already-cached books included). `StorageProviderFactory` resolves the right one per the
-active library.
+is `"local"` (default, unchanged behavior) or a cloud provider — `"s3"` (real Amazon S3 or any
+S3-compatible provider: MinIO/Backblaze B2/DigitalOcean Spaces/Cloudflare R2/IDrive e2/self-hosted,
+via an optional `Endpoint` in `ProviderConfig`, `Maktaba.Cloud/S3ProviderOptions.cs`) or
+`"googledrive"` (`Maktaba.Cloud/GoogleDriveProviderOptions.cs`) today. `IStorageProvider`
+(`Maktaba.Core/Services/IStorageProvider.cs`) is the abstraction every file-touching service goes
+through instead of raw `System.IO` - `LocalFileSystemProvider` is a pass-through for local
+libraries; `S3StorageProvider`/`GoogleDriveStorageProvider` each keep a local cache mirror
+(`ICloudCacheManager`, under `{userData}/CloudCache/{libraryId}/`) in sync with the remote store, so
+reads/writes above the provider layer still just work with plain local paths (offline reading of
+already-cached books included). `StorageProviderFactory` resolves the right one per the active
+library, keyed by `(libraryId, providerType, credentialHash)` so a library migrated from one
+provider to another (or reconnected with a changed credential) never accidentally reuses a cached
+instance built for the old one.
+
+**Google Drive specifics** (`GoogleDriveStorageProvider.cs`) - unlike S3's flat keyspace or a
+path-addressable filesystem, Drive links every file/folder to its parent purely by id (and even
+tolerates duplicate names under one parent). `ResolveFolderIdAsync`/`FindChildAsync`/
+`FindItemIdAsync` are this provider's own substitute for path addressing: walk a `/`-separated path
+one segment at a time, matching (and, for folders, creating) by name under each resolved parent id,
+with an in-memory path→id cache scoped to the provider instance's lifetime. Talks to Drive v3
+directly over `HttpClient` rather than pulling in Google's own client SDK (Drive v3's REST surface
+is small enough that this avoided a third generated-client dependency in `Maktaba.Cloud`, after
+`AWSSDK.S3` and `Microsoft.Graph`). Sign-in is OAuth2 with PKCE via a loopback listener in Electron's
+main process (`apps/desktop/src/googleDriveAuth.ts` + the provider-agnostic
+`apps/desktop/src/oauthLoopback.ts`, opened with `shell.openExternal` rather than an embedded
+webview) - unlike a fully public OAuth client, Google's "Desktop app" client type still requires a
+`client_secret` in the token exchange even with PKCE, which Google's own docs say isn't meant to
+stay confidential for this client type (it ships inside the app regardless), so it's hardcoded in
+both `googleDriveAuth.ts` and `GoogleDriveStorageProvider.cs`'s `GoogleDriveTokenManager` rather than
+sourced from the environment - the latter only protects a secret a build pipeline injects, and this
+project packages locally with no such pipeline (see "Desktop packaging" below).
+
+**Setting up the Google Cloud project** (one-time, done once for the whole app - end users never
+do any of this themselves). Needed whenever `CLIENT_ID`/`CLIENT_SECRET` have to be created or
+rotated:
+
+1. [console.cloud.google.com](https://console.cloud.google.com) → sign in with a personal Google
+   account (not one tied to a former employer/organization's Workspace tenant - that tenant's own
+   policies can block creating an app registration there; use a private-browsing window if a
+   work-account session is already cached and getting in the way). No billing account/credit card
+   is needed for any of this.
+2. Create a new project (any name, e.g. "Maktaba").
+3. **APIs & Services → Library** → search "Google Drive API" → **Enable**. Easy to miss - creating
+   OAuth credentials doesn't enable the underlying API on its own.
+4. **APIs & Services → OAuth consent screen**:
+   - User type: **External** (Maktaba isn't a Google Workspace organization, so "Internal" isn't
+     an option).
+   - Branding: **App name** (e.g. "Maktaba"), **User support email**, **Developer contact
+     information** are required; **Authorized domains** and the App home page/Privacy
+     policy/Terms of service links should all be left **blank** - Maktaba has no public web
+     presence, and Authorized domains would need Google Search Console domain-ownership
+     verification that doesn't apply here anyway. Leaving these blank works fine at this scope.
+   - **Data access / Scopes** → Add or Remove Scopes → add all three: `.../auth/drive.file`,
+     `.../auth/userinfo.email`, `.../auth/userinfo.profile` (must match `SCOPES` in
+     `googleDriveAuth.ts` exactly, or the authorize request fails).
+   - Starts in **Testing** status: only Google accounts explicitly added under **Test users** can
+     sign in. Publishing (below) removes that restriction.
+5. **APIs & Services → Credentials → Create Credentials → OAuth client ID** → Application type
+   **Desktop app**. No redirect URI to register - Google's Desktop app client type accepts the
+   loopback IP `127.0.0.1` on any port without pre-registration (see `oauthLoopback.ts`'s doc
+   comment on why `127.0.0.1` specifically, not `localhost`, for this provider).
+6. Copy the **Client ID** and **Client secret** it generates into both `CLIENT_ID`/`CLIENT_SECRET`
+   constants (`googleDriveAuth.ts` and `GoogleDriveStorageProvider.cs`'s `GoogleDriveTokenManager` -
+   both need updating together, they must match).
+7. To test as yourself before publishing: **OAuth consent screen → Test users → Add users** → the
+   exact Google account you'll sign in with in Maktaba.
+8. To let *any* Google user sign in (not just listed test users): **OAuth consent screen → Publish
+   App**. Since every scope above is classified non-sensitive, this shouldn't trigger Google's full
+   verification review - just a status flip to **In production**.
+
+Troubleshooting notes from actually setting this up once already:
+- A generic Google error page at `accounts.google.com/info/unknownerror` (not redirected back to
+  Maktaba's own loopback listener with an `error=` code) usually means the Client ID doesn't match
+  what's in Credentials, or the consent screen never finished saving - re-check both character for
+  character.
+- A 500 from Google's own `.../signin/oauth/warning/continue` internal endpoint (the "Google
+  hasn't verified this app" interstitial) was resolved by retrying in an incognito/private window -
+  suspected stale session cookie or new-client propagation delay, not anything wrong on Maktaba's
+  side.
+- "Maktaba has not completed the Google verification process... can only be accessed by
+  developer-approved testers" means the signing-in account isn't on the Test users list yet (or the
+  consent screen hasn't been published) - see steps 4/7/8 above.
 
 **metadata.db stays local even for a cloud library** — only pulled/pushed as a whole file
 (`IStorageProvider.PullDatabaseAsync`/`PushDatabaseAsync`), pulled on library open, pushed on a
-timer (`CloudSyncLifecycleService`, every 5 min + best-effort on shutdown) and via the manual
-"sync to cloud now" button (`LibrarySyncContext.tsx`, confirms then blocks the whole app behind a
-plain page for the duration — see below for why). Concurrency model is single-writer,
+timer (`CloudSyncLifecycleService`, every 5 min), via the manual "sync to cloud now" button
+(`LibrarySyncContext.tsx`, confirms then blocks the whole app behind a plain page for the duration
+— see below for why), on switching *away* from a cloud library (`LibraryService.ActivateAsync`
+pushes the outgoing library before activating the new one - otherwise the heartbeat above would
+start targeting the new library immediately and never come back to push the old one's last edits),
+and best-effort on app shutdown (`POST /shutdown` → `IHostApplicationLifetime.StopApplication()` →
+`CloudSyncLifecycleService.StopAsync`, requested by `apps/desktop/src/sidecar.ts`'s
+`stopSidecarGracefully` before falling back to a hard kill - a plain `process.kill()` alone doesn't
+work for this on Windows, see that function's doc comment). Concurrency model is single-writer,
 last-write-wins — no reconciliation logic, the file is just replaced wholesale, so don't have the
 same cloud library open on two devices at once (an accidental double-open silently loses whichever
 side pushes second).
+
+**`ActivateAsync` doesn't pull unconditionally.** `IStorageProvider.GetRemoteDatabaseLastModifiedAsync`
+(implemented per-provider - S3's object `LastModified`, Google Drive's `modifiedTime` field, null
+for `LocalFileSystemProvider`) is compared against the local cache mirror's own
+`File.GetLastWriteTimeUtc` before deciding to pull: if the local copy is already at least as fresh
+(it has unpushed edits, or was already caught up), `ActivateAsync` pushes instead of pulling -
+still last-write-wins, not a real merge, but it stops a plain re-open/switch of a library that was
+already open here from silently discarding local edits just because *some* remote copy exists,
+which unconditionally pulling on every activation used to do. `ActivateAsync` also holds
+`_schemaCheckLock` (shared with `EnsureCurrentSchemaAsync`) for its whole pull-or-push+create
+sequence now, closing a race where a concurrent request (a stray background poll, an in-flight
+image load that started before a switch) could call `EnsureCreatedAsync` against the same library's
+not-yet-fully-pulled database path, surfacing as "access is denied".
 
 **Credentials never reach this backend's disk.** The Electron main process encrypts them via
 `safeStorage` (`apps/desktop/src/native.ts`'s `maktaba:*-cloud-credential` IPC, keyed by an opaque
@@ -128,10 +220,28 @@ that no retry count fixes. Both `LibraryService.ActivateAsync` (pull) and the `/
 `metadata.db`'s bytes directly for a cloud library, it needs the same treatment.
 
 Frontend surface: `LibrariesSettings.tsx`'s "Connect S3-compatible library…" form (bucket/region/
-subfolder/endpoint/access key/secret, with a "Test connection" step), a provider badge, and a
-sync-to-cloud button - all only ever rendered for a non-local library, so a local-only user sees
-nothing new. See `docs/en/libraries.md`'s "Cloud libraries" section for the end-user-facing
-explanation of all of this.
+subfolder/endpoint/access key/secret, with a "Test connection" step) and "Connect Google Drive…"
+form (name/optional folder, plus a "Sign in with Google" button instead of typed credentials - a
+successful sign-in already proves the credential works, so there's no separate test step), a
+provider badge, and a sync-to-cloud button - all only ever rendered for a non-local library, so a
+local-only user sees nothing new. The key-icon "Reconnect…" action (re-supplying a stale/missing
+credential without disconnecting the whole library) branches the same way: typed access key/secret
+for S3, a "Sign in again" button for an OAuth-based provider. `connectCloudLibrary`/
+`reopenCloudLibrary` (`api.ts`) are generic over the credential shape - neither they nor the backend
+endpoints care about a specific provider's credential JSON, only that it round-trips as an opaque
+string. `components/providerIcons.tsx` is the one shared per-provider icon map (a bold "G" glyph
+for Google Drive, `IconCloud` for S3/OneDrive/Nawishta - no icon library ships actual brand logos),
+consumed by both `LibrariesSettings.tsx` and `LibrarySwitcher.tsx` (the sidebar-bottom dropdown) so
+a library's provider reads the same everywhere rather than each spot picking its own. Switching
+libraries (from either of those two places) goes through `LibrarySwitchContext.tsx` - mirrors
+`LibrarySyncContext.tsx`'s shape (one shared `isSwitching`/`error`, `App.tsx` renders a blocking
+"Switching library…" page while it's true) so both callers share one loading/error UX instead of
+running independent mutations. That blocking page (and the pre-existing syncing one) intentionally
+does *not* unmount the sidebar itself - `App.tsx`'s `showShellChrome` (just "is a library loaded",
+checked separately from the stricter `hasLibrary` used for gating actual interactive content) is
+what `AppShell.Navbar`'s own mount/width react to, so a few seconds of loading in the main content
+area doesn't also make the whole window's layout jump around. See `docs/en/libraries.md`'s "Cloud
+libraries" section for the end-user-facing explanation of all of this.
 
 **Migration wizard** (`MigrationWizard.tsx`, Stepper: Target → Review → Migrate → Finish) moves the
 *active* library to a new provider - `ILibraryMigrationService`/`LibraryMigrationService`
@@ -140,9 +250,13 @@ tracked via an in-memory `MigrationProgressSnapshot` polled the same way rescan 
 (`GET /api/libraries/migrate/status`). Walks every file via `IStorageProvider.EnumerateAsync`
 (recursing manually - it only ever returns one level), copies each via
 `GetLocalPathAsync`(source)+`NotifyWrittenAsync`(target) - deliberately built on `IStorageProvider`'s
-existing methods rather than adding a new "copy bytes" one. Resumable the same way
-`S3StorageProvider`'s own caching is: a file already present at the target
-(`IStorageProvider.ExistsAsync`, which checks the remote store, not just a local cache) is skipped.
+existing methods rather than adding a new "copy bytes" one. Resumable via
+`IStorageProvider.ExistsRemoteAsync` - a file already confirmed present at the target is skipped.
+Deliberately *not* the general-purpose `ExistsAsync` (which checks a provider's local cache mirror
+first): a target's cache can hold a file copied into it locally on a previous interrupted/failed
+migration attempt but never actually confirmed pushed remotely, which `ExistsAsync`'s cache-first
+shortcut would mistake for "already migrated" and silently skip re-uploading forever - a real bug
+hit and fixed during Phase 3 development (see git history for the full trail).
 `metadata.db` is migrated separately via each provider's own `Pull`/`PushDatabaseAsync`, never as a
 plain file copy. Never touches the library registry until a verified migration's `CompleteAsync`
 runs (the wizard's Finish step) - `ILibraryService.SwitchProviderAsync` re-points the *same*

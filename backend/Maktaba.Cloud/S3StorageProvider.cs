@@ -215,6 +215,21 @@ public class S3StorageProvider(
 
     public Task PushDatabaseAsync(CancellationToken ct = default) => NotifyWrittenAsync(DatabaseRelativePath, ct);
 
+    public async Task<DateTimeOffset?> GetRemoteDatabaseLastModifiedAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            var response = await _client.GetObjectMetadataAsync(options.Bucket, ToKey(DatabaseRelativePath), ct);
+            return response.LastModified is { } lastModified
+                ? new DateTimeOffset(DateTime.SpecifyKind(lastModified, DateTimeKind.Utc))
+                : null;
+        }
+        catch (AmazonS3Exception ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+    }
+
     // Diagnostic-only - surfaced in error messages (e.g. migration verification failures) so a
     // mismatch between "what the user configured" and "what actually got checked" is visible
     // without needing to add a debugger.

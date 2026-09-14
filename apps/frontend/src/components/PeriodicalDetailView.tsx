@@ -28,6 +28,7 @@ import {
   UnstyledButton,
 } from "@mantine/core";
 import { IconAlertCircle, IconCamera, IconEdit, IconLayoutGrid, IconList, IconPencil, IconTrash } from "../icons";
+import { useCoverAvailability } from "../coverAvailability";
 import {
   coverUrl,
   deleteBook,
@@ -166,11 +167,12 @@ function IssueCard({ issue, onClick }: { issue: BookSummary; onClick: () => void
   const { t } = useLanguage();
   const dateLabel = formatIssueDateInfo(issue.issueDate, issue.periodicalFrequency, t);
   const volumeIssueLabel = issueVolumeIssueLabel(issue, t);
+  const cover = useCoverAvailability(issue.id, issue.coverVersion, issue.hasCover);
 
   return (
     <UnstyledButton onClick={onClick} style={{ display: "flex", flexDirection: "column" }}>
-      {issue.hasCover ? (
-        <Image src={coverUrl(issue.id, issue.coverVersion)} w={140} h={200} radius="sm" fit="cover" />
+      {cover.available ? (
+        <Image src={coverUrl(issue.id, issue.coverVersion)} w={140} h={200} radius="sm" fit="cover" onError={cover.onError} />
       ) : (
         <SpineCover id={issue.id} title={dateLabel || issue.title} width={140} height={200} />
       )}
@@ -206,6 +208,7 @@ function IssueRow({
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const dateLabel = formatIssueDateInfo(issue.issueDate, issue.periodicalFrequency, t);
   const volumeIssueLabel = issueVolumeIssueLabel(issue, t);
+  const cover = useCoverAvailability(issue.id, issue.coverVersion, issue.hasCover);
 
   const deleteMutation = useMutation({
     mutationFn: async () => {
@@ -222,8 +225,8 @@ function IssueRow({
     <>
       <Table.Tr onClick={() => onSelectIssue(issue.id)} style={{ cursor: "pointer" }}>
         <Table.Td w={44}>
-          {issue.hasCover ? (
-            <Image src={coverUrl(issue.id, issue.coverVersion)} w={30} h={42} radius="sm" fit="cover" />
+          {cover.available ? (
+            <Image src={coverUrl(issue.id, issue.coverVersion)} w={30} h={42} radius="sm" fit="cover" onError={cover.onError} />
           ) : (
             <SpineCover id={issue.id} title={dateLabel || issue.title} width={30} height={42} />
           )}
@@ -410,6 +413,12 @@ export function PeriodicalDetailView({ periodicalId, onBack, onSelectBook }: Per
     [allIssues, selection],
   );
 
+  const periodicalCover = useCoverAvailability(
+    periodicalQuery.data?.id ?? "",
+    undefined,
+    periodicalQuery.data?.hasCover ?? false,
+  );
+
   if (periodicalQuery.isLoading || !periodicalQuery.data) {
     return (
       <Box display="flex" style={{ flexDirection: "column", height: "100%" }}>
@@ -439,8 +448,15 @@ export function PeriodicalDetailView({ periodicalId, onBack, onSelectBook }: Per
             <FileButton onChange={(file) => file && coverMutation.mutate(file)} accept="image/jpeg,image/png">
               {(props) => (
                 <Box {...props} pos="relative" style={{ cursor: "pointer" }}>
-                  {periodical.hasCover ? (
-                    <Image src={periodicalCoverUrl(periodical.id)} w={120} h={160} radius="sm" fit="cover" />
+                  {periodicalCover.available ? (
+                    <Image
+                      src={periodicalCoverUrl(periodical.id)}
+                      w={120}
+                      h={160}
+                      radius="sm"
+                      fit="cover"
+                      onError={periodicalCover.onError}
+                    />
                   ) : (
                     <Box
                       w={120}

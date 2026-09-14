@@ -8,6 +8,7 @@ import {
   Divider,
   Group,
   Kbd,
+  Loader,
   Menu,
   SegmentedControl,
   Text,
@@ -17,6 +18,7 @@ import {
   useMantineColorScheme,
 } from "@mantine/core";
 import {
+  IconAlertTriangle,
   IconArrowLeft,
   IconArrowRight,
   IconBookmark,
@@ -24,6 +26,7 @@ import {
   IconChartBar,
   IconCircleCheck,
   IconCircleDashed,
+  IconCloud,
   IconCopy,
   IconHelpCircle,
   IconHome2,
@@ -39,7 +42,7 @@ import {
   IconX,
 } from "../icons";
 import type { Icon } from "../icons";
-import { listReadingStatusCounts, type ReadingStatus } from "../api";
+import { getCurrentLibrary, getSyncStatus, listReadingStatusCounts, type ReadingStatus } from "../api";
 import { useAppTheme, type AppThemeName } from "../AppThemeContext";
 import { useLanguage } from "../i18n/LanguageContext";
 import { LANGUAGES } from "../i18n/translations";
@@ -285,6 +288,80 @@ function ReadingStatusFilters({
   );
 }
 
+// Cloud: Phase 6 (#104) - a small persistent indicator (not buried in Settings) reflecting the
+// active library's background cloud sync health: CloudSyncLifecycleService's periodic heartbeat
+// push, not just the manual "Sync now" button's own transient state (see LibrarySyncContext.tsx,
+// which already covers that separately). Renders nothing for a local library - getSyncStatus()
+// always reports "Idle" for one (see ISyncStatusTracker.cs), but checking providerType directly
+// avoids a render for a library that will never have anything to report at all.
+function SyncStatusIndicator({ onOpenSettings }: { onOpenSettings: (tab?: SettingsTab) => void }) {
+  const { t } = useLanguage();
+  const libraryQuery = useQuery({ queryKey: ["library"], queryFn: getCurrentLibrary });
+  const isCloud = libraryQuery.data?.providerType !== undefined && libraryQuery.data.providerType !== "local";
+
+  const statusQuery = useQuery({
+    queryKey: ["syncStatus"],
+    queryFn: getSyncStatus,
+    enabled: isCloud,
+    // Frequent enough to feel "live" without meaningfully adding to the polling this app already
+    // does elsewhere (rescan/migration progress use a similar cadence while active).
+    refetchInterval: isCloud ? 10_000 : false,
+  });
+
+  if (!isCloud || !statusQuery.data) {
+    return null;
+  }
+
+  const { state, lastSyncedAtUtc, errorMessage } = statusQuery.data;
+
+  if (state === "Syncing") {
+    return (
+      <Tooltip label={t("toolbar.syncStatusSyncing")}>
+        <ActionIcon variant="subtle" color="gray" aria-label={t("toolbar.syncStatusSyncing")} style={{ cursor: "default" }}>
+          <Loader size={14} />
+        </ActionIcon>
+      </Tooltip>
+    );
+  }
+
+  if (state === "Error") {
+    // Truncated deliberately - the raw error can be an arbitrarily long exception message (a full
+    // stack trace, a long unbroken URL/token with no natural wrap point, ...), which a tooltip is
+    // the wrong place to render in full regardless of width/multiline settings. The untruncated
+    // message is always reachable from Settings -> Libraries' inline alert for the same library
+    // (LibrariesSettings.tsx) - this is just "something's wrong, click to see more".
+    const truncatedError = errorMessage && errorMessage.length > 120 ? `${errorMessage.slice(0, 120)}…` : errorMessage;
+    return (
+      <Tooltip
+        label={truncatedError ? t("toolbar.syncStatusError", { message: truncatedError }) : t("toolbar.syncStatusErrorGeneric")}
+        multiline
+        w={260}
+      >
+        <ActionIcon
+          variant="light"
+          color="red"
+          onClick={() => onOpenSettings("libraries")}
+          aria-label={t("toolbar.syncStatusErrorGeneric")}
+        >
+          <IconAlertTriangle size={16} />
+        </ActionIcon>
+      </Tooltip>
+    );
+  }
+
+  const syncedLabel = lastSyncedAtUtc
+    ? t("toolbar.syncStatusSyncedAt", { time: new Date(lastSyncedAtUtc).toLocaleTimeString() })
+    : t("toolbar.syncStatusSynced");
+
+  return (
+    <Tooltip label={syncedLabel}>
+      <ActionIcon variant="subtle" color="gray" aria-label={syncedLabel} style={{ cursor: "default" }}>
+        <IconCloud size={16} />
+      </ActionIcon>
+    </Tooltip>
+  );
+}
+
 // Renders in place of the OS title bar (main.ts sets titleBarStyle: "hidden" on the main window)
 // so it's mounted unconditionally by App.tsx — even before a library is open — otherwise the
 // frameless window would have no drag region at all, just the native min/max/close controls.
@@ -441,6 +518,8 @@ export function TitleBar({
 
       {showActions && (
         <Group gap={4} wrap="nowrap" className="maktaba-titlebar-no-drag" style={{ flexShrink: 0 }}>
+          <SyncStatusIndicator onOpenSettings={onOpenSettings} />
+
           <Menu position="bottom-end" shadow="md" width={220}>
             <Menu.Target>
               <Tooltip label={t("toolbar.theme")}>

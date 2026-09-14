@@ -31,3 +31,9 @@ Thumbs.db
 # Env
 .env
 .env.local
+
+# Generated at build time from MAKTABA_GOOGLE_CLIENT_ID/MAKTABA_GOOGLE_CLIENT_SECRET (see
+# scripts/generate-google-oauth-config.mjs and README.md's "Google Drive OAuth setup") - never
+# committed, since it contains the real Google OAuth client secret.
+apps/desktop/src/googleOAuthConfig.generated.ts
+backend/Maktaba.Cloud/GoogleOAuthConfig.Generated.cs

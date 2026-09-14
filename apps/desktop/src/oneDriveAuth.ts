@@ -75,7 +75,7 @@ async function requestToken(body: URLSearchParams): Promise<OneDriveTokens> {
  * than inventing a backend-calls-into-Electron channel that nothing else in this app needs),
  * exactly like S3StorageProvider talks to AWS directly rather than routing every request through
  * Electron. */
-export async function connectOneDrive(): Promise<OneDriveTokens> {
+export async function connectOneDrive(signal?: AbortSignal): Promise<OneDriveTokens> {
   const { verifier, challenge } = generatePkcePair();
   const state = crypto.randomBytes(16).toString("hex");
 
@@ -90,7 +90,7 @@ export async function connectOneDrive(): Promise<OneDriveTokens> {
     url.searchParams.set("state", state);
     url.searchParams.set("prompt", "select_account");
     return url.toString();
-  }, state);
+  }, state, "localhost", undefined, signal);
 
   return requestToken(
     new URLSearchParams({

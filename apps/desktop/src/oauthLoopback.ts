@@ -44,36 +44,55 @@ const CALLBACK_PAGE = (message: string) => `<!doctype html><html><body style="fo
  * user's default browser, and resolves once the identity provider redirects back to that port with
  * an authorization code - or rejects on an error response, a state mismatch, or the timeout.
  *
- * The registered Azure/Google app must allow a bare `http://localhost` redirect URI (no fixed
- * port) - both platforms explicitly support this for native/public clients by ignoring the port
- * when matching (see Microsoft identity platform's "Redirect URI (reply URL) best practices"
- * docs), which is what lets this pick a fresh free port on every call instead of needing one fixed
- * port reserved for Maktaba specifically.
+ * `loopbackHost` matters: Microsoft's identity platform requires the registered redirect URI to be
+ * the literal hostname "localhost" (any port - it's explicitly ignored when matching, see that
+ * platform's "Redirect URI (reply URL) best practices" docs), while Google's Desktop app OAuth
+ * clients require the literal loopback IP "127.0.0.1" instead (per RFC 8252's native-app guidance,
+ * which Google's docs point to directly) - "localhost" and "127.0.0.1" are different strings as far
+ * as either provider's exact redirect URI matching is concerned, even though they're the same
+ * network interface. Callers pick whichever their provider's app registration expects.
  *
  * `state` is a caller-generated random value round-tripped through the request and checked against
  * the callback's query string, so a stray/malicious request hitting the loopback port from
  * something else on the machine can't be mistaken for the real redirect.
+ *
+ * `signal`, if given, lets a caller cancel an in-flight sign-in on demand (the user closing the
+ * connect dialog, or clicking a "Cancel"/"Try again" button) instead of it only ever ending via the
+ * timeout below - without this, closing the browser tab or the dialog left the listener bound and
+ * the frontend's mutation stuck pending for the full timeout, with no way to immediately retry.
  */
 export function runOAuthLoopback(
   buildAuthorizeUrl: (redirectUri: string) => string,
   state: string,
+  loopbackHost: "localhost" | "127.0.0.1" = "localhost",
   timeoutMs = 180_000,
+  signal?: AbortSignal,
 ): Promise<OAuthLoopbackResult> {
   return new Promise((resolve, reject) => {
     let settled = false;
-    let server: http.Server;
+    let server: http.Server | undefined;
+    let redirectUri = "";
 
     const finish = (fn: () => void) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      server.close();
+      signal?.removeEventListener("abort", onAbort);
+      server?.close();
       fn();
     };
+
+    const onAbort = () => finish(() => reject(new Error("Sign-in cancelled.")));
 
     const timer = setTimeout(() => {
       finish(() => reject(new Error("Sign-in timed out - the browser window wasn't completed in time.")));
     }, timeoutMs);
+
+    if (signal?.aborted) {
+      onAbort();
+      return;
+    }
+    signal?.addEventListener("abort", onAbort);
 
     server = http.createServer((req, res) => {
       const url = new URL(req.url ?? "/", "http://localhost");
@@ -95,7 +114,6 @@ export function runOAuthLoopback(
       }
 
       res.writeHead(200, { "Content-Type": "text/html" }).end(CALLBACK_PAGE("Sign-in complete."));
-      const redirectUri = `http://localhost:${(server.address() as net.AddressInfo).port}/`;
       finish(() => resolve({ code, redirectUri }));
     });
 
@@ -103,8 +121,8 @@ export function runOAuthLoopback(
 
     getFreePort()
       .then((port) => {
+        redirectUri = `http://${loopbackHost}:${port}/`;
         server.listen(port, "127.0.0.1", () => {
-          const redirectUri = `http://localhost:${port}/`;
           void shell.openExternal(buildAuthorizeUrl(redirectUri));
         });
       })

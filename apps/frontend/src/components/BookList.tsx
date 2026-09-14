@@ -18,6 +18,7 @@ import { isBookDrag, readBookDragIds, setBookDragData } from "../bookDrag";
 import { useDragSelect } from "../dragSelect";
 import { useLanguage } from "../i18n/LanguageContext";
 import { displaySubtitle, displayTitle } from "../issueDisplay";
+import { useCoverAvailability } from "../coverAvailability";
 import { invalidateLibraryQueries } from "../queries";
 import { useReaderLauncher } from "../ReaderLauncherContext";
 import { READING_STATUS_COLOR, READING_STATUS_LABEL_KEY } from "../readingStatus";
@@ -141,6 +142,7 @@ export function BookRow({ book, index, selected, selectedIds, onSelect, onEdit, 
   // Issue #68: same "whole selection if this row is part of one, otherwise just this book" rule
   // the row's own onDragStart above already uses for what gets dragged.
   const deleteTargetIds = () => (selected && selectedIds.size > 1 ? Array.from(selectedIds) : [book.id]);
+  const cover = useCoverAvailability(book.id, book.coverVersion, book.hasCover);
 
   const clearLongPress = () => {
     if (longPressTimer.current !== null) {
@@ -249,10 +251,10 @@ export function BookRow({ book, index, selected, selectedIds, onSelect, onEdit, 
       }}
     >
       <Group gap="md" wrap="nowrap" style={{ minWidth: 0, flex: 1 }}>
-        <HoverCard openDelay={300} closeDelay={100} position="right" withArrow shadow="md" disabled={!book.hasCover}>
+        <HoverCard openDelay={300} closeDelay={100} position="right" withArrow shadow="md" disabled={!cover.available}>
           <HoverCard.Target>
             <Box style={{ flexShrink: 0 }}>
-              {book.hasCover ? (
+              {cover.available ? (
                 <Image
                   src={coverUrl(book.id, book.coverVersion)}
                   alt=""
@@ -262,6 +264,7 @@ export function BookRow({ book, index, selected, selectedIds, onSelect, onEdit, 
                   fit="cover"
                   radius="sm"
                   style={{ border: "1px solid var(--mantine-color-default-border)" }}
+                  onError={cover.onError}
                 />
               ) : (
                 <SpineCover id={book.id} title={displayTitle(book, t)} width={THUMB_SIZE} height={THUMB_SIZE} titleSize={10} padding={4} />

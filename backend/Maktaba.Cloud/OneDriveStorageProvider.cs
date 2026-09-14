@@ -347,6 +347,21 @@ public class OneDriveStorageProvider : IStorageProvider, IDisposable
 
     public Task PushDatabaseAsync(CancellationToken ct = default) => NotifyWrittenAsync(DatabaseRelativePath, ct);
 
+    public async Task<DateTimeOffset?> GetRemoteDatabaseLastModifiedAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            var driveId = await MyDriveIdAsync(ct);
+            var item = await _graph.Drives[driveId].Root.ItemWithPath(EncodeItemPath(ToItemPath(DatabaseRelativePath)))
+                .GetAsync(cancellationToken: ct);
+            return item?.FileSystemInfo?.LastModifiedDateTime ?? item?.LastModifiedDateTime;
+        }
+        catch (ODataError ex) when (ex.ResponseStatusCode == 404)
+        {
+            return null;
+        }
+    }
+
     // Diagnostic-only, same purpose as S3StorageProvider.ToString() - surfaced in error messages
     // (e.g. migration verification failures) without needing a debugger.
     public override string ToString() =>

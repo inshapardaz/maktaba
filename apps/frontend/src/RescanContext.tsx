@@ -7,6 +7,9 @@ interface RescanTarget {
   id: string;
   name: string;
   isActive: boolean;
+  // "local" | "s3" | "googledrive" | ... - only used to decide whether to fetch a saved credential
+  // before resyncing (see start below); a local target never needs one.
+  providerType: string;
 }
 
 interface RescanContextValue {
@@ -39,7 +42,7 @@ export function RescanProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const runningRef = useRef(false);
 
-  function start(target: RescanTarget, onActiveLibraryChanged: () => void) {
+  async function start(target: RescanTarget, onActiveLibraryChanged: () => void) {
     if (runningRef.current) {
       return;
     }
@@ -54,7 +57,14 @@ export function RescanProvider({ children }: { children: ReactNode }) {
       void getRescanProgress().then(setProgress, () => {});
     }, 400);
 
-    resyncLibrary(target.id)
+    // Same recovery LibrarySwitchContext.switchTo does before a plain switch - resyncing a
+    // not-yet-active cloud library needs its credential supplied the same way opening it would,
+    // otherwise the /resync endpoint's own open-first step fails with "credentials haven't been
+    // supplied". Already-active libraries (and local ones) never need this.
+    const credentialJson =
+      !target.isActive && target.providerType !== "local" ? await window.maktaba.getCloudCredential(target.id) : null;
+
+    resyncLibrary(target.id, credentialJson ? (JSON.parse(credentialJson) as unknown) : undefined)
       .then(() => {
         void queryClient.invalidateQueries({ queryKey: ["libraries"] });
         if (target.isActive) {

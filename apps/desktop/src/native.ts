@@ -5,6 +5,7 @@ import { pathToFileURL } from "url";
 import { gunzipSync } from "zlib";
 import JSZip from "jszip";
 import { connectOneDrive } from "./oneDriveAuth";
+import { connectGoogleDrive } from "./googleDriveAuth";
 
 const EBOOK_EXTENSIONS = new Set([".epub", ".pdf", ".docx", ".txt"]);
 
@@ -360,10 +361,50 @@ export function registerNativeHandlers(getWindow: () => BrowserWindow | null): v
     await fs.rm(path.join(cloudCredentialsDir(), `${id}.enc`), { force: true });
   });
 
-  // Cloud: Phase 4 (#96) - the interactive OneDrive sign-in step (system browser + loopback
-  // listener) can only run here, never in the renderer or the .NET backend. Returns the token set
-  // straight to the renderer, same as S3's credential fields - it's responsible for handing them
-  // to the backend (to register/verify the library) and to saveCloudCredential (to persist them),
-  // exactly mirroring S3ConnectModal's connect flow rather than introducing a second pattern.
-  ipcMain.handle("maktaba:connect-onedrive", () => connectOneDrive());
+  // Cloud: Phase 4/5 (#96/#99) - the interactive OneDrive/Google Drive sign-in step (system browser
+  // + loopback listener) can only run here, never in the renderer or the .NET backend. Returns the
+  // token set straight to the renderer, same as S3's credential fields - it's responsible for
+  // handing them to the backend (to register/verify the library) and to saveCloudCredential (to
+  // persist them), rather than introducing a separate credential-handling pattern per provider.
+  //
+  // Only one attempt per provider is ever tracked at a time (the connect dialog is a singleton) - a
+  // fresh call aborts whatever attempt (if any) is still pending before starting its own, so closing
+  // the dialog and immediately reopening it to retry can't leak an orphaned listener still waiting
+  // on its old port for the rest of the timeout.
+  let oneDriveConnectAbort: AbortController | null = null;
+
+  ipcMain.handle("maktaba:connect-onedrive", () => {
+    oneDriveConnectAbort?.abort();
+    const controller = new AbortController();
+    oneDriveConnectAbort = controller;
+    return connectOneDrive(controller.signal).finally(() => {
+      if (oneDriveConnectAbort === controller) {
+        oneDriveConnectAbort = null;
+      }
+    });
+  });
+
+  ipcMain.handle("maktaba:cancel-onedrive-connect", () => {
+    oneDriveConnectAbort?.abort();
+  });
+
+  let googleDriveConnectAbort: AbortController | null = null;
+
+  ipcMain.handle("maktaba:connect-google-drive", () => {
+    googleDriveConnectAbort?.abort();
+    const controller = new AbortController();
+    googleDriveConnectAbort = controller;
+    return connectGoogleDrive(controller.signal).finally(() => {
+      if (googleDriveConnectAbort === controller) {
+        googleDriveConnectAbort = null;
+      }
+    });
+  });
+
+  // Lets the renderer stop a still-pending sign-in immediately (closing the connect dialog, or a
+  // "Cancel" button) instead of it only ever ending via runOAuthLoopback's own multi-minute
+  // timeout - see that function's `signal` parameter.
+  ipcMain.handle("maktaba:cancel-google-drive-connect", () => {
+    googleDriveConnectAbort?.abort();
+  });
 }

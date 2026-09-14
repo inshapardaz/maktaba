@@ -270,12 +270,18 @@ public static class LibraryEndpoints
 
         // Switches to the given library (if it isn't already active) and rescans it in one call, so
         // the frontend can trigger a resync on any registered library - not just the active one -
-        // without orchestrating open-then-rescan itself.
-        group.MapPost("/{id}/resync", async (string id, ILibraryService libraryService, ILibraryRescanService rescanService, CancellationToken ct) =>
+        // without orchestrating open-then-rescan itself. request/Credential is optional and only
+        // matters for a not-yet-active cloud library whose credential hasn't been supplied this
+        // session yet (see /{id}/open's identical optional Credential) - the frontend fetches its
+        // saved one (window.maktaba.getCloudCredential) before calling this, same as it does before
+        // a plain switch.
+        group.MapPost("/{id}/resync", async (
+            string id, OpenLibraryCredentialRequestDto? request, ILibraryService libraryService,
+            ILibraryRescanService rescanService, CancellationToken ct) =>
         {
             if (libraryService.CurrentLibraryId != id)
             {
-                var opened = await libraryService.OpenLibraryByIdAsync(id, credential: null, ct);
+                var opened = await libraryService.OpenLibraryByIdAsync(id, request?.Credential, ct);
                 if (opened is null)
                 {
                     return Results.NotFound();

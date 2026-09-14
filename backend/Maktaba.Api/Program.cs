@@ -15,6 +15,11 @@ builder.WebHost.ConfigureKestrel(options =>
     options.Listen(IPAddress.Loopback, port);
 });
 
+// Default is 5s - bumped a little so CloudSyncLifecycleService.StopAsync's own best-effort push
+// (see below, and POST /shutdown) has a realistic chance to actually finish against a slow/far-away
+// cloud endpoint before the host gives up on graceful shutdown and moves on regardless.
+builder.Host.ConfigureHostOptions(options => options.ShutdownTimeout = TimeSpan.FromSeconds(10));
+
 builder.Services.AddCors(options =>
 {
     // Loopback-only server behind a per-launch bearer token (see below), so any origin is fine here -
@@ -115,6 +120,19 @@ app.Use(async (context, next) =>
 });
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
+
+// Lets the Electron main process request a graceful shutdown before actually killing this process
+// - see sidecar.ts's stopSidecarGracefully. StopApplication() runs every IHostedService's own
+// StopAsync (in particular CloudSyncLifecycleService's best-effort push of the active library's
+// metadata.db) before the process exits. Without this, the OS-level kill Electron would otherwise
+// use directly gives the .NET generic host no such chance on Windows: Node's child.kill() calls
+// TerminateProcess there (not a real signal a process can react to, unlike a POSIX SIGTERM), so
+// that safety-net push was silently never running at all when the app closed.
+app.MapPost("/shutdown", (IHostApplicationLifetime lifetime) =>
+{
+    lifetime.StopApplication();
+    return Results.Accepted();
+});
 
 app.MapGet("/api/hello", () => Results.Ok(new { message = "Hello from Maktaba.Api" }));
 

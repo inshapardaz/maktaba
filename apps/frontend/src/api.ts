@@ -301,9 +301,15 @@ export function removeLibrary(id: string): Promise<void> {
 }
 
 // Switches to this library first (if it isn't already active) and rescans it - works from any row
-// in the Libraries list, not just the currently active one.
-export function resyncLibrary(id: string): Promise<{ bookCount: number }> {
-  return request<{ bookCount: number }>(`/api/libraries/${id}/resync`, { method: "POST" });
+// in the Libraries list, not just the currently active one. credential matters only when resyncing
+// a not-yet-active cloud library (see RescanContext.tsx, which fetches the saved one the same way
+// LibrarySwitchContext does before a plain switch) - omit it for a local library or one that's
+// already active.
+export function resyncLibrary<TCredential>(id: string, credential?: TCredential): Promise<{ bookCount: number }> {
+  return request<{ bookCount: number }>(`/api/libraries/${id}/resync`, {
+    method: "POST",
+    body: JSON.stringify({ credential: credential === undefined ? null : JSON.stringify(credential) }),
+  });
 }
 
 // The credential shape saved via window.maktaba.saveCloudCredential/getCloudCredential for an S3
@@ -328,8 +334,21 @@ export function testS3Connection(
   });
 }
 
-export function connectCloudLibrary(
-  name: string, providerType: string, providerConfig: Record<string, string>, credential: S3Credential,
+// The credential shape saved via window.maktaba.saveCloudCredential/getCloudCredential for a
+// Google Drive library, and returned by window.maktaba.connectGoogleDrive() - see backend
+// GoogleDriveProviderOptions.FromConfig, which expects exactly this JSON shape.
+export interface GoogleDriveCredential {
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: number;
+}
+
+// Generic over the credential shape (S3Credential, GoogleDriveCredential, ...) since this endpoint
+// only ever JSON.stringifies it into an opaque string the backend deserializes per providerType -
+// see LibraryEndpoints' "/cloud" handler and ILibraryService.OpenCloudLibraryAsync, neither of
+// which know or care about a specific provider's credential shape.
+export function connectCloudLibrary<TCredential>(
+  name: string, providerType: string, providerConfig: Record<string, string>, credential: TCredential,
 ): Promise<LibraryEntry> {
   return request<LibraryEntry>("/api/libraries/cloud", {
     method: "POST",
@@ -339,7 +358,7 @@ export function connectCloudLibrary(
 
 // Re-supplies a cloud library's credential to the backend for this process session - needed once
 // per backend restart (see ICloudCredentialCache), not on every switch within the same session.
-export function reopenCloudLibrary(id: string, credential: S3Credential): Promise<LibraryInfo> {
+export function reopenCloudLibrary<TCredential>(id: string, credential: TCredential): Promise<LibraryInfo> {
   return request<LibraryInfo>(`/api/libraries/${id}/open`, {
     method: "POST",
     body: JSON.stringify({ credential: JSON.stringify(credential) }),
@@ -352,6 +371,20 @@ export function reopenCloudLibrary(id: string, credential: S3Credential): Promis
 // it's cloud-backed.
 export function syncNow(): Promise<void> {
   return request<void>("/api/libraries/sync-now", { method: "POST" });
+}
+
+// Cloud Sync Core - polled by TitleBar.tsx's SyncStatusIndicator to show a small persistent
+// synced/syncing/error icon for the active library, reflecting CloudSyncLifecycleService's
+// periodic background heartbeat (not just the manual Sync Now button, which LibrarySyncContext
+// already tracks on its own). Always "Idle" for a local library - see ISyncStatusTracker.cs.
+export interface SyncStatus {
+  state: "Idle" | "Syncing" | "Error";
+  lastSyncedAtUtc: string | null;
+  errorMessage: string | null;
+}
+
+export function getSyncStatus(): Promise<SyncStatus> {
+  return request<SyncStatus>("/api/libraries/sync-status");
 }
 
 // Migration wizard (Cloud: Phase 3) - moves the active library to a new provider. All of these
