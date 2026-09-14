@@ -218,6 +218,30 @@ export function registerNativeHandlers(getWindow: () => BrowserWindow | null): v
     await shell.trashItem(filePath);
   });
 
+  // Issue: deleting the last book by an author left its now-empty author folder behind on disk
+  // forever (see BookRemovalResult.ParentFolderPath's own comment for why only a plain book's
+  // parent - never a periodical issue's - is ever passed here). Only trashes the folder if it's
+  // genuinely empty *right now* - checked here, right after the caller's own maktaba:trash-path
+  // call for the book folder itself actually completed, rather than the backend guessing ahead of
+  // time whether it will end up empty. Silently does nothing if the folder is missing (ENOENT - the
+  // trash operation for the book folder above may have already taken it, or it never existed) or
+  // still has something in it (a file the user placed there Maktaba doesn't know about, for
+  // instance) - this is pure best-effort tidiness, never something a caller should treat as
+  // required to succeed.
+  ipcMain.handle("maktaba:trash-path-if-empty", async (_event, folderPath: string) => {
+    let entries: string[];
+    try {
+      entries = await fs.readdir(folderPath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+      throw error;
+    }
+
+    if (entries.length === 0) {
+      await shell.trashItem(folderPath);
+    }
+  });
+
   ipcMain.handle("maktaba:pick-stardict-zip", async () => {
     const win = getWindow();
     if (!win) return null;

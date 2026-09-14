@@ -311,6 +311,19 @@ checks this flag the same way. Per-file deletion (`BookEditService`'s `RemoveFil
 paths) was never affected - those already called `Storage.DeleteAsync` directly rather than routing
 through the frontend's OS-trash flow at all.
 
+Deleting a plain book (not a periodical issue) also cleans up its now-possibly-empty author folder
+("{Author Sort Name}/{Book Title} (sqid)", see `LibraryPathBuilder`) - purely a derived grouping
+with no identity of its own once nothing files under it, unlike a periodical issue's parent (its
+periodical's own folder, which has an independent identity - a `Periodical` DB row that still
+exists), which is never pruned this way. `BookRemovalResult.ParentFolderPath` carries the path to
+check, only ever set for a local library and never for an issue. For a cloud library, `RemoveAsync`
+already handles this itself (an `EnumerateAsync` check before deleting the parent, both best-effort,
+same as the book folder's own delete). For a local library, the caller does the actual check -
+`window.maktaba.trashPathIfEmpty` (native.ts), called only *after* the book's own folder has
+actually been trashed, so it's checking real, current state rather than the backend guessing ahead
+of time - a no-op if the folder is missing or still has something in it (a file the user placed
+there Maktaba doesn't know about, say).
+
 Frontend surface: `LibrariesSettings.tsx`'s "Connect S3-compatible library…" form (bucket/region/
 subfolder/endpoint/access key/secret, with a "Test connection" step) and its "Connect Google
 Drive…"/"Connect OneDrive…" forms (name/optional folder, plus a "Sign in with Google"/"Sign in with

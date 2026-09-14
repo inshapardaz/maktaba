@@ -9,7 +9,16 @@ namespace Maktaba.Core.Services;
 /// (and its local cache mirror) itself before returning, since there's no OS-trash-able local
 /// folder to hand back for a remote object the way there is for a real local file - AbsoluteFolderPath
 /// is only the (now-deleted) cache path here, not something the caller should act on.</param>
-public record BookRemovalResult(string AbsoluteFolderPath, bool RequiresLocalTrash);
+/// <param name="ParentFolderPath">The removed book's parent folder (its author folder -
+/// "{Author Sort Name}/{Book Title} (sqid)" is the on-disk layout, see LibraryPathBuilder), only
+/// when <see cref="RequiresLocalTrash"/> is true and the book wasn't a periodical issue (an issue's
+/// parent is its periodical's own folder, which has an independent identity - a Periodical DB row
+/// that still exists - unlike a plain author folder, which is purely a derived grouping with no
+/// identity of its own once nothing files under it anymore). Null whenever pruning an empty parent
+/// wouldn't be safe/meaningful: a cloud library (RemoveAsync already handled this remotely itself,
+/// see below), or a periodical issue. The caller should trash this folder too, but only if it's
+/// actually empty by the time the book's own folder has actually been trashed - never unconditionally.</param>
+public record BookRemovalResult(string AbsoluteFolderPath, bool RequiresLocalTrash, string? ParentFolderPath = null);
 
 /// <summary>
 /// Removes a book's database records, and - only for a cloud-backed library, where there's no OS
