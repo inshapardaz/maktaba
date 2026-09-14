@@ -215,6 +215,23 @@ public record RescanProgressDto(bool IsRunning, int Processed, int Total, string
 
 public record SyncStatusDto(string State, DateTimeOffset? LastSyncedAtUtc, string? ErrorMessage);
 
+// Nawishta epic #108 - login/refresh only produce a credential + library list, they don't register
+// or open anything (that needs #110's actual query-service implementation, not built yet).
+public record NawishtaLoginRequestDto(string ServerUrl, string Email, string Password);
+
+// camelCase field names match GoogleDriveCredential/OneDriveCredential's own shape - what
+// window.maktaba.saveCloudCredential ultimately encrypts and persists once the user picks a
+// library from NawishtaLoginResponseDto.Libraries.
+public record NawishtaCredentialDto(string AccessToken, string RefreshToken, long ExpiresAt);
+
+// Nawishta's own int-typed library id (not a Sqids-encoded id, and never decoded via IdCodec -
+// see NawishtaProviderOptions.RemoteLibraryId) - passed back as-is if the user picks this library.
+public record NawishtaLibrarySummaryDto(int Id, string Name, string? Description);
+
+public record NawishtaLoginResponseDto(NawishtaCredentialDto Credential, IReadOnlyList<NawishtaLibrarySummaryDto> Libraries);
+
+public record NawishtaRefreshRequestDto(string ServerUrl, string RefreshToken);
+
 public record BrowseGroupDto(string Id, string Name, int BookCount, bool HasImage = false);
 
 public record CreateCollectionRequestDto(string Name);

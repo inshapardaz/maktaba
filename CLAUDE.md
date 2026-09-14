@@ -490,6 +490,28 @@ login) has somewhere concrete to write into - `LibraryRegistryEntry`'s own `Prov
 from Phase 1 (Cloud storage) onward, so no registry/config.json schema change was needed, only this
 typed wrapper around it.
 
+**Nawishta auth (#108)** - `Maktaba.Nawishta/NawishtaAuthService.cs`'s `INawishtaAuthService`
+(`AddHttpClient<INawishtaAuthService, NawishtaAuthService>()`-registered, like
+`IMetadataLookupService` - one pooled `HttpClient` reused across logins against whatever server URL
+the user types in, since the generated `*Client` classes each take `baseUrl` explicitly rather than
+relying on the `HttpClient`'s own fixed `BaseAddress`) has two methods: `LoginAsync` (calls
+`/Accounts/authenticate`, then - already bearer-authenticated with the token it just got back -
+`GET /libraries` for the account's library list in the same round trip, so the frontend's connect
+form can go straight from "email/password" to a picker) and `RefreshAsync` (`/Accounts/refresh-token`,
+unauthenticated by design). `Maktaba.Api/Endpoints/NawishtaEndpoints.cs` exposes these as
+`POST /api/nawishta/login`/`/refresh` - deliberately **not** under `/api/libraries` and deliberately
+not touching `ICloudCredentialCache`/the registry at all, unlike `LibraryEndpoints.cs`'s `POST
+/cloud` (the S3/Google Drive/OneDrive "connect" endpoint) - registering and actually opening a
+Nawishta-backed library needs a working `IBookQueryService`/etc. implementation against it (#110),
+which doesn't exist yet, so these two endpoints only get the frontend as far as "authenticated,
+here's your library list."
+
+**Frontend library-picker UI is deliberately not built yet**, even though #108's own issue text
+names it - a connect form + picker with no working "Connect" button at the end (nothing exists yet
+to actually register/open what's picked) would be exactly the kind of half-finished feature this
+project's conventions call out to avoid, and its real shape depends on what #110 ends up needing
+from the picked library anyway. Build it once #110 lands and "Connect" has somewhere real to go.
+
 ## Backend conventions
 
 - **Find-or-create by name**: `Maktaba.Data/Services/EntityResolvers.cs` (`ResolveAuthorsAsync`/
