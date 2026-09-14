@@ -4,6 +4,7 @@ A local-first, cross-platform ebook library manager. See [docs/SPEC.md](docs/SPE
 
 <img width="1608" height="1049" alt="image" src="https://github.com/user-attachments/assets/d6b9853e-b5b1-4c39-962f-e74f35582cf9" />
 
+[Privacy Policy](https://inshapardaz.github.io/maktaba/privacy-policy) | [Terms and Conditions](https://inshapardaz.github.io/maktaba/terms-and-conditions)
 ## Architecture
 
 - `apps/frontend` — React + TypeScript UI (Vite dev server), rendered with [Mantine](https://mantine.dev) (`src/theme.ts` for the theme, `main.tsx` for the provider). Talks to the backend via `fetch`, using the port/token injected by the preload script (`src/api.ts`).
