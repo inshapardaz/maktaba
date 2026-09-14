@@ -58,7 +58,7 @@ import { PROVIDER_ICONS } from "./providerIcons";
 // Provider names are proper nouns/brand names, not translated - same convention as file format
 // labels (EPUB/PDF/...) elsewhere in this app. Only "local" is reachable today; the rest land with
 // their own phases (S3 first).
-const PROVIDER_LABELS: Record<string, string> = {
+export const PROVIDER_LABELS: Record<string, string> = {
   s3: "Amazon S3",
   onedrive: "OneDrive",
   googledrive: "Google Drive",

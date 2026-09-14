@@ -398,8 +398,8 @@ export function previewMigration(): Promise<MigrationPreview> {
   return request<MigrationPreview>("/api/libraries/migrate/preview");
 }
 
-export function startMigration(
-  providerType: string, providerConfig: Record<string, string>, credential: S3Credential,
+export function startMigration<TCredential>(
+  providerType: string, providerConfig: Record<string, string>, credential: TCredential,
 ): Promise<void> {
   return request<void>("/api/libraries/migrate/start", {
     method: "POST",

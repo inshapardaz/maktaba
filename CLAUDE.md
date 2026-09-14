@@ -244,7 +244,12 @@ area doesn't also make the whole window's layout jump around. See `docs/en/libra
 libraries" section for the end-user-facing explanation of all of this.
 
 **Migration wizard** (`MigrationWizard.tsx`, Stepper: Target → Review → Migrate → Finish) moves the
-*active* library to a new provider - `ILibraryMigrationService`/`LibraryMigrationService`
+*active* library to a new provider - the Target step's own `SegmentedControl` picks which one (S3 or
+Google Drive today; OneDrive isn't offered here yet, same reasoning as its own Connect form -
+blocked on a real Azure AD app registration, see "Cloud storage" above), then shows that provider's
+own fields/sign-in flow, reusing `S3CredentialFields`/`window.maktaba.connectGoogleDrive()` rather
+than inventing per-provider migration forms. `startMigration`'s backend endpoint
+(`POST /migrate/start`) and `ILibraryMigrationService`/`LibraryMigrationService`
 (`Maktaba.Data/Services/LibraryMigrationService.cs`) runs the copy as a background `Task.Run`,
 tracked via an in-memory `MigrationProgressSnapshot` polled the same way rescan progress is
 (`GET /api/libraries/migrate/status`). Walks every file via `IStorageProvider.EnumerateAsync`
