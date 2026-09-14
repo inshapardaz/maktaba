@@ -48,6 +48,32 @@ public class NawishtaRawApiClient(HttpClient httpClient, string serverUrl)
     public void SetAccessToken(string accessToken) =>
         httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
 
+    // Set by NawishtaSessionResolver/StorageProviderFactory after construction (not a constructor
+    // parameter - avoids a circular reference, since building the callback needs a reference to
+    // this same client to call SetAccessToken on). Nawishta's access token is short-lived (10
+    // minutes) - without this, every read past that window would fail with a 401 for the rest of
+    // the backend process's session, which is exactly what "authors/series aren't loading" turned
+    // out to be in practice (confirmed - every endpoint works fine against a fresh token). Only
+    // wired into GET requests (GetJsonAsync and the two raw-bytes downloads below) - a POST/PUT's
+    // request body (StreamContent/MultipartFormDataContent) can't be resent after being consumed
+    // once, so a write made with a stale token still needs a manual reconnect for now (see
+    // CLAUDE.md's Nawishta write-path section).
+    public Func<CancellationToken, Task<string>>? RefreshAccessTokenAsync { get; set; }
+
+    private async Task<HttpResponseMessage> GetWithRefreshAsync(string url, HttpCompletionOption completionOption, CancellationToken ct)
+    {
+        var response = await httpClient.GetAsync(url, completionOption, ct);
+        if (response.StatusCode != HttpStatusCode.Unauthorized || RefreshAccessTokenAsync is null)
+        {
+            return response;
+        }
+
+        response.Dispose();
+        var newToken = await RefreshAccessTokenAsync(ct);
+        SetAccessToken(newToken);
+        return await httpClient.GetAsync(url, completionOption, ct);
+    }
+
     public async Task<NawishtaPageView<BookView>> GetBooksAsync(
         int libraryId, string? query, int? pageNumber, int? pageSize, int? authorId, int? seriesId, int? categoryId, CancellationToken ct)
     {
@@ -117,7 +143,7 @@ public class NawishtaRawApiClient(HttpClient httpClient, string serverUrl)
         var downloadUrl = description?.Links?.FirstOrDefault(l => l.Rel == "download")?.Href
             ?? throw new InvalidOperationException($"Nawishta content {contentId} has no \"download\" link.");
 
-        using var response = await httpClient.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead, ct);
+        using var response = await GetWithRefreshAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead, ct);
         await ThrowIfErrorAsync(response, ct);
         var bytes = await response.Content.ReadAsByteArrayAsync(ct);
         var mimeType = response.Content.Headers.ContentType?.MediaType ?? description?.MimeType;
@@ -140,7 +166,7 @@ public class NawishtaRawApiClient(HttpClient httpClient, string serverUrl)
             return null;
         }
 
-        using var response = await httpClient.GetAsync(imageUrl, HttpCompletionOption.ResponseHeadersRead, ct);
+        using var response = await GetWithRefreshAsync(imageUrl, HttpCompletionOption.ResponseHeadersRead, ct);
         await ThrowIfErrorAsync(response, ct);
         var bytes = await response.Content.ReadAsByteArrayAsync(ct);
         return (bytes, response.Content.Headers.ContentType?.MediaType);
@@ -191,7 +217,7 @@ public class NawishtaRawApiClient(HttpClient httpClient, string serverUrl)
 
     private async Task<T?> GetJsonAsync<T>(string url, CancellationToken ct)
     {
-        using var response = await httpClient.GetAsync(url, ct);
+        using var response = await GetWithRefreshAsync(url, HttpCompletionOption.ResponseContentRead, ct);
         if (response.StatusCode == HttpStatusCode.NotFound)
         {
             return default;

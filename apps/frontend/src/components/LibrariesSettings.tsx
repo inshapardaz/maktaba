@@ -441,7 +441,9 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
                     </ActionIcon>
                   </Tooltip>
                 )}
-                {entry.isActive && entry.providerType !== "local" && (
+                {entry.isActive && entry.providerType !== "local" && entry.providerType !== "nawishta" && (
+                  // Nawishta has no metadata.db to push (its own server is the source of truth -
+                  // see NawishtaStorageProvider's doc comment) - "sync now" has no meaning for it.
                   <Tooltip label={t("librariesSettings.syncNow")}>
                     <ActionIcon
                       variant="subtle"

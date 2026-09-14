@@ -611,6 +611,29 @@ password straight through to Nawishta's own `/Accounts/authenticate` and only th
 `NawishtaCredential` (access/refresh tokens) is ever passed to `window.maktaba.saveCloudCredential`
 for encrypted, on-device persistence - the raw email/password are never written anywhere.
 
+**Access-token auto-refresh** - live testing against a real account surfaced "authors/series aren't
+loading" as a real, reproducible bug: every read worked fine against a *fresh* token (confirmed via
+curl), but Nawishta's access token is only good for 10 minutes and nothing renewed it, so any
+session left open past that point started failing silently. `NawishtaRawApiClient.
+RefreshAccessTokenAsync` (a settable delegate, not a constructor parameter - avoids a circular
+reference, since building the callback needs to call back into the same client's `SetAccessToken`)
+is checked by every **GET** request (`GetJsonAsync`, plus the two raw-bytes downloads) - a 401
+triggers exactly one silent renew-and-retry. `NawishtaCredentialRefresher.Create` (shared by
+`NawishtaSessionResolver` and `StorageProviderFactory.BuildNawishtaProvider`, which each build
+their own `NawishtaRawApiClient`) calls `INawishtaAuthService.RefreshAsync` and writes the renewed
+credential straight back into `ICloudCredentialCache`, so a later request in the same session
+reuses it instead of re-renewing from the now-stale token the session started with. Live-verified:
+connected with a deliberately invalid access token (but a real refresh token), confirmed `GET
+/api/authors` still returned real data - correctly triggering exactly one `/Accounts/refresh-token`
+call. **Not covered**: POST/PUT requests (`CreateAuthorAsync`, `UpdateBookAsync`,
+`UploadContentAsync`, ...) - a `StreamContent`/`MultipartFormDataContent` body can't be resent after
+being consumed once, so a *write* made with a stale token still needs a manual reconnect for now.
+
+**Nawishta's "Sync now" button is hidden**, not just "Resync" (see above) - `LibrariesSettings.tsx`
+originally only excluded `"local"` from `entry.isActive && entry.providerType !== "local"`, so every
+cloud provider including Nawishta got a sync-now button that meant nothing for it (no metadata.db to
+push - `NawishtaStorageProvider.PushDatabaseAsync` is a no-op). Now excludes `"nawishta"` explicitly.
+
 ## Backend conventions
 
 - **Find-or-create by name**: `Maktaba.Data/Services/EntityResolvers.cs` (`ResolveAuthorsAsync`/

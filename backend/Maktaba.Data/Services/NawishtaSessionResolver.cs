@@ -13,6 +13,7 @@ public class NawishtaSessionResolver(
     ILibraryService libraryService,
     ICloudCredentialCache credentials,
     ICloudCacheManager cacheManager,
+    INawishtaAuthService nawishtaAuth,
     IHttpClientFactory httpClientFactory)
 {
     private (NawishtaRawApiClient Api, int RemoteLibraryId, NawishtaShadowDbContext Shadow, ICloudCacheManager CacheManager, string LibraryId)? _cached;
@@ -43,6 +44,8 @@ public class NawishtaSessionResolver(
         var httpClient = httpClientFactory.CreateClient(nameof(NawishtaRawApiClient));
         var api = new NawishtaRawApiClient(httpClient, options.ServerUrl);
         api.SetAccessToken(options.AccessToken);
+        api.RefreshAccessTokenAsync = NawishtaCredentialRefresher.Create(
+            nawishtaAuth, credentials, entry.Id, options.ServerUrl, options.RefreshToken);
 
         var shadow = new NawishtaShadowDbContext(NawishtaShadowDbContext.GetDbPath(entry.Id));
         shadow.Database.EnsureCreated();

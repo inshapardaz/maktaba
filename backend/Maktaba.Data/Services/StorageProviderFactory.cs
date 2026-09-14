@@ -17,6 +17,7 @@ public class StorageProviderFactory(
     LocalFileSystemProvider local,
     ICloudCacheManager cloudCacheManager,
     ICloudCredentialCache credentials,
+    INawishtaAuthService nawishtaAuth,
     IHttpClientFactory httpClientFactory) : IStorageProviderFactory
 {
     // Keyed by (libraryId, providerType, credential hash) rather than just libraryId, so a
@@ -91,6 +92,8 @@ public class StorageProviderFactory(
         var httpClient = httpClientFactory.CreateClient(nameof(NawishtaRawApiClient));
         var api = new NawishtaRawApiClient(httpClient, options.ServerUrl);
         api.SetAccessToken(options.AccessToken);
+        api.RefreshAccessTokenAsync = NawishtaCredentialRefresher.Create(
+            nawishtaAuth, credentials, libraryId, options.ServerUrl, options.RefreshToken);
         return new NawishtaStorageProvider(libraryId, options.RemoteLibraryId, api, cloudCacheManager);
     }
 
