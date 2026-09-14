@@ -76,6 +76,7 @@ public class StorageProviderFactory(
         {
             "local" => local,
             "s3" => new S3StorageProvider(libraryId, S3ProviderOptions.FromConfig(providerConfig, credential), cloudCacheManager),
+            "onedrive" => new OneDriveStorageProvider(libraryId, OneDriveProviderOptions.FromConfig(providerConfig, credential), cloudCacheManager),
             "googledrive" => new GoogleDriveStorageProvider(libraryId, GoogleDriveProviderOptions.FromConfig(providerConfig, credential), cloudCacheManager),
             _ => throw new NotSupportedException($"Storage provider \"{providerType}\" isn't implemented yet."),
         };

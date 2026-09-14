@@ -197,6 +197,19 @@ contextBridge.exposeInMainWorld("maktaba", {
   deleteCloudCredential: (ref: string): Promise<void> =>
     ipcRenderer.invoke("maktaba:delete-cloud-credential", ref),
 
+  // Cloud: Phase 4 (#96) - runs the interactive OneDrive sign-in (opens the system browser,
+  // resolves once it redirects back to a temporary loopback listener). Rejects if the user closes
+  // the browser without completing sign-in, denies consent, is cancelled (see below), or it times
+  // out.
+  connectOneDrive: (): Promise<{ accessToken: string; refreshToken: string; expiresAt: number }> =>
+    ipcRenderer.invoke("maktaba:connect-onedrive"),
+
+  // Stops a still-pending connectOneDrive() call immediately - see native.ts's
+  // oneDriveConnectAbort. The pending connectOneDrive() promise rejects as a result of this;
+  // callers don't need to do anything else to "cancel" their own await.
+  cancelOneDriveConnect: (): Promise<void> =>
+    ipcRenderer.invoke("maktaba:cancel-onedrive-connect"),
+
   // Cloud: Phase 5 (#99) - runs the interactive Google Drive sign-in (opens the system browser,
   // resolves once it redirects back to a temporary loopback listener). Rejects if the user closes
   // the browser without completing sign-in, denies consent, is cancelled (see below), or it times

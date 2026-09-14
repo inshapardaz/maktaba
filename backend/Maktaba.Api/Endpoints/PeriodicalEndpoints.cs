@@ -189,7 +189,8 @@ public static class PeriodicalEndpoints
             var result = await periodicalService.DeleteAsync(periodicalId, deleteIssues == true, ct);
             return result.Outcome switch
             {
-                PeriodicalDeleteOutcome.Deleted => Results.Ok(new { folderPath = result.AbsoluteFolderPath }),
+                PeriodicalDeleteOutcome.Deleted =>
+                    Results.Ok(new { folderPath = result.AbsoluteFolderPath, requiresLocalTrash = result.RequiresLocalTrash }),
                 PeriodicalDeleteOutcome.NotFound => Results.NotFound(),
                 PeriodicalDeleteOutcome.HasIssues => Results.Conflict(
                     new { error = "This periodical still has issues. Move or remove them first." }),

@@ -1,3 +1,5 @@
+using Maktaba.Core.Sync;
+
 namespace Maktaba.Core.Services;
 
 /// <summary>One entry (file or folder) returned by <see cref="IStorageProvider.EnumerateAsync"/>,
@@ -70,6 +72,28 @@ public interface IStorageProvider
     /// discarding local edits that were never pushed, which unconditionally pulling on every
     /// activation used to do.</summary>
     Task<DateTimeOffset?> GetRemoteDatabaseLastModifiedAsync(CancellationToken ct = default);
+
+    /// <summary>Reads the library's ".maktaba-lock" marker straight from the remote store - never
+    /// trusting a locally cached copy, since the whole point is detecting a lock a *different*
+    /// device just wrote. Returns null if no marker exists. Always null for
+    /// <see cref="LocalFileSystemProvider"/> (a local library has no concept of a remote lock). See
+    /// <see cref="LibraryLockInfo"/> for the marker's format and staleness rules -
+    /// <c>LibraryService.ActivateAsync</c> is what actually enforces the single-writer check this
+    /// method's result feeds into.</summary>
+    Task<LibraryLockInfo?> ReadLockAsync(CancellationToken ct = default);
+
+    /// <summary>Writes <paramref name="lockInfo"/> as the library's ".maktaba-lock" marker,
+    /// overwriting whatever was there. Callers are responsible for checking
+    /// <see cref="ReadLockAsync"/> first per the single-writer model this implements - this method
+    /// itself doesn't compare-and-swap against a concurrent writer (an unlikely race given the
+    /// staleness window, and last-write-wins is the documented concurrency model everywhere else in
+    /// this app too). A no-op for <see cref="LocalFileSystemProvider"/>.</summary>
+    Task WriteLockAsync(LibraryLockInfo lockInfo, CancellationToken ct = default);
+
+    /// <summary>Deletes the ".maktaba-lock" marker, if any - called on a clean switch-away/close so
+    /// another device doesn't have to wait out the full staleness window before it can open this
+    /// library. A no-op for <see cref="LocalFileSystemProvider"/>.</summary>
+    Task DeleteLockAsync(CancellationToken ct = default);
 }
 
 /// <summary>Resolves the <see cref="IStorageProvider"/> for a library, by its registry entry's

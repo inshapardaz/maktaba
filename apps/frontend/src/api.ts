@@ -343,6 +343,15 @@ export interface GoogleDriveCredential {
   expiresAt: number;
 }
 
+// Same shape as GoogleDriveCredential (both are just an OAuth token set) - kept as its own named
+// type rather than a shared alias so each provider's credential stays independently renameable,
+// matching backend OneDriveProviderOptions.FromConfig's expectations.
+export interface OneDriveCredential {
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: number;
+}
+
 // Generic over the credential shape (S3Credential, GoogleDriveCredential, ...) since this endpoint
 // only ever JSON.stringifies it into an opaque string the backend deserializes per providerType -
 // see LibraryEndpoints' "/cloud" handler and ILibraryService.OpenCloudLibraryAsync, neither of
@@ -398,8 +407,8 @@ export function previewMigration(): Promise<MigrationPreview> {
   return request<MigrationPreview>("/api/libraries/migrate/preview");
 }
 
-export function startMigration(
-  providerType: string, providerConfig: Record<string, string>, credential: S3Credential,
+export function startMigration<TCredential>(
+  providerType: string, providerConfig: Record<string, string>, credential: TCredential,
 ): Promise<void> {
   return request<void>("/api/libraries/migrate/start", {
     method: "POST",
@@ -549,8 +558,13 @@ export function updateBook(id: string, edit: BookEditRequest): Promise<void> {
   });
 }
 
-export function deleteBook(id: string): Promise<{ folderPath: string }> {
-  return request<{ folderPath: string }>(`/api/books/${id}`, { method: "DELETE" });
+// requiresLocalTrash is false for a cloud-backed library - the backend already deleted the folder
+// from the remote store (and its local cache mirror) itself, so callers must NOT also call
+// window.maktaba.trashPath(folderPath) in that case (there's no local OS-trash-able folder for a
+// remote object the way there is for a real local library's file). Only call trashPath when this
+// is true.
+export function deleteBook(id: string): Promise<{ folderPath: string; requiresLocalTrash: boolean }> {
+  return request<{ folderPath: string; requiresLocalTrash: boolean }>(`/api/books/${id}`, { method: "DELETE" });
 }
 
 // Issue #49: merges sourceBookId's files into targetId (skipping any the target already has, by
@@ -1034,10 +1048,13 @@ export function updatePeriodical(id: string, fields: PeriodicalEditFields): Prom
 // issue count) and retry with deleteIssues: true, same "confirm, then cascade" shape as the
 // dedicated confirmation UI in PeriodicalsView.tsx/PeriodicalDetailView.tsx. On success, returns
 // the periodical's absolute folder path (which already contains every issue's own subfolder) for
-// the caller to move to the OS trash via window.maktaba.trashPath - mirrors deleteBook's contract.
-export function deletePeriodical(id: string, deleteIssues?: boolean): Promise<{ folderPath: string }> {
+// the caller to move to the OS trash via window.maktaba.trashPath - mirrors deleteBook's contract,
+// requiresLocalTrash included (see that function's own comment for what it means).
+export function deletePeriodical(
+  id: string, deleteIssues?: boolean,
+): Promise<{ folderPath: string; requiresLocalTrash: boolean }> {
   const query = deleteIssues ? "?deleteIssues=true" : "";
-  return request<{ folderPath: string }>(`/api/periodicals/${id}${query}`, { method: "DELETE" });
+  return request<{ folderPath: string; requiresLocalTrash: boolean }>(`/api/periodicals/${id}${query}`, { method: "DELETE" });
 }
 
 export function periodicalCoverUrl(id: string): string {
