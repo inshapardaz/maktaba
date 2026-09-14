@@ -1,21 +1,24 @@
 import * as crypto from "node:crypto";
 import { generatePkcePair, runOAuthLoopback } from "./oauthLoopback";
+import { GOOGLE_CLIENT_ID as CLIENT_ID, GOOGLE_CLIENT_SECRET as CLIENT_SECRET } from "./googleOAuthConfig.generated";
 
-// Cloud: Phase 5 (#99) - Maktaba's own Google Cloud project's OAuth client id/secret. One
-// project/client serves every Maktaba install (end users never create their own); created at
-// https://console.cloud.google.com -> APIs & Services -> Credentials -> Create Credentials ->
-// OAuth client ID -> Application type "Desktop app".
+// Cloud: Phase 5 (#99) - Maktaba's own Google Cloud project's OAuth client id/secret, generated
+// (not committed - see .gitignore) by scripts/generate-google-oauth-config.mjs from the
+// MAKTABA_GOOGLE_CLIENT_ID/MAKTABA_GOOGLE_CLIENT_SECRET environment variables - set locally for
+// dev, or as GitHub Actions repository secrets for CI packaging (see README.md's "Google Drive
+// OAuth setup"). One project/client serves every Maktaba install (end users never create their
+// own); created at https://console.cloud.google.com -> APIs & Services -> Credentials -> Create
+// Credentials -> OAuth client ID -> Application type "Desktop app" (see CLAUDE.md's "Cloud
+// storage" section for the full walkthrough).
 //
 // Unlike OneDrive's public client (PKCE only, no secret - see oneDriveAuth.ts), Google's installed-
 // app OAuth clients still require this secret in the token exchange even when using PKCE, by
 // Google's own design - see https://developers.google.com/identity/protocols/oauth2/native-app.
 // Google's docs explicitly say installed-app client secrets aren't treated as confidential (unlike
 // a web-server client's), since they necessarily ship inside distributed app source/binaries no
-// matter how it's built - hardcoded here deliberately (an earlier revision tried loading it from an
-// environment variable instead, but that only works when *this developer's* machine happens to have
-// it set; an actual end user's install never would, breaking "one registration serves every
-// install" entirely - reading it from the environment is meaningful for a real secret a build
-// pipeline injects, not one that's expected to end up in the shipped binary regardless).
+// matter how it's built - but that's still not the same as it sitting in *this repo's git history*
+// forever once committed (GitHub's own push protection agrees - it blocks exactly that), hence
+// generating it at build time instead of a literal here.
 //
 // Also needs an OAuth consent screen configured (User type "External" - Maktaba isn't a Google
 // Workspace organization, so "Internal" isn't an option) before any user can sign in. While that
@@ -23,8 +26,6 @@ import { generatePkcePair, runOAuthLoopback } from "./oauthLoopback";
 // complete sign-in - publish it (Google's own dashboard button) once ready for other people to use,
 // which for the drive.file scope alone shouldn't need Google's full verification review (that's
 // only required for broader/sensitive scopes than the one requested below).
-const CLIENT_ID = "REDACTED";
-const CLIENT_SECRET = "REDACTED";
 
 const AUTHORIZE_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";

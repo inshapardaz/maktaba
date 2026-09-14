@@ -414,20 +414,15 @@ public class GoogleDriveStorageProvider : IStorageProvider, IDisposable
 }
 
 /// <summary>Refreshes and caches a Google Drive access token in-memory for this provider instance's
-/// lifetime. Deliberately duplicates CLIENT_ID/CLIENT_SECRET/the token endpoint from
-/// googleDriveAuth.ts rather than sharing a constant across the TypeScript/C# boundary - see that
-/// file's comment for why (and why the client secret isn't treated as confidential for this OAuth
-/// client type). Unlike OneDrive, Google does not normally rotate the refresh token on every
-/// refresh, so there's no equivalent v1 "rotated token not persisted" gap here - the same refresh
-/// token keeps working until the user revokes access.</summary>
+/// lifetime. Reads GoogleOAuthConfig.ClientId/ClientSecret - a gitignored, generated-at-build-time
+/// file (scripts/generate-google-oauth-config.mjs) that must match googleDriveAuth.ts's own copy -
+/// see that file's comment for why this isn't a literal here (and why the client secret isn't
+/// treated as confidential for this OAuth client type in the first place). Unlike OneDrive, Google
+/// does not normally rotate the refresh token on every refresh, so there's no equivalent v1
+/// "rotated token not persisted" gap here - the same refresh token keeps working until the user
+/// revokes access.</summary>
 internal sealed class GoogleDriveTokenManager(HttpClient http, GoogleDriveProviderOptions initial)
 {
-    // Must match googleDriveAuth.ts's CLIENT_ID/CLIENT_SECRET - see that file's comment for why
-    // hardcoding this (rather than reading it from the environment, which only this developer's own
-    // machine would ever have set - useless for an actual end user's install) is the right call for
-    // a secret Google's own design expects to ship inside the distributed binary regardless.
-    private const string ClientId = "REDACTED";
-    private const string ClientSecret = "REDACTED";
     private const string TokenEndpoint = "https://oauth2.googleapis.com/token";
 
     private readonly SemaphoreSlim _refreshLock = new(1, 1);
@@ -455,8 +450,8 @@ internal sealed class GoogleDriveTokenManager(HttpClient http, GoogleDriveProvid
                 TokenEndpoint,
                 new FormUrlEncodedContent(new Dictionary<string, string>
                 {
-                    ["client_id"] = ClientId,
-                    ["client_secret"] = ClientSecret,
+                    ["client_id"] = GoogleOAuthConfig.ClientId,
+                    ["client_secret"] = GoogleOAuthConfig.ClientSecret,
                     ["grant_type"] = "refresh_token",
                     ["refresh_token"] = initial.RefreshToken,
                 }),

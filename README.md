@@ -71,6 +71,38 @@ Packaged builds check GitHub Releases for a newer version shortly after launch (
 - **`.github/workflows/ci.yml`** — runs on every push and pull request: `dotnet build`/`dotnet test` for the backend, and `tsc`/`vite build` for the frontend and desktop TypeScript, as two parallel jobs.
 - **`.github/workflows/release.yml`** — builds installers for all three platforms and publishes a GitHub Release with them attached. Triggered either by pushing a tag matching `v*.*.*`, or manually via the Actions tab ("Run workflow") with a `tag` input — the manual path creates that tag (and the release) pointing at the selected branch/commit if it doesn't already exist. Before packaging, it stamps the given version into the root/frontend/desktop `package.json` files via `scripts/set-version.mjs` so installer filenames and the app's version match the release tag. Each platform builds and uploads its installer as a workflow artifact; a final job downloads all three and creates the release (`softprops/action-gh-release`) with them attached for download.
 
+## Google Drive OAuth setup
+
+Google Drive support (Settings → Libraries → "Connect Google Drive…") needs a Google OAuth client
+id/secret, which are **not** committed to this repo (GitHub's own push protection blocks a literal
+Google OAuth secret in a commit). Instead, `scripts/generate-google-oauth-config.mjs` generates two
+gitignored files - `apps/desktop/src/googleOAuthConfig.generated.ts` and
+`backend/Maktaba.Cloud/GoogleOAuthConfig.Generated.cs` - from two environment variables:
+
+- `MAKTABA_GOOGLE_CLIENT_ID`
+- `MAKTABA_GOOGLE_CLIENT_SECRET`
+
+**Local development**: set both as normal environment variables before running `npm run dev` (the
+root `package.json`'s `predev`/`prebuild:desktop` hooks run the generation script automatically -
+no separate step needed). On Windows, set them once via System Properties → Environment Variables
+(persists across terminal sessions and IDE restarts) rather than only `export`-ing them in one
+shell. Without them set, the app still builds and runs fine - Google Drive sign-in just fails with
+a clear error until they're set. See CLAUDE.md's "Cloud storage" section for the full walkthrough
+of creating these credentials in Google Cloud Console in the first place.
+
+**CI packaging** (`.github/workflows/release.yml`): add the same two names as **GitHub Actions
+repository secrets** (Settings → Secrets and variables → Actions → New repository secret) using
+the exact values from Google Cloud Console. The workflow's "Configure Google Drive OAuth" step
+exports them into the build environment before packaging, the same conditional-export pattern the
+Mac signing secrets below already use - if they're not added yet, packaged builds still succeed,
+just without working Google Drive support.
+
+**Backend-only builds without Node** (an IDE, `dotnet build`/`dotnet run` directly, or CI's
+`ci.yml` "backend" job, which never runs npm) never run the generation script at all - a small
+MSBuild target in `Maktaba.Cloud.csproj` (`EnsureGoogleOAuthConfigGenerated`) writes an
+empty-valued fallback `GoogleOAuthConfig.Generated.cs` if the real one doesn't already exist, so
+the project always has something to compile against.
+
 ## Known issues
 
 - **In-app reader (`@inshapardaz/qari`) needs internet access for two things**, even though everything else in Maktaba is local-first: its PDF rendering loads the `pdf.js` worker script from a jsDelivr CDN by default (override via the `pdfWorkerSrc` prop on `Reader` if self-hosting is needed), and its Nastaliq/Urdu font options load live from `github.com/inshapardaz/urdu-web-fonts`. Both degrade gracefully (EPUB reading and non-Nastaliq fonts still work offline) rather than breaking the reader entirely, but a fully offline setup would need to self-host both.

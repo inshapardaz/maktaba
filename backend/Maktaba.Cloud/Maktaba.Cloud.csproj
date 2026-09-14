@@ -14,4 +14,32 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <!-- GoogleOAuthConfig.Generated.cs is gitignored (see .gitignore) - normally produced by
+       scripts/generate-google-oauth-config.mjs before any npm build/dev/package script runs (see
+       the root package.json's predev/prebuild:desktop hooks). That script needs Node, which isn't
+       guaranteed to be available wherever this project gets built directly (dotnet build/dotnet
+       run/an IDE, or CI's backend-only job - see .github/workflows/ci.yml's "backend" job, which
+       never runs npm at all) - this target writes an empty-valued fallback so the class this
+       project depends on (GoogleDriveStorageProvider.cs) always exists to compile against. Only
+       fires when the file is missing, so it never clobbers a real one the Node script already
+       wrote with actual MAKTABA_GOOGLE_CLIENT_ID/_SECRET values. -->
+  <Target Name="EnsureGoogleOAuthConfigGenerated" BeforeTargets="BeforeBuild" Condition="!Exists('GoogleOAuthConfig.Generated.cs')">
+    <ItemGroup>
+      <_GoogleOAuthConfigFallbackLines Include="// AUTO-GENERATED fallback (Maktaba.Cloud.csproj's EnsureGoogleOAuthConfigGenerated target) - empty because scripts/generate-google-oauth-config.mjs never ran here. See README.md's &quot;Google Drive OAuth setup&quot;." />
+      <_GoogleOAuthConfigFallbackLines Include="namespace Maktaba.Cloud%3B" />
+      <_GoogleOAuthConfigFallbackLines Include="internal static class GoogleOAuthConfig" />
+      <_GoogleOAuthConfigFallbackLines Include="{" />
+      <_GoogleOAuthConfigFallbackLines Include="    public const string ClientId = &quot;&quot;%3B" />
+      <_GoogleOAuthConfigFallbackLines Include="    public const string ClientSecret = &quot;&quot;%3B" />
+      <_GoogleOAuthConfigFallbackLines Include="}" />
+    </ItemGroup>
+    <WriteLinesToFile File="GoogleOAuthConfig.Generated.cs" Lines="@(_GoogleOAuthConfigFallbackLines)" Overwrite="true" />
+    <!-- SDK-style projects glob **/*.cs into @(Compile) at project *evaluation* time, which already
+         happened before this target runs - so a file this target just created wouldn't otherwise be
+         picked up as a compile input for this same build invocation without explicitly adding it. -->
+    <ItemGroup>
+      <Compile Include="GoogleOAuthConfig.Generated.cs" />
+    </ItemGroup>
+  </Target>
+
 </Project>
