@@ -41,6 +41,30 @@ public static class AuthorImageLocator
         return null;
     }
 
+    /// <summary>
+    /// Storage-aware counterpart to <see cref="Find"/> for the actual image-serving endpoint (as
+    /// opposed to the synchronous "hasImage" list projections) - checks each candidate extension
+    /// against <paramref name="storage"/> (confirming against the remote store for a cloud-backed
+    /// provider if not already cached locally) and downloads a match into the cache before
+    /// returning a local path. Same reasoning as <c>CoverLocator.FindAsync</c>.
+    /// </summary>
+    public static async Task<(string FilePath, string ContentType)?> FindAsync(
+        IStorageProvider storage, int authorId, CancellationToken ct = default)
+    {
+        var sqid = IdCodec.Encode(authorId);
+        foreach (var (extension, contentType) in Candidates)
+        {
+            var relativePath = Path.Combine(FolderName, sqid + extension);
+            if (await storage.ExistsAsync(relativePath, ct))
+            {
+                var path = await storage.GetLocalPathAsync(relativePath, ct);
+                return (path, contentType);
+            }
+        }
+
+        return null;
+    }
+
     public static async Task SaveAsync(
         IStorageProvider storage, int authorId, string contentType, Stream content, CancellationToken ct)
     {

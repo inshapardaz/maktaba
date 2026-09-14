@@ -180,6 +180,23 @@ jobs:
             echo "CSC_IDENTITY_AUTO_DISCOVERY=false" >> "$GITHUB_ENV"
           fi
 
+      # See README.md's "Google Drive OAuth setup" and scripts/generate-google-oauth-config.mjs -
+      # that script (run automatically by the package:* script below, via its prebuild:desktop
+      # hook) reads these two from the environment and bakes them into the packaged app. Exported
+      # conditionally (not unconditionally, even as an empty string) for the same reason the mac
+      # signing step above does it this way: an env var that's merely *present* changes behavior in
+      # some tools even when empty, and if these secrets haven't been added to the repo yet this
+      # should still produce a working (just Google-Drive-less) build rather than fail outright.
+      - name: Configure Google Drive OAuth
+        run: |
+          if [ -n "${{ secrets.MAKTABA_GOOGLE_CLIENT_ID }}" ]; then
+            {
+              echo "MAKTABA_GOOGLE_CLIENT_ID=${{ secrets.MAKTABA_GOOGLE_CLIENT_ID }}"
+              echo "MAKTABA_GOOGLE_CLIENT_SECRET=${{ secrets.MAKTABA_GOOGLE_CLIENT_SECRET }}"
+            } >> "$GITHUB_ENV"
+          fi
+        shell: bash
+
       - name: Build and package
         run: npm run ${{ matrix.package_script }}
 

@@ -1,3 +1,5 @@
+using Maktaba.Core.Services;
+
 namespace Maktaba.Data;
 
 public static class CoverLocator
@@ -26,6 +28,33 @@ public static class CoverLocator
             var path = Path.Combine(folder, fileName);
             if (File.Exists(path))
             {
+                return (path, contentType);
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Storage-aware counterpart to <see cref="Find"/> for the actual cover-serving endpoints
+    /// (as opposed to the synchronous "hasCover" list projections) - checks each candidate filename
+    /// against <paramref name="storage"/> (which, for a cloud-backed provider, confirms against the
+    /// remote store if it's not already in the local cache mirror) and, once a match is found,
+    /// calls <see cref="IStorageProvider.GetLocalPathAsync"/> to actually download it into the cache
+    /// if needed before returning a local path. This is what makes a cover actually load for a
+    /// cloud library the first time it's requested, rather than only ever showing one that happened
+    /// to already be cached locally for some other reason.
+    /// </summary>
+    /// <param name="bookFolderRelativePath">A <c>Book.FolderPath</c> value, relative to the library root.</param>
+    public static async Task<(string FilePath, string ContentType)?> FindAsync(
+        IStorageProvider storage, string bookFolderRelativePath, CancellationToken ct = default)
+    {
+        foreach (var (fileName, contentType) in CoverCandidates)
+        {
+            var relativePath = Path.Combine(bookFolderRelativePath, fileName);
+            if (await storage.ExistsAsync(relativePath, ct))
+            {
+                var path = await storage.GetLocalPathAsync(relativePath, ct);
                 return (path, contentType);
             }
         }

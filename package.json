@@ -8,6 +8,8 @@
     "docs"
   ],
   "scripts": {
+    "generate:google-oauth-config": "node scripts/generate-google-oauth-config.mjs",
+    "predev": "npm run generate:google-oauth-config",
     "dev:frontend": "npm run dev --workspace maktaba-frontend",
     "dev:desktop:build": "npm run build --workspace maktaba-desktop -- --watch",
     "dev:electron": "wait-on tcp:5173 apps/desktop/dist/main.js --window 250 && electron apps/desktop",
@@ -16,6 +18,7 @@
     "docs:build": "npm run build --workspace maktaba-docs",
     "docs:preview": "npm run preview --workspace maktaba-docs",
     "build:frontend": "npm run build --workspace maktaba-frontend",
+    "prebuild:desktop": "npm run generate:google-oauth-config",
     "build:desktop": "npm run build --workspace maktaba-desktop",
     "build:help-content": "node scripts/build-help-content.mjs",
     "publish:backend": "node scripts/publish-backend.mjs",

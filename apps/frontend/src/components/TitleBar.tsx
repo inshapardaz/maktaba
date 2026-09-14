@@ -325,10 +325,20 @@ function SyncStatusIndicator({ onOpenSettings }: { onOpenSettings: (tab?: Settin
   }
 
   if (state === "Error") {
+    // Truncated deliberately - the raw error can be an arbitrarily long exception message (a full
+    // stack trace, a long unbroken URL/token with no natural wrap point, ...), which a tooltip is
+    // the wrong place to render in full regardless of width/multiline settings. The untruncated
+    // message is always reachable from Settings -> Libraries' inline alert for the same library
+    // (LibrariesSettings.tsx) - this is just "something's wrong, click to see more".
+    const truncatedError = errorMessage && errorMessage.length > 120 ? `${errorMessage.slice(0, 120)}…` : errorMessage;
     return (
-      <Tooltip label={errorMessage ? t("toolbar.syncStatusError", { message: errorMessage }) : t("toolbar.syncStatusErrorGeneric")}>
+      <Tooltip
+        label={truncatedError ? t("toolbar.syncStatusError", { message: truncatedError }) : t("toolbar.syncStatusErrorGeneric")}
+        multiline
+        w={260}
+      >
         <ActionIcon
-          variant="subtle"
+          variant="light"
           color="red"
           onClick={() => onOpenSettings("libraries")}
           aria-label={t("toolbar.syncStatusErrorGeneric")}

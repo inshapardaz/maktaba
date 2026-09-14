@@ -49,6 +49,7 @@ import {
   type BrowseGroup,
 } from "../api";
 import { isBookDrag, readBookDragIds } from "../bookDrag";
+import { shouldAttemptCloudAsset } from "../coverAvailability";
 import { useLanguage } from "../i18n/LanguageContext";
 import type { TranslationKey } from "../i18n/translations";
 import {
@@ -430,6 +431,7 @@ export function Sidebar({
   // keeps warm, so this is a cache read, not an extra request.
   const libraryQuery = useQuery({ queryKey: ["library"], queryFn: getCurrentLibrary });
   const periodicalsEnabled = libraryQuery.data?.periodicalsEnabled ?? true;
+  const providerType = libraryQuery.data?.providerType;
   const periodicalsQuery = useQuery({ queryKey: ["periodicals"], queryFn: listPeriodicals, enabled: periodicalsEnabled });
 
   // Drag-to-resize: pointer capture on the handle itself means move/up keep firing on it even
@@ -694,7 +696,7 @@ export function Sidebar({
               kind="authorId"
               icon={IconUser}
               renderIcon={(group) =>
-                group.hasImage ? (
+                shouldAttemptCloudAsset(group.hasImage, providerType) ? (
                   <Avatar src={authorImageUrl(group.id)} size={16} radius="xl" />
                 ) : (
                   <IconUser size={16} />
@@ -702,7 +704,11 @@ export function Sidebar({
               }
               renderHoverCard={(group) => (
                 <Group gap="sm" wrap="nowrap" p={4}>
-                  <Avatar src={group.hasImage ? authorImageUrl(group.id) : null} size={56} radius="xl">
+                  <Avatar
+                    src={shouldAttemptCloudAsset(group.hasImage, providerType) ? authorImageUrl(group.id) : null}
+                    size={56}
+                    radius="xl"
+                  >
                     <IconUser size={28} />
                   </Avatar>
                   <Stack gap={2}>

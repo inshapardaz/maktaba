@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ActionIcon, Avatar, Badge, Box, FileButton, Group, NavLink, Stack, Text, TextInput, Tooltip } from "@mantine/core";
 import { IconCheck, IconPencil, IconSearch, IconTrash, IconUser, IconX } from "../icons";
 import { authorImageUrl, deleteAuthorImage, listAuthors, renameAuthor, uploadAuthorImage, type BrowseGroup } from "../api";
+import { useShouldAttemptCloudAsset } from "../coverAvailability";
 import { useLanguage } from "../i18n/LanguageContext";
 import { BrowseViewHeader } from "./BrowseViewHeader";
 import type { GroupFilter } from "./Sidebar";
@@ -21,13 +22,14 @@ interface AuthorAvatarProps {
 
 function AuthorAvatar({ author, onUpload, onDelete, uploading }: AuthorAvatarProps) {
   const { t } = useLanguage();
+  const shouldAttempt = useShouldAttemptCloudAsset(author.hasImage);
 
   return (
     <Group gap={2} wrap="nowrap">
       <FileButton onChange={(file) => file && onUpload(file)} accept="image/jpeg,image/png">
         {(props) => (
           <Tooltip label={t("authorsView.uploadImage")}>
-            <Avatar {...props} src={author.hasImage ? authorImageUrl(author.id) : null} radius="xl" style={{ cursor: "pointer" }}>
+            <Avatar {...props} src={shouldAttempt ? authorImageUrl(author.id) : null} radius="xl" style={{ cursor: "pointer" }}>
               <IconUser size={16} />
             </Avatar>
           </Tooltip>

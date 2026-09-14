@@ -147,3 +147,70 @@ export function stopSidecar(handle: SidecarHandle | null): void {
 
   handle.process.once("exit", () => clearTimeout(forceKillTimer));
 }
+
+function waitForExit(handle: SidecarHandle, timeoutMs: number): Promise<boolean> {
+  if (handle.process.exitCode !== null) {
+    return Promise.resolve(true);
+  }
+
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      handle.process.removeListener("exit", onExit);
+      resolve(false);
+    }, timeoutMs);
+    const onExit = () => {
+      clearTimeout(timer);
+      resolve(true);
+    };
+    handle.process.once("exit", onExit);
+  });
+}
+
+/**
+ * Asks the backend to shut down gracefully (POST /shutdown - see Program.cs) before falling back
+ * to stopSidecar's hard kill, so CloudSyncLifecycleService.StopAsync's best-effort push of the
+ * active library's metadata.db actually gets a chance to run. Plain process.kill() alone can't be
+ * trusted for this: on Windows it maps to TerminateProcess, which the .NET generic host has no way
+ * to react to at all (unlike a POSIX SIGTERM a process can trap), so that safety-net push was
+ * silently never running when the app closed - only ever reaching the cloud again once the next
+ * heartbeat or an explicit "Sync now" happened to run against that library later.
+ *
+ * Best-effort in both directions: if the backend is already dead, unreachable, or doesn't exit
+ * within the grace period (matches Program.cs's own ShutdownTimeout, plus a little slack for the
+ * request round-trip itself), this falls through to the same hard-kill stopSidecar always used -
+ * app shutdown must never hang waiting on a slow/unreachable cloud provider.
+ */
+export async function stopSidecarGracefully(handle: SidecarHandle | null): Promise<void> {
+  if (!handle || handle.process.killed || handle.process.exitCode !== null) {
+    return;
+  }
+
+  const requested = await new Promise<boolean>((resolve) => {
+    const req = http.request(
+      {
+        host: "127.0.0.1",
+        port: handle.port,
+        path: "/shutdown",
+        method: "POST",
+        headers: { Authorization: `Bearer ${handle.token}` },
+        timeout: 2000,
+      },
+      (res) => {
+        res.resume();
+        resolve(true);
+      },
+    );
+    req.on("error", () => resolve(false));
+    req.on("timeout", () => {
+      req.destroy();
+      resolve(false);
+    });
+    req.end();
+  });
+
+  if (requested && (await waitForExit(handle, 11_000))) {
+    return;
+  }
+
+  stopSidecar(handle);
+}

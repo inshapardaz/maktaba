@@ -41,14 +41,14 @@ public static class AuthorEndpoints
         // Issue #28: an author photo, uploaded from the AuthorsView edit affordance - stored purely
         // as a file convention (see AuthorImageLocator), no DB column, same spirit as book/periodical
         // covers.
-        group.MapGet("/{id}/image", (string id, ILibraryPathProvider libraryPath) =>
+        group.MapGet("/{id}/image", async (string id, IStorageProviderFactory storageFactory, CancellationToken ct) =>
         {
             if (!IdCodec.TryDecode(id, out var authorId))
             {
                 return Results.NotFound();
             }
 
-            var image = AuthorImageLocator.Find(libraryPath.LibraryRootPath!, authorId);
+            var image = await AuthorImageLocator.FindAsync(storageFactory.Current, authorId, ct);
             return image is { } found ? Results.File(found.FilePath, found.ContentType) : Results.NotFound();
         });
 

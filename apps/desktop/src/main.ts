@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, Menu } from "electron";
 import * as path from "node:path";
 import * as fs from "node:fs";
-import { startSidecar, stopSidecar, waitForHealth, SidecarHandle, SidecarStatus } from "./sidecar";
+import { startSidecar, stopSidecar, stopSidecarGracefully, waitForHealth, SidecarHandle, SidecarStatus } from "./sidecar";
 import { registerNativeHandlers, registerStarDictProtocol } from "./native";
 import { registerHelpHandlers } from "./help";
 import { buildAppMenu } from "./menu";
@@ -383,7 +383,20 @@ app.on("activate", () => {
   }
 });
 
-app.on("before-quit", () => {
-  stopSidecar(sidecar);
+// Deliberately async with preventDefault/re-quit rather than a synchronous stopSidecar() - gives
+// the backend a real chance to push the active cloud library's pending changes before it actually
+// exits (see stopSidecarGracefully). isQuitting guards against re-entering this on the second
+// app.quit() call below, which would otherwise preventDefault forever and the app would never
+// actually close.
+let isQuitting = false;
+app.on("before-quit", (event) => {
+  if (isQuitting || !sidecar) {
+    return;
+  }
+
+  event.preventDefault();
+  isQuitting = true;
+  const toStop = sidecar;
   sidecar = null;
+  void stopSidecarGracefully(toStop).finally(() => app.quit());
 });

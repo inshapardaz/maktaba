@@ -204,8 +204,6 @@ public static class PeriodicalEndpoints
                 return Results.NotFound();
             }
 
-            var root = await storageFactory.Current.GetLocalPathAsync("", ct);
-
             var folderPath = await db.Periodicals
                 .Where(p => p.Id == periodicalId)
                 .Select(p => p.FolderPath)
@@ -216,7 +214,7 @@ public static class PeriodicalEndpoints
                 return Results.NotFound();
             }
 
-            var cover = CoverLocator.Find(root, folderPath);
+            var cover = await CoverLocator.FindAsync(storageFactory.Current, folderPath, ct);
             return cover is { } found ? Results.File(found.FilePath, found.ContentType) : Results.NotFound();
         });
 

@@ -59,6 +59,17 @@ public interface IStorageProvider
     /// <summary>Pushes the local metadata.db back to the remote store. A no-op for
     /// <see cref="LocalFileSystemProvider"/>.</summary>
     Task PushDatabaseAsync(CancellationToken ct = default);
+
+    /// <summary>The remote store's last-modified time for metadata.db, or null if no remote copy
+    /// exists yet (a library never pushed to before) or for a provider with no such concept
+    /// (<see cref="LocalFileSystemProvider"/>, which always returns null). Lets
+    /// <c>LibraryService.ActivateAsync</c> tell "the remote copy is actually newer than what's
+    /// cached locally, safe to pull" apart from "the local cache mirror already has the latest (or
+    /// even newer, unpushed) changes" before blindly overwriting - single-writer/last-write-wins
+    /// still applies (this isn't a real merge), but it stops a plain re-open/switch from silently
+    /// discarding local edits that were never pushed, which unconditionally pulling on every
+    /// activation used to do.</summary>
+    Task<DateTimeOffset?> GetRemoteDatabaseLastModifiedAsync(CancellationToken ct = default);
 }
 
 /// <summary>Resolves the <see cref="IStorageProvider"/> for a library, by its registry entry's

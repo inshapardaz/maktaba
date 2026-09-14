@@ -35,6 +35,7 @@ import {
   Folder,
   FolderOpen,
   Globe,
+  HardDrive,
   Hash,
   House,
   Info,
@@ -117,6 +118,7 @@ export const IconFolder = withStrokeWidth(Folder);
 export const IconFolderOpen = withStrokeWidth(FolderOpen);
 export const IconHash = withStrokeWidth(Hash);
 export const IconHelpCircle = withStrokeWidth(CircleQuestionMark);
+export const IconHardDrive = withStrokeWidth(HardDrive);
 export const IconHome2 = withStrokeWidth(House);
 export const IconKey = withStrokeWidth(KeyRound);
 export const IconInfoCircle = withStrokeWidth(Info);
