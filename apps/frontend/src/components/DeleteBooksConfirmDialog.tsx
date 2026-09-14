@@ -26,8 +26,10 @@ export function DeleteBooksConfirmDialog({ books, onClose, onDeleted }: DeleteBo
     mutationFn: async () => {
       const results = await Promise.allSettled(
         books.map(async (book) => {
-          const { folderPath } = await deleteBook(book.id);
-          await window.maktaba.trashPath(folderPath);
+          const { folderPath, requiresLocalTrash } = await deleteBook(book.id);
+          if (requiresLocalTrash) {
+            await window.maktaba.trashPath(folderPath);
+          }
           return book.id;
         }),
       );

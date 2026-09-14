@@ -38,8 +38,10 @@ export function PeriodicalsView({ onOpen, onBack }: PeriodicalsViewProps) {
 
   const deleteMutation = useMutation({
     mutationFn: async (periodical: Periodical) => {
-      const { folderPath } = await deletePeriodical(periodical.id, periodical.issueCount > 0);
-      await window.maktaba.trashPath(folderPath);
+      const { folderPath, requiresLocalTrash } = await deletePeriodical(periodical.id, periodical.issueCount > 0);
+      if (requiresLocalTrash) {
+        await window.maktaba.trashPath(folderPath);
+      }
     },
     onSuccess: () => {
       setConfirmingDelete(null);

@@ -219,6 +219,22 @@ that no retry count fixes. Both `LibraryService.ActivateAsync` (pull) and the `/
 (push) do this already for any non-local provider - if a new code path ever touches
 `metadata.db`'s bytes directly for a cloud library, it needs the same treatment.
 
+**Deleting a book/periodical from a cloud library actually deletes it remotely.** `BookRemovalService.RemoveAsync`/
+`PeriodicalService.DeleteAsync` return `RequiresLocalTrash` (true only for `"local"`) alongside the
+folder path - for a local library, nothing changed: the frontend still moves that folder to the OS
+trash itself (`window.maktaba.trashPath`), same as always. For a cloud library, the *backend* now
+calls `IStorageProvider.DeleteAsync(folderPath, recursive: true, ct)` itself (best-effort - a failed
+remote delete logs a warning but doesn't block removing the DB rows) before returning, and the
+frontend skips `trashPath` entirely when `RequiresLocalTrash` is false. Before this, only the DB row
+was ever removed for a cloud library - the actual files (and every issue's, for a periodical) stayed
+orphaned in the remote store forever, since `window.maktaba.trashPath` is a pure local-disk
+operation with zero cloud awareness. Every call site that deletes a book/periodical
+(`BookDetailPanel.tsx`, `DeleteBooksConfirmDialog.tsx`, `MergeConfirmDialog.tsx`'s source-book
+cleanup, `PeriodicalDetailView.tsx` (both issue and periodical delete), `PeriodicalsView.tsx`) now
+checks this flag the same way. Per-file deletion (`BookEditService`'s `RemoveFileAsync`/replace-file
+paths) was never affected - those already called `Storage.DeleteAsync` directly rather than routing
+through the frontend's OS-trash flow at all.
+
 Frontend surface: `LibrariesSettings.tsx`'s "Connect S3-compatible library…" form (bucket/region/
 subfolder/endpoint/access key/secret, with a "Test connection" step) and "Connect Google Drive…"
 form (name/optional folder, plus a "Sign in with Google" button instead of typed credentials - a

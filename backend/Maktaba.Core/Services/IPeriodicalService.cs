@@ -10,9 +10,13 @@ public enum PeriodicalDeleteOutcome
 }
 
 // AbsoluteFolderPath is set only for Deleted - the periodical's own folder, which already contains
-// every issue's subfolder (issues physically live nested inside it), so the caller can trash that
-// one path and remove everything at once instead of the DB rows' file content lingering on disk.
-public record PeriodicalDeleteResult(PeriodicalDeleteOutcome Outcome, string? AbsoluteFolderPath = null);
+// every issue's subfolder (issues physically live nested inside it). For a local library, the
+// caller trashes that one path itself (RequiresLocalTrash true) to remove everything at once
+// instead of the DB rows' file content lingering on disk; for a cloud-backed library
+// (RequiresLocalTrash false) DeleteAsync already deleted it from the remote store (and its local
+// cache mirror) before returning - see BookRemovalResult's identical split for a single book.
+public record PeriodicalDeleteResult(
+    PeriodicalDeleteOutcome Outcome, string? AbsoluteFolderPath = null, bool RequiresLocalTrash = false);
 
 public record PeriodicalEditRequest(
     string Name,
