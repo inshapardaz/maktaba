@@ -84,18 +84,38 @@ gitignored files - `apps/desktop/src/googleOAuthConfig.generated.ts` and
 
 **Local development**: set both as normal environment variables before running `npm run dev` (the
 root `package.json`'s `predev`/`prebuild:desktop` hooks run the generation script automatically -
-no separate step needed). On Windows, set them once via System Properties → Environment Variables
-(persists across terminal sessions and IDE restarts) rather than only `export`-ing them in one
-shell. Without them set, the app still builds and runs fine - Google Drive sign-in just fails with
-a clear error until they're set. See CLAUDE.md's "Cloud storage" section for the full walkthrough
-of creating these credentials in Google Cloud Console in the first place.
+no separate step needed). Without them set, the app still builds and runs fine - Google Drive
+sign-in just fails with a clear error until they're set. See CLAUDE.md's "Cloud storage" section
+for the full walkthrough of creating these credentials in Google Cloud Console in the first place.
+
+Set them **persistently** (survives new terminal windows/IDE restarts, unlike a plain `export` in
+one shell session) with:
+
+```powershell
+# Windows (PowerShell) - reopen any already-running terminal/IDE afterward to pick it up
+[Environment]::SetEnvironmentVariable("MAKTABA_GOOGLE_CLIENT_ID", "<your client id>", "User")
+[Environment]::SetEnvironmentVariable("MAKTABA_GOOGLE_CLIENT_SECRET", "<your client secret>", "User")
+```
+
+```sh
+# macOS/Linux (bash/zsh) - append to your shell profile, then restart the terminal or `source` it
+echo 'export MAKTABA_GOOGLE_CLIENT_ID="<your client id>"' >> ~/.zshrc   # or ~/.bashrc
+echo 'export MAKTABA_GOOGLE_CLIENT_SECRET="<your client secret>"' >> ~/.zshrc
+```
 
 **CI packaging** (`.github/workflows/release.yml`): add the same two names as **GitHub Actions
-repository secrets** (Settings → Secrets and variables → Actions → New repository secret) using
-the exact values from Google Cloud Console. The workflow's "Configure Google Drive OAuth" step
-exports them into the build environment before packaging, the same conditional-export pattern the
-Mac signing secrets below already use - if they're not added yet, packaged builds still succeed,
-just without working Google Drive support.
+repository secrets** using the exact values from Google Cloud Console - either via
+Settings → Secrets and variables → Actions → New repository secret, or the
+[GitHub CLI](https://cli.github.com):
+
+```sh
+gh secret set MAKTABA_GOOGLE_CLIENT_ID --repo inshapardaz/maktaba --body "<your client id>"
+gh secret set MAKTABA_GOOGLE_CLIENT_SECRET --repo inshapardaz/maktaba --body "<your client secret>"
+```
+
+The workflow's "Configure Google Drive OAuth" step exports them into the build environment before
+packaging, the same conditional-export pattern the Mac signing secrets below already use - if
+they're not added yet, packaged builds still succeed, just without working Google Drive support.
 
 **Backend-only builds without Node** (an IDE, `dotnet build`/`dotnet run` directly, or CI's
 `ci.yml` "backend" job, which never runs npm) never run the generation script at all - a small
