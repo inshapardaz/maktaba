@@ -119,11 +119,68 @@ both `googleDriveAuth.ts` and `GoogleDriveStorageProvider.cs`'s `GoogleDriveToke
 sourced from the environment - the latter only protects a secret a build pipeline injects, and this
 project packages locally with no such pipeline (see "Desktop packaging" below).
 
+**Setting up the Google Cloud project** (one-time, done once for the whole app - end users never
+do any of this themselves). Needed whenever `CLIENT_ID`/`CLIENT_SECRET` have to be created or
+rotated:
+
+1. [console.cloud.google.com](https://console.cloud.google.com) → sign in with a personal Google
+   account (not one tied to a former employer/organization's Workspace tenant - that tenant's own
+   policies can block creating an app registration there; use a private-browsing window if a
+   work-account session is already cached and getting in the way). No billing account/credit card
+   is needed for any of this.
+2. Create a new project (any name, e.g. "Maktaba").
+3. **APIs & Services → Library** → search "Google Drive API" → **Enable**. Easy to miss - creating
+   OAuth credentials doesn't enable the underlying API on its own.
+4. **APIs & Services → OAuth consent screen**:
+   - User type: **External** (Maktaba isn't a Google Workspace organization, so "Internal" isn't
+     an option).
+   - Branding: **App name** (e.g. "Maktaba"), **User support email**, **Developer contact
+     information** are required; **Authorized domains** and the App home page/Privacy
+     policy/Terms of service links should all be left **blank** - Maktaba has no public web
+     presence, and Authorized domains would need Google Search Console domain-ownership
+     verification that doesn't apply here anyway. Leaving these blank works fine at this scope.
+   - **Data access / Scopes** → Add or Remove Scopes → add all three: `.../auth/drive.file`,
+     `.../auth/userinfo.email`, `.../auth/userinfo.profile` (must match `SCOPES` in
+     `googleDriveAuth.ts` exactly, or the authorize request fails).
+   - Starts in **Testing** status: only Google accounts explicitly added under **Test users** can
+     sign in. Publishing (below) removes that restriction.
+5. **APIs & Services → Credentials → Create Credentials → OAuth client ID** → Application type
+   **Desktop app**. No redirect URI to register - Google's Desktop app client type accepts the
+   loopback IP `127.0.0.1` on any port without pre-registration (see `oauthLoopback.ts`'s doc
+   comment on why `127.0.0.1` specifically, not `localhost`, for this provider).
+6. Copy the **Client ID** and **Client secret** it generates into both `CLIENT_ID`/`CLIENT_SECRET`
+   constants (`googleDriveAuth.ts` and `GoogleDriveStorageProvider.cs`'s `GoogleDriveTokenManager` -
+   both need updating together, they must match).
+7. To test as yourself before publishing: **OAuth consent screen → Test users → Add users** → the
+   exact Google account you'll sign in with in Maktaba.
+8. To let *any* Google user sign in (not just listed test users): **OAuth consent screen → Publish
+   App**. Since every scope above is classified non-sensitive, this shouldn't trigger Google's full
+   verification review - just a status flip to **In production**.
+
+Troubleshooting notes from actually setting this up once already:
+- A generic Google error page at `accounts.google.com/info/unknownerror` (not redirected back to
+  Maktaba's own loopback listener with an `error=` code) usually means the Client ID doesn't match
+  what's in Credentials, or the consent screen never finished saving - re-check both character for
+  character.
+- A 500 from Google's own `.../signin/oauth/warning/continue` internal endpoint (the "Google
+  hasn't verified this app" interstitial) was resolved by retrying in an incognito/private window -
+  suspected stale session cookie or new-client propagation delay, not anything wrong on Maktaba's
+  side.
+- "Maktaba has not completed the Google verification process... can only be accessed by
+  developer-approved testers" means the signing-in account isn't on the Test users list yet (or the
+  consent screen hasn't been published) - see steps 4/7/8 above.
+
 **metadata.db stays local even for a cloud library** — only pulled/pushed as a whole file
 (`IStorageProvider.PullDatabaseAsync`/`PushDatabaseAsync`), pulled on library open, pushed on a
-timer (`CloudSyncLifecycleService`, every 5 min + best-effort on shutdown) and via the manual
-"sync to cloud now" button (`LibrarySyncContext.tsx`, confirms then blocks the whole app behind a
-plain page for the duration — see below for why). Concurrency model is single-writer,
+timer (`CloudSyncLifecycleService`, every 5 min), via the manual "sync to cloud now" button
+(`LibrarySyncContext.tsx`, confirms then blocks the whole app behind a plain page for the duration
+— see below for why), on switching *away* from a cloud library (`LibraryService.ActivateAsync`
+pushes the outgoing library before activating the new one - otherwise the heartbeat above would
+start targeting the new library immediately and never come back to push the old one's last edits),
+and best-effort on app shutdown (`POST /shutdown` → `IHostApplicationLifetime.StopApplication()` →
+`CloudSyncLifecycleService.StopAsync`, requested by `apps/desktop/src/sidecar.ts`'s
+`stopSidecarGracefully` before falling back to a hard kill - a plain `process.kill()` alone doesn't
+work for this on Windows, see that function's doc comment). Concurrency model is single-writer,
 last-write-wins — no reconciliation logic, the file is just replaced wholesale, so don't have the
 same cloud library open on two devices at once (an accidental double-open silently loses whichever
 side pushes second).
@@ -159,8 +216,19 @@ credential without disconnecting the whole library) branches the same way: typed
 for S3, a "Sign in again" button for an OAuth-based provider. `connectCloudLibrary`/
 `reopenCloudLibrary` (`api.ts`) are generic over the credential shape - neither they nor the backend
 endpoints care about a specific provider's credential JSON, only that it round-trips as an opaque
-string. See `docs/en/libraries.md`'s "Cloud libraries" section for the end-user-facing explanation
-of all of this.
+string. `components/providerIcons.tsx` is the one shared per-provider icon map (a bold "G" glyph
+for Google Drive, `IconCloud` for S3/OneDrive/Nawishta - no icon library ships actual brand logos),
+consumed by both `LibrariesSettings.tsx` and `LibrarySwitcher.tsx` (the sidebar-bottom dropdown) so
+a library's provider reads the same everywhere rather than each spot picking its own. Switching
+libraries (from either of those two places) goes through `LibrarySwitchContext.tsx` - mirrors
+`LibrarySyncContext.tsx`'s shape (one shared `isSwitching`/`error`, `App.tsx` renders a blocking
+"Switching library…" page while it's true) so both callers share one loading/error UX instead of
+running independent mutations. That blocking page (and the pre-existing syncing one) intentionally
+does *not* unmount the sidebar itself - `App.tsx`'s `showShellChrome` (just "is a library loaded",
+checked separately from the stricter `hasLibrary` used for gating actual interactive content) is
+what `AppShell.Navbar`'s own mount/width react to, so a few seconds of loading in the main content
+area doesn't also make the whole window's layout jump around. See `docs/en/libraries.md`'s "Cloud
+libraries" section for the end-user-facing explanation of all of this.
 
 **Migration wizard** (`MigrationWizard.tsx`, Stepper: Target → Review → Migrate → Finish) moves the
 *active* library to a new provider - `ILibraryMigrationService`/`LibraryMigrationService`
