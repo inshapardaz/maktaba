@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { openLibraryById } from "./api";
+import { openLibraryById, reopenCloudLibrary, type LibraryEntry } from "./api";
 import { invalidateLibraryQueries } from "./queries";
 
 interface LibrarySwitchContextValue {
@@ -39,23 +39,40 @@ export function LibrarySwitchProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [needsReconnect, setNeedsReconnect] = useState(false);
 
-  function switchTo(id: string, onSuccess?: () => void) {
+  // Same recovery App.tsx's cloudReconnectQuery already does for whichever library was active at
+  // startup - a plain openLibraryById(id) supplies no credential at all, so without this, switching
+  // to *any* cloud library other than the one auto-reconnected at startup always failed with
+  // "credentials haven't been supplied", even on the very first switch of a session, despite a
+  // valid encrypted credential already sitting on disk (window.maktaba.saveCloudCredential, from
+  // whenever this library was originally connected/last reconnected). Only actually falls through
+  // to the bare open call - and the genuine "you need to reconnect" prompt - when nothing was ever
+  // saved for this library at all (or it was, but Google/the S3 provider itself has since revoked
+  // it, which the backend's own error still catches).
+  async function switchTo(id: string, onSuccess?: () => void) {
     setError(null);
     setNeedsReconnect(false);
     setIsSwitching(true);
-    openLibraryById(id)
-      .then(() => {
-        void queryClient.invalidateQueries({ queryKey: ["libraries"] });
-        void queryClient.invalidateQueries({ queryKey: ["library"] });
-        invalidateLibraryQueries(queryClient);
-        onSuccess?.();
-      })
-      .catch((err) => {
-        const message = err instanceof Error ? err.message : String(err);
-        setError(message);
-        setNeedsReconnect(message.includes("credentials haven't been supplied"));
-      })
-      .finally(() => setIsSwitching(false));
+    try {
+      const target = queryClient.getQueryData<LibraryEntry[]>(["libraries"])?.find((l) => l.id === id);
+      const credentialJson = target && target.providerType !== "local" ? await window.maktaba.getCloudCredential(id) : null;
+
+      if (credentialJson) {
+        await reopenCloudLibrary(id, JSON.parse(credentialJson) as unknown);
+      } else {
+        await openLibraryById(id);
+      }
+
+      void queryClient.invalidateQueries({ queryKey: ["libraries"] });
+      void queryClient.invalidateQueries({ queryKey: ["library"] });
+      invalidateLibraryQueries(queryClient);
+      onSuccess?.();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setError(message);
+      setNeedsReconnect(message.includes("credentials haven't been supplied"));
+    } finally {
+      setIsSwitching(false);
+    }
   }
 
   const value: LibrarySwitchContextValue = {
