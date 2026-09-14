@@ -347,6 +347,30 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
 
     private async Task ActivateAsync(LibraryRegistryEntry entry, CancellationToken ct)
     {
+        // Push whatever library is currently open before switching away from it, if it's
+        // cloud-backed - otherwise CloudSyncLifecycleService's periodic heartbeat starts targeting
+        // the *new* library the moment CurrentLibraryId changes below, so any edit made just before
+        // switching (or since the last heartbeat) would only ever reach the cloud again if the user
+        // happens to reopen that old library and either waits for another heartbeat or clicks
+        // "Sync now" themselves. Best-effort: a failed push here shouldn't block switching to a
+        // different library, so it's swallowed (and reported the same way the periodic heartbeat
+        // reports its own failures) rather than surfaced as this call's own error.
+        if (CurrentLibraryId is { } previousId && previousId != entry.Id
+            && _libraries.FirstOrDefault(l => l.Id == previousId) is { ProviderType: not "local" })
+        {
+            try
+            {
+                var previousStorage = _serviceProvider.GetRequiredService<IStorageProviderFactory>().Current;
+                SqliteConnection.ClearAllPools();
+                await previousStorage.PushDatabaseAsync(ct);
+                _serviceProvider.GetRequiredService<ISyncStatusTracker>().Synced();
+            }
+            catch (Exception ex)
+            {
+                _serviceProvider.GetRequiredService<ISyncStatusTracker>().Failed(ex.Message);
+            }
+        }
+
         // entry.Path is a real local folder only for "local" - a cloud entry's Path is a synthetic
         // display string (see OpenCloudLibraryAsync), never a filesystem path to create.
         if (entry.ProviderType == "local")
