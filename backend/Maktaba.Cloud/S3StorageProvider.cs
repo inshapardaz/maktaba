@@ -1,6 +1,7 @@
 using Amazon.S3;
 using Amazon.S3.Model;
 using Maktaba.Core.Services;
+using Maktaba.Core.Sync;
 
 namespace Maktaba.Cloud;
 
@@ -25,6 +26,7 @@ public class S3StorageProvider(
     ICloudCacheManager cache) : IStorageProvider, IDisposable
 {
     private const string DatabaseRelativePath = "metadata.db";
+    private const string LockRelativePath = ".maktaba-lock";
 
     private readonly AmazonS3Client _client =
         new(options.AccessKeyId, options.SecretAccessKey, options.BuildClientConfig());
@@ -229,6 +231,33 @@ public class S3StorageProvider(
             return null;
         }
     }
+
+    public async Task<LibraryLockInfo?> ReadLockAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            using var response = await _client.GetObjectAsync(options.Bucket, ToKey(LockRelativePath), ct);
+            using var reader = new StreamReader(response.ResponseStream);
+            return LibraryLockInfo.TryParse(await reader.ReadToEndAsync(ct));
+        }
+        catch (AmazonS3Exception ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+    }
+
+    public Task WriteLockAsync(LibraryLockInfo lockInfo, CancellationToken ct = default) =>
+        _client.PutObjectAsync(new PutObjectRequest
+        {
+            BucketName = options.Bucket,
+            Key = ToKey(LockRelativePath),
+            ContentBody = lockInfo.Serialize(),
+        }, ct);
+
+    // S3's DeleteObject is idempotent (a 204 either way), so no NotFound handling is needed the way
+    // ReadLockAsync above needs it.
+    public Task DeleteLockAsync(CancellationToken ct = default) =>
+        _client.DeleteObjectAsync(options.Bucket, ToKey(LockRelativePath), ct);
 
     // Diagnostic-only - surfaced in error messages (e.g. migration verification failures) so a
     // mismatch between "what the user configured" and "what actually got checked" is visible

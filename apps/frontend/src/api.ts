@@ -343,6 +343,15 @@ export interface GoogleDriveCredential {
   expiresAt: number;
 }
 
+// Same shape as GoogleDriveCredential (both are just an OAuth token set) - kept as its own named
+// type rather than a shared alias so each provider's credential stays independently renameable,
+// matching backend OneDriveProviderOptions.FromConfig's expectations.
+export interface OneDriveCredential {
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: number;
+}
+
 // Generic over the credential shape (S3Credential, GoogleDriveCredential, ...) since this endpoint
 // only ever JSON.stringifies it into an opaque string the backend deserializes per providerType -
 // see LibraryEndpoints' "/cloud" handler and ILibraryService.OpenCloudLibraryAsync, neither of
@@ -398,8 +407,8 @@ export function previewMigration(): Promise<MigrationPreview> {
   return request<MigrationPreview>("/api/libraries/migrate/preview");
 }
 
-export function startMigration(
-  providerType: string, providerConfig: Record<string, string>, credential: S3Credential,
+export function startMigration<TCredential>(
+  providerType: string, providerConfig: Record<string, string>, credential: TCredential,
 ): Promise<void> {
   return request<void>("/api/libraries/migrate/start", {
     method: "POST",

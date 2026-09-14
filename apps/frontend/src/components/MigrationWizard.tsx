@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Alert, Button, Checkbox, Group, Modal, Progress, Stack, Stepper, Text } from "@mantine/core";
-import { IconAlertCircle, IconCheck } from "../icons";
+import { Alert, Button, Checkbox, Group, Modal, Progress, SegmentedControl, Stack, Stepper, Text, TextInput } from "@mantine/core";
+import { IconAlertCircle, IconCheck, IconExternalLink } from "../icons";
 import {
   cancelMigration,
   completeMigration,
@@ -9,11 +9,22 @@ import {
   startMigration,
   getMigrationStatus,
   testS3Connection,
+  type GoogleDriveCredential,
   type S3Credential,
 } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
 import { invalidateLibraryQueries } from "../queries";
+import { PROVIDER_LABELS } from "./LibrariesSettings";
+import { PROVIDER_ICONS } from "./providerIcons";
 import { EMPTY_S3_FIELDS, isS3FieldsComplete, S3CredentialFields, type S3FieldsValue } from "./S3CredentialFields";
+
+// Migration targets this wizard can drive today - a subset of every registered ProviderType
+// (StorageProviderFactory/the backend's /migrate/start endpoint are already provider-agnostic, see
+// MigrationTarget). OneDrive is left out for now: it needs a real Azure AD app registration first
+// (see CLAUDE.md's walkthrough) and isn't reachable from the Connect UI yet either - add it here
+// the same way Google Drive was added below once that's sorted, rather than exposing a target that
+// would only fail immediately.
+type MigrationProvider = "s3" | "googledrive";
 
 interface MigrationWizardProps {
   opened: boolean;
@@ -26,28 +37,55 @@ interface MigrationWizardProps {
   onActiveLibraryChanged: () => void;
 }
 
-// Mantine Stepper flow (Cloud: Phase 3) - reuses S3CredentialFields (the same six inputs the S3
-// connect form uses) since a migration target is configured exactly the same way a fresh cloud
-// library connection is, just without a name (the library keeps its existing one).
+// Mantine Stepper flow (Cloud: Phase 3, extended in Phase 5+ for a target provider picker) - the
+// Target step reuses the same fields/sign-in flow each provider's own Connect form uses
+// (S3CredentialFields, or Google's sign-in button) since a migration target is configured exactly
+// the same way a fresh cloud library connection is, just without a name (the library keeps its
+// existing one).
 export function MigrationWizard({ opened, libraryId, onClose, onActiveLibraryChanged }: MigrationWizardProps) {
   const { t } = useLanguage();
   const queryClient = useQueryClient();
 
   const [step, setStep] = useState(0);
+  const [provider, setProvider] = useState<MigrationProvider>("s3");
   const [fields, setFields] = useState<S3FieldsValue>(EMPTY_S3_FIELDS);
   const [testResult, setTestResult] = useState<"success" | null>(null);
+  const [googleFolder, setGoogleFolder] = useState("");
+  const [googleTokens, setGoogleTokens] = useState<GoogleDriveCredential | null>(null);
   const [deleteSource, setDeleteSource] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const credential: S3Credential = { accessKeyId: fields.accessKeyId, secretAccessKey: fields.secretAccessKey };
-  const canSubmit = isS3FieldsComplete(fields);
+  const s3Credential: S3Credential = { accessKeyId: fields.accessKeyId, secretAccessKey: fields.secretAccessKey };
+  const credential: S3Credential | GoogleDriveCredential = provider === "googledrive" ? (googleTokens ?? s3Credential) : s3Credential;
+  const canSubmit = provider === "googledrive" ? googleTokens !== null : isS3FieldsComplete(fields);
 
   const reset = () => {
     setStep(0);
+    setProvider("s3");
     setFields(EMPTY_S3_FIELDS);
     setTestResult(null);
+    setGoogleFolder("");
+    setGoogleTokens(null);
     setDeleteSource(false);
     setError(null);
+  };
+
+  const googleSignInMutation = useMutation({
+    mutationFn: () => window.maktaba.connectGoogleDrive(),
+    onSuccess: (result) => {
+      setGoogleTokens(result);
+      setError(null);
+    },
+    onError: (err) => {
+      setGoogleTokens(null);
+      setError(err instanceof Error ? err.message : String(err));
+    },
+  });
+
+  const cancelPendingGoogleSignIn = () => {
+    if (googleSignInMutation.isPending) {
+      void window.maktaba.cancelGoogleDriveConnect();
+    }
   };
 
   const handleClose = () => {
@@ -55,6 +93,7 @@ export function MigrationWizard({ opened, libraryId, onClose, onActiveLibraryCha
     // backend keeps running it in the background (same reasoning as RescanContext surviving
     // Settings closing), so reopening the wizard would pick the status back up. Only reset the
     // wizard's own local state (which step it's showing, the form) once it's genuinely idle.
+    cancelPendingGoogleSignIn();
     if (step !== 2) {
       reset();
     }
@@ -62,7 +101,7 @@ export function MigrationWizard({ opened, libraryId, onClose, onActiveLibraryCha
   };
 
   const testMutation = useMutation({
-    mutationFn: () => testS3Connection(fields.bucket.trim(), fields.region.trim(), fields.prefix.trim(), credential, fields.endpoint.trim()),
+    mutationFn: () => testS3Connection(fields.bucket.trim(), fields.region.trim(), fields.prefix.trim(), s3Credential, fields.endpoint.trim()),
     onSuccess: () => {
       setTestResult("success");
       setError(null);
@@ -81,6 +120,14 @@ export function MigrationWizard({ opened, libraryId, onClose, onActiveLibraryCha
 
   const startMutation = useMutation({
     mutationFn: () => {
+      if (provider === "googledrive") {
+        const providerConfig: Record<string, string> = {};
+        if (googleFolder.trim()) {
+          providerConfig.folder = googleFolder.trim();
+        }
+        return startMigration("googledrive", providerConfig, credential);
+      }
+
       const providerConfig: Record<string, string> = {
         bucket: fields.bucket.trim(), region: fields.region.trim(), prefix: fields.prefix.trim(),
       };
@@ -114,10 +161,10 @@ export function MigrationWizard({ opened, libraryId, onClose, onActiveLibraryCha
   const completeMutation = useMutation({
     mutationFn: async () => {
       await completeMigration(deleteSource);
-      // Same as S3ConnectModal's connect flow - the backend only ever holds this credential
-      // transiently (cleared every restart, see ICloudCredentialCache), so without saving it here
-      // too, the very next app startup's cloudReconnectQuery finds nothing to reconnect this
-      // library with.
+      // Same as S3ConnectModal's/GoogleDriveConnectModal's connect flow - the backend only ever
+      // holds this credential transiently (cleared every restart, see ICloudCredentialCache), so
+      // without saving it here too, the very next app startup's cloudReconnectQuery finds nothing
+      // to reconnect this library with.
       await window.maktaba.saveCloudCredential(libraryId, JSON.stringify(credential));
     },
     onSuccess: () => {
@@ -142,23 +189,83 @@ export function MigrationWizard({ opened, libraryId, onClose, onActiveLibraryCha
             <Text size="sm" c="dimmed">
               {t("migrationWizard.targetDescription")}
             </Text>
-            <S3CredentialFields value={fields} onChange={(patch) => setFields((prev) => ({ ...prev, ...patch }))} />
+
+            <SegmentedControl
+              value={provider}
+              onChange={(value) => {
+                cancelPendingGoogleSignIn();
+                setProvider(value as MigrationProvider);
+                setTestResult(null);
+                setError(null);
+              }}
+              data={(["s3", "googledrive"] as MigrationProvider[]).map((value) => ({
+                value,
+                label: (
+                  <Group gap={6} wrap="nowrap">
+                    {(() => {
+                      const Icon = PROVIDER_ICONS[value];
+                      return <Icon size={14} />;
+                    })()}
+                    <span>{PROVIDER_LABELS[value]}</span>
+                  </Group>
+                ),
+              }))}
+            />
+
+            {provider === "s3" ? (
+              <>
+                <S3CredentialFields value={fields} onChange={(patch) => setFields((prev) => ({ ...prev, ...patch }))} />
+                {testResult === "success" && (
+                  <Alert color="green" icon={<IconCheck size={18} />}>
+                    {t("librariesSettings.s3TestSuccess")}
+                  </Alert>
+                )}
+              </>
+            ) : (
+              <>
+                <TextInput
+                  label={t("librariesSettings.googleDriveFolder")}
+                  placeholder={t("librariesSettings.googleDriveFolderPlaceholder")}
+                  value={googleFolder}
+                  onChange={(e) => setGoogleFolder(e.currentTarget.value)}
+                />
+                {googleTokens ? (
+                  <Alert color="green" icon={<IconCheck size={18} />}>
+                    {t("librariesSettings.googleDriveSignedIn")}
+                  </Alert>
+                ) : googleSignInMutation.isPending ? (
+                  <Group gap="xs">
+                    <Button variant="default" leftSection={<IconExternalLink size={14} />} loading style={{ flex: 1 }}>
+                      {t("librariesSettings.googleDriveSignIn")}
+                    </Button>
+                    <Button variant="subtle" color="red" onClick={cancelPendingGoogleSignIn}>
+                      {t("common.cancel")}
+                    </Button>
+                  </Group>
+                ) : (
+                  <Button
+                    variant="default"
+                    leftSection={<IconExternalLink size={14} />}
+                    onClick={() => googleSignInMutation.mutate()}
+                  >
+                    {t("librariesSettings.googleDriveSignIn")}
+                  </Button>
+                )}
+              </>
+            )}
 
             {error && (
               <Alert color="red" icon={<IconAlertCircle size={18} />}>
                 {error}
               </Alert>
             )}
-            {testResult === "success" && (
-              <Alert color="green" icon={<IconCheck size={18} />}>
-                {t("librariesSettings.s3TestSuccess")}
-              </Alert>
-            )}
 
             <Group justify="flex-end">
-              <Button variant="default" disabled={!canSubmit} loading={testMutation.isPending} onClick={() => testMutation.mutate()}>
-                {t("librariesSettings.s3TestConnection")}
-              </Button>
+              {provider === "s3" && (
+                <Button variant="default" disabled={!canSubmit} loading={testMutation.isPending} onClick={() => testMutation.mutate()}>
+                  {t("librariesSettings.s3TestConnection")}
+                </Button>
+              )}
               <Button disabled={!canSubmit} onClick={() => setStep(1)}>
                 {t("migrationWizard.next")}
               </Button>

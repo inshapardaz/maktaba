@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Maktaba.Core.Services;
+using Maktaba.Core.Sync;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -374,15 +375,31 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
             return;
         }
 
+        var currentStorage = _serviceProvider.GetRequiredService<IStorageProviderFactory>().Current;
+
         try
         {
-            var currentStorage = _serviceProvider.GetRequiredService<IStorageProviderFactory>().Current;
             await PushWithRetryAsync(currentStorage, ct);
             _serviceProvider.GetRequiredService<ISyncStatusTracker>().Synced();
         }
         catch (Exception ex)
         {
             _serviceProvider.GetRequiredService<ISyncStatusTracker>().Failed(ex.Message);
+        }
+
+        // Best-effort, separate from the push above (a failed push shouldn't also skip releasing
+        // the lock - this device is still leaving the library either way) - releases the lock
+        // immediately so another device doesn't have to wait out LibraryLockInfo's full staleness
+        // window just because this device happened to close/switch away cleanly.
+        try
+        {
+            await currentStorage.DeleteLockAsync(ct);
+        }
+        catch
+        {
+            // Swallowed on purpose - the periodic lock refresh stopping (this process is leaving the
+            // library one way or another) means the marker goes stale within LibraryLockInfo's own
+            // window regardless of whether this explicit delete succeeds.
         }
     }
 
@@ -427,6 +444,25 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
 
             if (entry.ProviderType != "local")
             {
+                // Cloud library locking: refuses to open/switch to a cloud library another device
+                // currently has open, rather than silently risking the last-write-wins data loss
+                // the cloud storage epic's concurrency model otherwise allows (see IStorageProvider's
+                // Read/Write/DeleteLockAsync doc comments and LibraryLockInfo's staleness rules). A
+                // lock this same device already holds (IsThisDevice) is always fine to re-acquire -
+                // that's just this device reopening/switching back to a library it already had open,
+                // not a real conflict. A stale lock (the holder crashed or was killed without
+                // reaching CloudSyncLifecycleService.StopAsync's release) is treated as abandoned
+                // rather than blocking forever.
+                var existingLock = await storage.ReadLockAsync(ct);
+                if (existingLock is { } lockInfo && !lockInfo.IsThisDevice() && !lockInfo.IsStale(DateTimeOffset.UtcNow))
+                {
+                    throw new InvalidOperationException(
+                        $"This library is currently open on \"{lockInfo.DeviceName}\". Close it there first, " +
+                        "or try again in a couple of minutes if that device is offline or crashed.");
+                }
+
+                await storage.WriteLockAsync(LibraryLockInfo.ForThisDevice(), ct);
+
                 // Compare the remote's last-modified time for metadata.db against the local cache
                 // mirror's own last-write time before deciding to overwrite it. Single-writer/
                 // last-write-wins still applies (this isn't a real merge - see the cloud storage
