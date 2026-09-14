@@ -98,7 +98,7 @@ async function requestToken(body: URLSearchParams): Promise<GoogleDriveTokens> {
  * Google's own design, so the small duplication is cheaper than inventing a backend-calls-into-
  * Electron channel that nothing else in this app needs), exactly like OneDriveStorageProvider talks
  * to Microsoft directly rather than routing every request through Electron. */
-export async function connectGoogleDrive(): Promise<GoogleDriveTokens> {
+export async function connectGoogleDrive(signal?: AbortSignal): Promise<GoogleDriveTokens> {
   const { verifier, challenge } = generatePkcePair();
   const state = crypto.randomBytes(16).toString("hex");
 
@@ -117,7 +117,7 @@ export async function connectGoogleDrive(): Promise<GoogleDriveTokens> {
     url.searchParams.set("access_type", "offline");
     url.searchParams.set("prompt", "consent");
     return url.toString();
-  }, state, "127.0.0.1");
+  }, state, "127.0.0.1", undefined, signal);
 
   return requestToken(
     new URLSearchParams({

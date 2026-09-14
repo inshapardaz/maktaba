@@ -641,10 +641,20 @@ function GoogleDriveConnectModal({ opened, onClose, onConnected }: GoogleDriveCo
     setError(null);
   };
 
+  // Stops a still-pending sign-in (native.ts's loopback listener otherwise just sits waiting for
+  // up to 3 minutes on its own) so closing the dialog - or a failed attempt the user wants to
+  // retry - doesn't leave the button stuck in a loading state with no way out.
+  const cancelPendingSignIn = () => {
+    if (signInMutation.isPending) {
+      void window.maktaba.cancelGoogleDriveConnect();
+    }
+  };
+
   return (
     <Modal
       opened={opened}
       onClose={() => {
+        cancelPendingSignIn();
         reset();
         onClose();
       }}
@@ -667,11 +677,19 @@ function GoogleDriveConnectModal({ opened, onClose, onConnected }: GoogleDriveCo
           <Alert color="green" icon={<IconCheck size={18} />}>
             {t("librariesSettings.googleDriveSignedIn")}
           </Alert>
+        ) : signInMutation.isPending ? (
+          <Group gap="xs">
+            <Button variant="default" leftSection={<IconExternalLink size={14} />} loading style={{ flex: 1 }}>
+              {t("librariesSettings.googleDriveSignIn")}
+            </Button>
+            <Button variant="subtle" color="red" onClick={cancelPendingSignIn}>
+              {t("common.cancel")}
+            </Button>
+          </Group>
         ) : (
           <Button
             variant="default"
             leftSection={<IconExternalLink size={14} />}
-            loading={signInMutation.isPending}
             onClick={() => signInMutation.mutate()}
           >
             {t("librariesSettings.googleDriveSignIn")}
@@ -761,10 +779,17 @@ function ReconnectModal({ entry, onClose, onReconnected }: ReconnectModalProps) 
     ? googleTokens !== null
     : accessKeyId.trim().length > 0 && secretAccessKey.length > 0;
 
+  const cancelPendingGoogleSignIn = () => {
+    if (googleSignInMutation.isPending) {
+      void window.maktaba.cancelGoogleDriveConnect();
+    }
+  };
+
   return (
     <Modal
       opened={entry !== null}
       onClose={() => {
+        cancelPendingGoogleSignIn();
         reset();
         onClose();
       }}
@@ -779,11 +804,19 @@ function ReconnectModal({ entry, onClose, onReconnected }: ReconnectModalProps) 
             <Alert color="green" icon={<IconCheck size={18} />}>
               {t("librariesSettings.googleDriveSignedIn")}
             </Alert>
+          ) : googleSignInMutation.isPending ? (
+            <Group gap="xs">
+              <Button variant="default" leftSection={<IconExternalLink size={14} />} loading style={{ flex: 1 }}>
+                {t("librariesSettings.googleDriveSignIn")}
+              </Button>
+              <Button variant="subtle" color="red" onClick={cancelPendingGoogleSignIn}>
+                {t("common.cancel")}
+              </Button>
+            </Group>
           ) : (
             <Button
               variant="default"
               leftSection={<IconExternalLink size={14} />}
-              loading={googleSignInMutation.isPending}
               onClick={() => googleSignInMutation.mutate()}
             >
               {t("librariesSettings.googleDriveSignIn")}

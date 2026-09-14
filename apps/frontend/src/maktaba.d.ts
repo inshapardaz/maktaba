@@ -67,6 +67,7 @@ declare global {
       getCloudCredential: (ref: string) => Promise<string | null>;
       deleteCloudCredential: (ref: string) => Promise<void>;
       connectGoogleDrive: () => Promise<{ accessToken: string; refreshToken: string; expiresAt: number }>;
+      cancelGoogleDriveConnect: () => Promise<void>;
     };
   }
 }

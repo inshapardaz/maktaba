@@ -366,5 +366,28 @@ export function registerNativeHandlers(getWindow: () => BrowserWindow | null): v
   // responsible for handing them to the backend (to register/verify the library) and to
   // saveCloudCredential (to persist them), rather than introducing a third credential-handling
   // pattern.
-  ipcMain.handle("maktaba:connect-google-drive", () => connectGoogleDrive());
+  //
+  // Only one attempt is ever tracked at a time (the connect dialog is a singleton) - a fresh call
+  // aborts whatever attempt (if any) is still pending before starting its own, so closing the
+  // dialog and immediately reopening it to retry can't leak an orphaned listener still waiting on
+  // its old port for the rest of the timeout.
+  let googleDriveConnectAbort: AbortController | null = null;
+
+  ipcMain.handle("maktaba:connect-google-drive", () => {
+    googleDriveConnectAbort?.abort();
+    const controller = new AbortController();
+    googleDriveConnectAbort = controller;
+    return connectGoogleDrive(controller.signal).finally(() => {
+      if (googleDriveConnectAbort === controller) {
+        googleDriveConnectAbort = null;
+      }
+    });
+  });
+
+  // Lets the renderer stop a still-pending sign-in immediately (closing the connect dialog, or a
+  // "Cancel" button) instead of it only ever ending via runOAuthLoopback's own multi-minute
+  // timeout - see that function's `signal` parameter.
+  ipcMain.handle("maktaba:cancel-google-drive-connect", () => {
+    googleDriveConnectAbort?.abort();
+  });
 }
