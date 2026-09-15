@@ -91,7 +91,7 @@ public class StorageProviderFactory(
         var options = NawishtaProviderOptions.FromConfig(providerConfig, credential);
         var httpClient = httpClientFactory.CreateClient(nameof(NawishtaRawApiClient));
         var api = new NawishtaRawApiClient(httpClient, options.ServerUrl);
-        api.SetAccessToken(options.AccessToken);
+        api.SetAccessToken(options.AccessToken, DateTimeOffset.FromUnixTimeMilliseconds(options.AccessTokenExpiresAtUnixMs));
         api.RefreshAccessTokenAsync = NawishtaCredentialRefresher.Create(
             nawishtaAuth, credentials, libraryId, options.ServerUrl, options.RefreshToken);
         return new NawishtaStorageProvider(libraryId, options.RemoteLibraryId, api, cloudCacheManager);

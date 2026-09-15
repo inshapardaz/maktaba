@@ -374,12 +374,23 @@ export interface NawishtaLibrarySummary {
   description: string | null;
 }
 
-// Authenticates against a Nawishta server and, in the same round trip, lists the account's
-// libraries - see Maktaba.Api's NawishtaEndpoints.cs. The connect form (NawishtaConnectModal) uses
-// this to go straight from "email/password" to a library picker.
+// One page of an account's libraries - Nawishta's own GET /libraries is a normal searchable/paged
+// endpoint, so NawishtaConnectModal's picker can search-as-you-type/page through it instead of
+// needing every library up front (an account with many libraries used to get dumped into one
+// unpaged, unsearchable list - see CLAUDE.md's Nawishta section).
+export interface NawishtaLibraryPage {
+  libraries: NawishtaLibrarySummary[];
+  pageNumber: number;
+  pageCount: number;
+  totalCount: number;
+}
+
+// Authenticates against a Nawishta server and, in the same round trip, lists the first page of the
+// account's libraries - see Maktaba.Api's NawishtaEndpoints.cs. The connect form (NawishtaConnectModal)
+// uses this to go straight from "email/password" to a library picker.
 export function nawishtaLogin(
   serverUrl: string, email: string, password: string,
-): Promise<{ credential: NawishtaCredential; libraries: NawishtaLibrarySummary[] }> {
+): Promise<{ credential: NawishtaCredential; libraries: NawishtaLibraryPage }> {
   return request("/api/nawishta/login", {
     method: "POST",
     body: JSON.stringify({ serverUrl, email, password }),
@@ -396,13 +407,16 @@ export function nawishtaRefresh(serverUrl: string, refreshToken: string): Promis
   });
 }
 
-// Lists an already-authenticated account's libraries again, reusing a cached access token - lets
-// NawishtaConnectModal offer "connect another library from this account" once one Nawishta library
-// is already connected, without asking for email/password a second time.
-export function nawishtaListLibraries(serverUrl: string, accessToken: string): Promise<NawishtaLibrarySummary[]> {
+// Lists (a page of, optionally filtered by query) an already-authenticated account's libraries
+// again, reusing a cached access token - lets NawishtaConnectModal offer "connect another library
+// from this account" once one Nawishta library is already connected, without asking for email/
+// password a second time, and backs the picker's own search box/prev-next paging either way.
+export function nawishtaListLibraries(
+  serverUrl: string, accessToken: string, query?: string, pageNumber?: number, pageSize?: number,
+): Promise<NawishtaLibraryPage> {
   return request("/api/nawishta/libraries", {
     method: "POST",
-    body: JSON.stringify({ serverUrl, accessToken }),
+    body: JSON.stringify({ serverUrl, accessToken, query: query || null, pageNumber, pageSize }),
   });
 }
 

@@ -31,7 +31,7 @@ public static class NawishtaEndpoints
                 var result = await auth.LoginAsync(request.ServerUrl.Trim(), request.Email.Trim(), request.Password, ct);
                 var dto = new NawishtaLoginResponseDto(
                     new NawishtaCredentialDto(result.Credential.AccessToken, result.Credential.RefreshToken, result.Credential.ExpiresAt),
-                    [.. result.Libraries.Select(l => new NawishtaLibrarySummaryDto(l.Id, l.Name, l.Description))]);
+                    ToDto(result.Libraries));
                 return Results.Ok(dto);
             }
             catch (Exception ex)
@@ -74,8 +74,11 @@ public static class NawishtaEndpoints
 
             try
             {
-                var libraries = await auth.ListLibrariesAsync(request.ServerUrl.Trim(), request.AccessToken, ct);
-                return Results.Ok(libraries.Select(l => new NawishtaLibrarySummaryDto(l.Id, l.Name, l.Description)).ToList());
+                var page = await auth.ListLibrariesAsync(
+                    request.ServerUrl.Trim(), request.AccessToken,
+                    string.IsNullOrWhiteSpace(request.Query) ? null : request.Query.Trim(),
+                    request.PageNumber ?? 1, request.PageSize ?? 20, ct);
+                return Results.Ok(ToDto(page));
             }
             catch (Exception ex)
             {
@@ -83,6 +86,10 @@ public static class NawishtaEndpoints
             }
         });
     }
+
+    private static NawishtaLibraryPageDto ToDto(NawishtaLibraryPage page) => new(
+        [.. page.Libraries.Select(l => new NawishtaLibrarySummaryDto(l.Id, l.Name, l.Description))],
+        page.PageNumber, page.PageCount, page.TotalCount);
 
     private static string DescribeNawishtaError(Exception ex) => ex switch
     {

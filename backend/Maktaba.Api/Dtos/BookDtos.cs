@@ -228,13 +228,18 @@ public record NawishtaCredentialDto(string AccessToken, string RefreshToken, lon
 // see NawishtaProviderOptions.RemoteLibraryId) - passed back as-is if the user picks this library.
 public record NawishtaLibrarySummaryDto(int Id, string Name, string? Description);
 
-public record NawishtaLoginResponseDto(NawishtaCredentialDto Credential, IReadOnlyList<NawishtaLibrarySummaryDto> Libraries);
+// Mirrors NawishtaLibraryPage - lets the connect form's picker search/page through an account's
+// libraries instead of needing every one of them in a single unpaged response.
+public record NawishtaLibraryPageDto(IReadOnlyList<NawishtaLibrarySummaryDto> Libraries, int PageNumber, int PageCount, long TotalCount);
+
+public record NawishtaLoginResponseDto(NawishtaCredentialDto Credential, NawishtaLibraryPageDto Libraries);
 
 public record NawishtaRefreshRequestDto(string ServerUrl, string RefreshToken);
 
-// Lists an already-authenticated account's libraries again (reusing a cached access token) so the
-// frontend can offer "connect another library" without asking for email/password a second time.
-public record NawishtaListLibrariesRequestDto(string ServerUrl, string AccessToken);
+// Lists (a page of, optionally filtered by Query) an already-authenticated account's libraries
+// again (reusing a cached access token) so the frontend can offer "connect another library" without
+// asking for email/password a second time, and can search/page through the result either way.
+public record NawishtaListLibrariesRequestDto(string ServerUrl, string AccessToken, string? Query, int? PageNumber, int? PageSize);
 
 public record BrowseGroupDto(string Id, string Name, int BookCount, bool HasImage = false);
 

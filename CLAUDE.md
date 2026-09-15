@@ -611,23 +611,43 @@ password straight through to Nawishta's own `/Accounts/authenticate` and only th
 `NawishtaCredential` (access/refresh tokens) is ever passed to `window.maktaba.saveCloudCredential`
 for encrypted, on-device persistence - the raw email/password are never written anywhere.
 
-**Access-token auto-refresh** - live testing against a real account surfaced "authors/series aren't
-loading" as a real, reproducible bug: every read worked fine against a *fresh* token (confirmed via
-curl), but Nawishta's access token is only good for 10 minutes and nothing renewed it, so any
-session left open past that point started failing silently. `NawishtaRawApiClient.
-RefreshAccessTokenAsync` (a settable delegate, not a constructor parameter - avoids a circular
-reference, since building the callback needs to call back into the same client's `SetAccessToken`)
-is checked by every **GET** request (`GetJsonAsync`, plus the two raw-bytes downloads) - a 401
-triggers exactly one silent renew-and-retry. `NawishtaCredentialRefresher.Create` (shared by
-`NawishtaSessionResolver` and `StorageProviderFactory.BuildNawishtaProvider`, which each build
-their own `NawishtaRawApiClient`) calls `INawishtaAuthService.RefreshAsync` and writes the renewed
-credential straight back into `ICloudCredentialCache`, so a later request in the same session
-reuses it instead of re-renewing from the now-stale token the session started with. Live-verified:
-connected with a deliberately invalid access token (but a real refresh token), confirmed `GET
-/api/authors` still returned real data - correctly triggering exactly one `/Accounts/refresh-token`
-call. **Not covered**: POST/PUT requests (`CreateAuthorAsync`, `UpdateBookAsync`,
-`UploadContentAsync`, ...) - a `StreamContent`/`MultipartFormDataContent` body can't be resent after
-being consumed once, so a *write* made with a stale token still needs a manual reconnect for now.
+**Access-token auto-refresh is proactive (expiry-tracked), not just reactive-on-401.** The first
+pass here (live testing surfaced "authors/series aren't loading" - every read worked fine against a
+*fresh* token, but Nawishta's 10-minute access token had nothing renewing it) only refreshed on a
+401. That turned out to be insufficient: further live testing found **Nawishta silently returns
+*partial*, not-erroring data for some endpoints once the token's gone stale, instead of a 401** -
+so a session running past the 10-minute mark could keep "working" while quietly missing data, with
+nothing to signal that's what happened. Fixed by tracking the token's own expiry and renewing ahead
+of it, not waiting to be told it's stale:
+
+- `NawishtaRawApiClient.SetAccessToken(accessToken, expiresAt?)` now records the expiry alongside
+  the token itself (`_accessTokenExpiresAt`), fed from `NawishtaProviderOptions.
+  AccessTokenExpiresAtUnixMs` at construction and from each renewal's own `NawishtaCredential.
+  ExpiresAt` afterward.
+- `EnsureFreshTokenAsync` (called at the start of *every* request-issuing method - `GetWithRefreshAsync`
+  plus `PostJsonAsync`/`PutJsonAsync`/`DeleteBookAsync`/`UploadContentAsync`, not just GETs) renews
+  30 seconds ahead of the tracked expiry (absorbs request latency/clock skew), guarded by a
+  `SemaphoreSlim` so a burst of concurrent requests right at the expiry instant doesn't each redeem
+  the same soon-to-be-stale refresh token. `GetWithRefreshAsync`'s old reactive 401-retry is kept as
+  a fallback for whatever this doesn't predict (an early-revoked token, skew beyond 30s), but is
+  expected to be the rare path now, not the common one.
+- `RefreshAccessTokenAsync`'s delegate type changed from `Func<CancellationToken, Task<string>>` to
+  `Func<CancellationToken, Task<NawishtaCredential>>` (via `NawishtaCredentialRefresher.Create`,
+  shared by `NawishtaSessionResolver` and `StorageProviderFactory.BuildNawishtaProvider`) so the
+  renewed *expiry* comes back too, not just the access token string - needed to keep
+  `_accessTokenExpiresAt` itself accurate after each renewal, not only the very first one.
+- This also closes the previously-documented POST/PUT gap ("a write made with a stale token still
+  needs a manual reconnect") for the common case: since renewal now happens *before* a write's body
+  is built and sent (not after a 401 the body can't be resent past), a write made once the token's
+  passed its tracked expiry renews first rather than failing. A write attempted in the ~30s skew
+  window right at expiry, or hitting an early/unexpected 401, can still fail without a resend -a
+  narrower edge case than "every stale-token write," not a complete guarantee.
+
+Live-verified via a temporary debug trace (removed before commit): connected with a credential whose
+tracked `expiresAt` was already in the past but whose real access/refresh tokens were still valid,
+confirmed `EnsureFreshTokenAsync`'s renew branch fired exactly once *before* `GET /api/authors` was
+ever sent to Nawishta - proving the proactive path itself, not just that the refresh mechanism
+works at all (already covered by the earlier 401-triggered test).
 
 **Nawishta's "Sync now" button is hidden**, not just "Resync" (see above) - `LibrariesSettings.tsx`
 originally only excluded `"local"` from `entry.isActive && entry.providerType !== "local"`, so every
@@ -658,6 +678,23 @@ shows a brief "Reusing your existing Nawishta sign-in…" message while this run
 library's `remoteLibraryId` still goes through the exact same `connectCloudLibrary`/
 `saveCloudCredential` flow as a fresh login once "Connect" is clicked - only how `credential`/
 `libraries` state gets populated differs.
+
+**The library picker searches/paginates instead of dumping everything unfiltered.** The connect
+form's picker step (both a fresh login and the credential-reuse flow above) used to fetch up to 200
+libraries in one shot with no query/paging at all. `INawishtaAuthService.ListLibrariesAsync` now
+takes `query`/`pageNumber`/`pageSize` and returns a `NawishtaLibraryPage` (mirrors Nawishta's own
+`LibraryViewPageView` - `PageCount`/`CurrentPageIndex`/`TotalCount`), `POST /api/nawishta/libraries`
+carries those through, and `NawishtaConnectModal` gained a search `TextInput` (debounced 300ms,
+always resets to page 1) plus prev/next buttons once `pageCount > 1`. **Nawishta's own
+`GET /libraries` silently ignores its `query` parameter server-side** (confirmed live: an account
+with 7 libraries, `?query=پبلک` still returns all 7 - `LibraryController.GetLibraries` accepts
+`query` but never threads it into `GetLibrariesQuery`, only into the pagination links' own echoed
+`RouteArguments`) - filed as
+[inshapardaz/api#52](https://github.com/inshapardaz/api/issues/52). The `query` param is still sent
+(so this starts working for free once that's fixed upstream), but `NawishtaConnectModal` also
+applies a client-side substring filter over whatever page the server actually returned - exact for
+the common case (an account whose libraries fit on one page, like the one this was tested against),
+but won't reach across pages for a very large account until the server-side fix lands.
 
 ## Backend conventions
 

@@ -29,6 +29,7 @@ import {
   IconPencil,
   IconPlus,
   IconRefresh,
+  IconSearch,
   IconTrash,
   IconX,
 } from "../icons";
@@ -49,7 +50,7 @@ import {
   type GoogleDriveCredential,
   type LibraryEntry,
   type NawishtaCredential,
-  type NawishtaLibrarySummary,
+  type NawishtaLibraryPage,
   type OneDriveCredential,
   type S3Credential,
 } from "../api";
@@ -942,13 +943,21 @@ interface NawishtaConnectModalProps {
 // NAWISHTA_DEFAULT_SERVER_URL) purely because connectCloudLibrary's ProviderConfig needs one.
 const NAWISHTA_DEFAULT_SERVER_URL = "https://api.nawishta.co.uk";
 
+// Page size for the library picker's own search/paging (distinct from the picker's initial load,
+// which the backend also caps at this same size - see NawishtaAuthService.DefaultPageSize) - small
+// enough that an account with many libraries stays a scrollable, searchable list rather than one
+// long unpaged dump.
+const NAWISHTA_LIBRARY_PAGE_SIZE = 10;
+
 function NawishtaConnectModal({ opened, onClose, onConnected, existingLibraryId }: NawishtaConnectModalProps) {
   const { t } = useLanguage();
   const [serverUrl] = useState(NAWISHTA_DEFAULT_SERVER_URL);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [credential, setCredential] = useState<NawishtaCredential | null>(null);
-  const [libraries, setLibraries] = useState<NawishtaLibrarySummary[]>([]);
+  const [libraryPage, setLibraryPage] = useState<NawishtaLibraryPage | null>(null);
+  const [libraryQuery, setLibraryQuery] = useState("");
+  const [librariesLoading, setLibrariesLoading] = useState(false);
   const [selectedLibraryId, setSelectedLibraryId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -956,6 +965,24 @@ function NawishtaConnectModal({ opened, onClose, onConnected, existingLibraryId 
   // the login form stays hidden during this so the user doesn't see it flash before the picker
   // (the common case) or briefly before falling back to it (the stale-credential case).
   const [reusingCredential, setReusingCredential] = useState(false);
+
+  // Fetches one page of the now-authenticated account's libraries (initial load, a new search, or
+  // prev/next) - always the single source of truth for what the picker shows, so "connect another
+  // library" (which seeds `credential` via the reuse effect below instead of a fresh login) ends up
+  // with the exact same searchable/paged picker as a brand new login does, always starting from "no
+  // filter, page 1" rather than carrying over anything from a previous connect.
+  const loadLibraries = async (cred: NawishtaCredential, query: string, pageNumber: number) => {
+    setLibrariesLoading(true);
+    try {
+      const page = await nawishtaListLibraries(serverUrl, cred.accessToken, query, pageNumber, NAWISHTA_LIBRARY_PAGE_SIZE);
+      setLibraryPage(page);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLibrariesLoading(false);
+    }
+  };
 
   // On open, if another Nawishta library is already connected, try reusing its cached credential
   // instead of showing the login form - reads it via window.maktaba.getCloudCredential (the same
@@ -977,13 +1004,13 @@ function NawishtaConnectModal({ opened, onClose, onConnected, existingLibraryId 
         }
         const cached = JSON.parse(stored) as NawishtaCredential;
 
-        let result: { credential: NawishtaCredential; libraries: NawishtaLibrarySummary[] };
+        let result: { credential: NawishtaCredential; libraries: NawishtaLibraryPage };
         try {
-          const found = await nawishtaListLibraries(serverUrl, cached.accessToken);
+          const found = await nawishtaListLibraries(serverUrl, cached.accessToken, undefined, 1, NAWISHTA_LIBRARY_PAGE_SIZE);
           result = { credential: cached, libraries: found };
         } catch {
           const renewed = await nawishtaRefresh(serverUrl, cached.refreshToken);
-          const found = await nawishtaListLibraries(serverUrl, renewed.accessToken);
+          const found = await nawishtaListLibraries(serverUrl, renewed.accessToken, undefined, 1, NAWISHTA_LIBRARY_PAGE_SIZE);
           result = { credential: renewed, libraries: found };
         }
 
@@ -991,10 +1018,10 @@ function NawishtaConnectModal({ opened, onClose, onConnected, existingLibraryId 
           return;
         }
         setCredential(result.credential);
-        setLibraries(result.libraries);
-        if (result.libraries.length === 1) {
-          setSelectedLibraryId(String(result.libraries[0].id));
-          setName(result.libraries[0].name);
+        setLibraryPage(result.libraries);
+        if (result.libraries.totalCount === 1 && result.libraries.libraries.length === 1) {
+          setSelectedLibraryId(String(result.libraries.libraries[0].id));
+          setName(result.libraries.libraries[0].name);
         }
       } catch {
         // Couldn't reuse it (stale refresh token, revoked account, offline, ...) - silently fall
@@ -1012,20 +1039,36 @@ function NawishtaConnectModal({ opened, onClose, onConnected, existingLibraryId 
     };
   }, [opened, existingLibraryId, serverUrl]);
 
+  // Debounced search-as-you-type - re-fetches page 1 under the new query whenever it (or the
+  // credential doing the fetching) changes. Also re-runs once right as `credential` first arrives
+  // (from login or the reuse effect above) with the still-empty starting query - a harmless, fast
+  // duplicate of that flow's own initial fetch, traded for not having to special-case "just arrived"
+  // vs. "the user actually typed something" here.
+  useEffect(() => {
+    if (!credential) {
+      return;
+    }
+    const handle = setTimeout(() => {
+      void loadLibraries(credential, libraryQuery, 1);
+    }, 300);
+    return () => clearTimeout(handle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadLibraries is a stable closure over serverUrl only
+  }, [credential, libraryQuery]);
+
   const loginMutation = useMutation({
     mutationFn: () => nawishtaLogin(serverUrl.trim(), email.trim(), password),
     onSuccess: (result) => {
       setCredential(result.credential);
-      setLibraries(result.libraries);
+      setLibraryPage(result.libraries);
       setError(null);
-      if (result.libraries.length === 1) {
-        setSelectedLibraryId(String(result.libraries[0].id));
-        setName(result.libraries[0].name);
+      if (result.libraries.totalCount === 1 && result.libraries.libraries.length === 1) {
+        setSelectedLibraryId(String(result.libraries.libraries[0].id));
+        setName(result.libraries.libraries[0].name);
       }
     },
     onError: (err) => {
       setCredential(null);
-      setLibraries([]);
+      setLibraryPage(null);
       setError(err instanceof Error ? err.message : String(err));
     },
   });
@@ -1052,7 +1095,8 @@ function NawishtaConnectModal({ opened, onClose, onConnected, existingLibraryId 
     setEmail("");
     setPassword("");
     setCredential(null);
-    setLibraries([]);
+    setLibraryPage(null);
+    setLibraryQuery("");
     setSelectedLibraryId(null);
     setName("");
     setError(null);
@@ -1061,6 +1105,16 @@ function NawishtaConnectModal({ opened, onClose, onConnected, existingLibraryId 
 
   const canLogin = email.trim().length > 0 && password.length > 0;
   const canConnect = credential !== null && selectedLibraryId !== null && name.trim().length > 0;
+  // Nawishta's own GET /libraries currently ignores its "query" parameter server-side (confirmed -
+  // filed as inshapardaz/api#52) - it's still sent (so this starts working for free once that's
+  // fixed upstream), but this client-side filter is what actually makes the search box do anything
+  // today. Only filters within the page the server already returned, so it's exact for the common
+  // case (an account whose libraries fit on one page) but won't reach across pages for a very large
+  // account until the server-side fix lands.
+  const trimmedQuery = libraryQuery.trim().toLowerCase();
+  const libraries = (libraryPage?.libraries ?? []).filter(
+    (l) => trimmedQuery.length === 0 || l.name.toLowerCase().includes(trimmedQuery),
+  );
 
   return (
     <Modal
@@ -1094,23 +1148,62 @@ function NawishtaConnectModal({ opened, onClose, onConnected, existingLibraryId 
           </>
         ) : (
           <>
-            <Radio.Group
+            <TextInput
               label={t("librariesSettings.nawishtaPickLibrary")}
-              value={selectedLibraryId}
-              onChange={(value) => {
-                setSelectedLibraryId(value);
-                const picked = libraries.find((l) => String(l.id) === value);
-                if (picked) {
-                  setName(picked.name);
-                }
-              }}
-            >
-              <Stack gap="xs" mt="xs">
-                {libraries.map((library) => (
-                  <Radio key={library.id} value={String(library.id)} label={library.name} />
-                ))}
-              </Stack>
-            </Radio.Group>
+              placeholder={t("librariesSettings.nawishtaSearchLibraries")}
+              leftSection={<IconSearch size={14} />}
+              value={libraryQuery}
+              onChange={(e) => setLibraryQuery(e.currentTarget.value)}
+            />
+            {librariesLoading ? (
+              <Text size="sm" c="dimmed">
+                {t("librariesSettings.nawishtaLoadingLibraries")}
+              </Text>
+            ) : libraries.length === 0 ? (
+              <Text size="sm" c="dimmed">
+                {t("librariesSettings.nawishtaNoLibrariesFound")}
+              </Text>
+            ) : (
+              <Radio.Group
+                value={selectedLibraryId}
+                onChange={(value) => {
+                  setSelectedLibraryId(value);
+                  const picked = libraries.find((l) => String(l.id) === value);
+                  if (picked) {
+                    setName(picked.name);
+                  }
+                }}
+              >
+                <Stack gap="xs">
+                  {libraries.map((library) => (
+                    <Radio key={library.id} value={String(library.id)} label={library.name} />
+                  ))}
+                </Stack>
+              </Radio.Group>
+            )}
+            {libraryPage && libraryPage.pageCount > 1 && (
+              <Group justify="space-between">
+                <Button
+                  size="xs"
+                  variant="subtle"
+                  disabled={librariesLoading || libraryPage.pageNumber <= 1}
+                  onClick={() => credential && void loadLibraries(credential, libraryQuery, libraryPage.pageNumber - 1)}
+                >
+                  {t("librariesSettings.nawishtaPrevPage")}
+                </Button>
+                <Text size="xs" c="dimmed">
+                  {t("librariesSettings.nawishtaPageOf", { page: String(libraryPage.pageNumber), pageCount: String(libraryPage.pageCount) })}
+                </Text>
+                <Button
+                  size="xs"
+                  variant="subtle"
+                  disabled={librariesLoading || libraryPage.pageNumber >= libraryPage.pageCount}
+                  onClick={() => credential && void loadLibraries(credential, libraryQuery, libraryPage.pageNumber + 1)}
+                >
+                  {t("librariesSettings.nawishtaNextPage")}
+                </Button>
+              </Group>
+            )}
             <TextInput
               label={t("librariesSettings.nawishtaName")}
               value={name}

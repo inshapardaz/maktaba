@@ -45,32 +45,81 @@ public class NawishtaRawApiClient(HttpClient httpClient, string serverUrl)
         PropertyNameCaseInsensitive = true,
     };
 
-    public void SetAccessToken(string accessToken) =>
+    // How long before the token's own reported expiry EnsureFreshTokenAsync treats it as already
+    // stale - renewing a little early absorbs request latency/clock skew between this process and
+    // Nawishta's own server, rather than racing a request against the exact expiry instant.
+    private static readonly TimeSpan RefreshSkew = TimeSpan.FromSeconds(30);
+
+    private DateTimeOffset? _accessTokenExpiresAt;
+    private readonly SemaphoreSlim _refreshLock = new(1, 1);
+
+    public void SetAccessToken(string accessToken, DateTimeOffset? expiresAt = null)
+    {
         httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        _accessTokenExpiresAt = expiresAt;
+    }
 
     // Set by NawishtaSessionResolver/StorageProviderFactory after construction (not a constructor
     // parameter - avoids a circular reference, since building the callback needs a reference to
     // this same client to call SetAccessToken on). Nawishta's access token is short-lived (10
-    // minutes) - without this, every read past that window would fail with a 401 for the rest of
-    // the backend process's session, which is exactly what "authors/series aren't loading" turned
-    // out to be in practice (confirmed - every endpoint works fine against a fresh token). Only
-    // wired into GET requests (GetJsonAsync and the two raw-bytes downloads below) - a POST/PUT's
-    // request body (StreamContent/MultipartFormDataContent) can't be resent after being consumed
-    // once, so a write made with a stale token still needs a manual reconnect for now (see
-    // CLAUDE.md's Nawishta write-path section).
-    public Func<CancellationToken, Task<string>>? RefreshAccessTokenAsync { get; set; }
+    // minutes) - without this, every request past that window would either 401 or (worse - the real
+    // bug that made "authors/series aren't loading" hard to pin down at first) silently return
+    // *partial*, not-erroring data for some endpoints once the token's gone stale, with nothing to
+    // signal that's what happened. Returns the full renewed credential (not just the access token)
+    // so EnsureFreshTokenAsync/GetWithRefreshAsync can update <see cref="_accessTokenExpiresAt"/>
+    // from it too, not just the header.
+    public Func<CancellationToken, Task<NawishtaCredential>>? RefreshAccessTokenAsync { get; set; }
+
+    // Proactively renews before the token's own tracked expiry, rather than waiting to be told it's
+    // stale - called at the start of every request-issuing method (GET and write alike), so a write
+    // made after the token's gone stale renews *before* its body is sent instead of after (avoiding
+    // the "a consumed StreamContent/MultipartFormDataContent can't be resent" problem the old
+    // reactive-only 401 retry had for writes - see CLAUDE.md's Nawishta write-path section, now
+    // covered by this rather than left as a gap). A lock (not just a null/time check) guards against
+    // a burst of concurrent requests right at the expiry instant each redeeming the same
+    // soon-to-be-stale refresh token.
+    private async Task EnsureFreshTokenAsync(CancellationToken ct)
+    {
+        if (RefreshAccessTokenAsync is null || !IsStaleOrUnknown())
+        {
+            return;
+        }
+
+        await _refreshLock.WaitAsync(ct);
+        try
+        {
+            if (!IsStaleOrUnknown())
+            {
+                return; // Another caller already renewed it while this one waited for the lock.
+            }
+
+            var renewed = await RefreshAccessTokenAsync(ct);
+            SetAccessToken(renewed.AccessToken, DateTimeOffset.FromUnixTimeMilliseconds(renewed.ExpiresAt));
+        }
+        finally
+        {
+            _refreshLock.Release();
+        }
+
+        bool IsStaleOrUnknown() =>
+            _accessTokenExpiresAt is null || DateTimeOffset.UtcNow >= _accessTokenExpiresAt.Value - RefreshSkew;
+    }
 
     private async Task<HttpResponseMessage> GetWithRefreshAsync(string url, HttpCompletionOption completionOption, CancellationToken ct)
     {
+        await EnsureFreshTokenAsync(ct);
         var response = await httpClient.GetAsync(url, completionOption, ct);
         if (response.StatusCode != HttpStatusCode.Unauthorized || RefreshAccessTokenAsync is null)
         {
             return response;
         }
 
+        // Fallback for a 401 EnsureFreshTokenAsync's own expiry tracking didn't predict (a token
+        // revoked/invalidated early, clock skew beyond RefreshSkew, ...) - proactive renewal above
+        // is expected to make this the rare path, not the common one.
         response.Dispose();
-        var newToken = await RefreshAccessTokenAsync(ct);
-        SetAccessToken(newToken);
+        var renewed = await RefreshAccessTokenAsync(ct);
+        SetAccessToken(renewed.AccessToken, DateTimeOffset.FromUnixTimeMilliseconds(renewed.ExpiresAt));
         return await httpClient.GetAsync(url, completionOption, ct);
     }
 
@@ -119,6 +168,7 @@ public class NawishtaRawApiClient(HttpClient httpClient, string serverUrl)
 
     public async Task DeleteBookAsync(int libraryId, int bookId, CancellationToken ct)
     {
+        await EnsureFreshTokenAsync(ct);
         using var response = await httpClient.DeleteAsync($"{_baseUrl}/libraries/{libraryId}/books/{bookId}", ct);
         await ThrowIfErrorAsync(response, ct);
     }
@@ -203,6 +253,7 @@ public class NawishtaRawApiClient(HttpClient httpClient, string serverUrl)
     public async Task<BookContentView?> UploadContentAsync(
         int libraryId, int bookId, string fileName, string mimeType, string language, Stream content, CancellationToken ct)
     {
+        await EnsureFreshTokenAsync(ct);
         using var form = new MultipartFormDataContent();
         using var fileContent = new StreamContent(content);
         fileContent.Headers.ContentType = MediaTypeHeaderValue.Parse(mimeType);
@@ -229,6 +280,7 @@ public class NawishtaRawApiClient(HttpClient httpClient, string serverUrl)
 
     private async Task<T?> PostJsonAsync<T>(string url, object body, CancellationToken ct)
     {
+        await EnsureFreshTokenAsync(ct);
         using var response = await httpClient.PostAsJsonAsync(url, body, JsonOptions, ct);
         await ThrowIfErrorAsync(response, ct);
         var text = await response.Content.ReadAsStringAsync(ct);
@@ -237,6 +289,7 @@ public class NawishtaRawApiClient(HttpClient httpClient, string serverUrl)
 
     private async Task<T?> PutJsonAsync<T>(string url, object body, CancellationToken ct)
     {
+        await EnsureFreshTokenAsync(ct);
         using var response = await httpClient.PutAsJsonAsync(url, body, JsonOptions, ct);
         await ThrowIfErrorAsync(response, ct);
         var text = await response.Content.ReadAsStringAsync(ct);

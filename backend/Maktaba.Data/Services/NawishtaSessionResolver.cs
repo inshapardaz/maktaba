@@ -43,7 +43,7 @@ public class NawishtaSessionResolver(
         var options = NawishtaProviderOptions.FromConfig(entry.ProviderConfig ?? new Dictionary<string, string>(), credentialJson);
         var httpClient = httpClientFactory.CreateClient(nameof(NawishtaRawApiClient));
         var api = new NawishtaRawApiClient(httpClient, options.ServerUrl);
-        api.SetAccessToken(options.AccessToken);
+        api.SetAccessToken(options.AccessToken, DateTimeOffset.FromUnixTimeMilliseconds(options.AccessTokenExpiresAtUnixMs));
         api.RefreshAccessTokenAsync = NawishtaCredentialRefresher.Create(
             nawishtaAuth, credentials, entry.Id, options.ServerUrl, options.RefreshToken);
 
