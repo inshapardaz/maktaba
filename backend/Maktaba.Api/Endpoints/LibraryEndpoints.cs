@@ -304,6 +304,11 @@ public static class LibraryEndpoints
     {
         Amazon.S3.AmazonS3Exception s3Ex => $"{s3Ex.Message} (S3 error code: {s3Ex.ErrorCode}, HTTP {(int)s3Ex.StatusCode}, request id: {s3Ex.RequestId})",
         Amazon.Runtime.AmazonServiceException svcEx => $"{svcEx.Message} (HTTP {(int)svcEx.StatusCode}, request id: {svcEx.RequestId})",
+        // NawishtaApiException's own Message already embeds "Status: ...\nResponse: ..." (see its
+        // generated definition) - just the HTTP status is a cleaner one-liner for this generic
+        // "connect a cloud library" endpoint's error surface (same shape NawishtaEndpoints.cs's own
+        // DescribeNawishtaError uses for the login-specific 401/403/404 cases).
+        Maktaba.Nawishta.Generated.NawishtaApiException nawishtaEx => $"Nawishta server returned an error (HTTP {nawishtaEx.StatusCode}).",
         _ => ex.Message,
     };
 }

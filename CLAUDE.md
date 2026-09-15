@@ -506,11 +506,219 @@ Nawishta-backed library needs a working `IBookQueryService`/etc. implementation 
 which doesn't exist yet, so these two endpoints only get the frontend as far as "authenticated,
 here's your library list."
 
-**Frontend library-picker UI is deliberately not built yet**, even though #108's own issue text
-names it - a connect form + picker with no working "Connect" button at the end (nothing exists yet
-to actually register/open what's picked) would be exactly the kind of half-finished feature this
-project's conventions call out to avoid, and its real shape depends on what #110 ends up needing
-from the picked library anyway. Build it once #110 lands and "Connect" has somewhere real to go.
+**Read/write/shadow-table/cache-reuse implementation (#110-#113)** - `Maktaba.Nawishta`'s
+`Nawishta{Book,Browse,Collection,Periodical}QueryService` implement Phase A's four interfaces
+against Nawishta, and `NawishtaBookMutationService` (metadata edit/reading-status/rating/
+collections/delete, called directly from `BookEndpoints.cs`'s PUT/PATCH/DELETE handlers rather than
+registered as `IBookEditService`/`IBookRemovalService` - see that class's own doc comment for why)
+covers the write side except file/content management. `NawishtaShadowDbContext`
+(`%AppData%/Maktaba/NawishtaShadow/{libraryId}.db`) holds ReadingStatus/Rating/reading-progress/
+Collections - the one thing Nawishta has no equivalent concept for. `NawishtaStorageProvider` is a
+real `IStorageProvider` backed by `ICloudCacheManager` (not a second cache mechanism) - this is what
+lets the *existing* cover/file-serving endpoints work for a Nawishta library without being
+individually rewritten, since they already go through `IStorageProviderFactory.Current`.
+
+**A key finding: Nawishta's live swagger response schemas and its own "download" link are both
+unreliable** - `NawishtaRawApiClient` (see its own doc comment) works around the missing response
+schemas by deserializing into the request-side model classes NSwag *did* generate. Separately,
+confirmed live against a real account: `GET .../books/{bookId}/contents/{contentId}` returns a
+`BookContentView`-shaped JSON description (not file bytes) whose own `download` link is what should
+serve them - `DownloadContentAsync` follows that link, but the link itself currently 404s for
+content in the test account's library 6 (`test_library`'s remote counterpart, "پبلک لائبریری" -
+the one this whole epic was built/tested against). **Not universal, though** - checked across every
+library the test account can see: libraries 1/2/4/5/7 return real file bytes fine, only libraries 3
+and 6 404 consistently, and `Authorization` makes zero difference either way for either group
+(tested with the header, without it, and as an `access_token` query param instead - identical
+result in all three cases for both a working and a broken library). So this is scoped to something
+about libraries 3/6's own data/storage configuration specifically, not a systemic bug in
+`GetLibraryFile` and not an auth/header issue - traced to
+`FileController.GetLibraryFile`/`GetFileQuery`/`FileRepository.GetFileById` returning null/empty
+`FilePath`; suspected but unconfirmed root cause is the per-request tenant-connection resolution
+issue #42 already flags on that repo, or something per-library in whatever `GetFileQuery` resolves
+its storage backend from. **Practical upshot: covers/content work correctly today for any Nawishta
+library other than 3 or 6** - if further testing needs working images, connect a different library
+(e.g. library 1) rather than the "پبلک لائبریری" test library. Filed upstream rather than silently
+worked around:
+[inshapardaz/api#50](https://github.com/inshapardaz/api/issues/50) (the download link) and
+[inshapardaz/api#51](https://github.com/inshapardaz/api/issues/51) (the missing response schemas -
+traced to most controller actions returning plain `Task<IActionResult>` with no
+`[ProducesResponseType]`, unlike `AccountsController.Authenticate`'s own `ActionResult<T>` pattern,
+which Swashbuckle *can* infer a schema from). `BookEndpoints.cs`'s `GET /{id}` degrades gracefully
+(empty `AbsolutePath` for that one file, not a 500) rather than assuming download always works.
+
+**Write-path field semantics confirmed against Nawishta's own reference editor**
+(`C:\code\inshapardaz\library-editor`, the real React app real Nawishta users edit libraries with) -
+`NawishtaBookMutationService.ResolveAuthorsAsync`/`ResolveSeriesAsync` do a find-or-create by name
+(same pattern `Maktaba.Data/Services/EntityResolvers.cs` already uses locally), since a book's
+`Authors`/`SeriesId` must reference *existing* ids - confirmed via `authorsSelect.jsx`/
+`seriesSelect.jsx`, which pick from an existing list or explicitly `POST /authors`/`/series` first,
+never resolve a bare name server-side on the book `PUT` itself. `Book.Tags` is left untouched on
+edit (the reference client never edits it at all - absent from `bookForm.jsx` entirely).
+`UploadContentAsync` sends `language` as a query parameter, not a multipart form field, matching
+`books.api.js`'s `addBookContent`. The author/series resolution fix (not the upload fix - Nawishta's
+own download bug above made a full round-trip not worth attempting) was live-verified: a no-op edit
+correctly matched the existing author rather than creating a duplicate.
+
+**Making a Nawishta library the *active* one needed real `LibraryService`/`CloudSyncLifecycleService`
+changes** - the whole app treats `LibraryRootPath != null` as "a library is open" (this middleware,
+the frontend's `hasLibrary` gate), but a Nawishta library has no filesystem path. Fixed by giving it
+the same synthetic display path `BuildCloudDisplayPath` already produces for any non-s3 provider
+(`"nawishta://{name}"`) and adding an early-return branch in **both** `ActivateAsync` (the normal
+connect/switch path) **and** `LoadConfig`'s startup auto-open of the last-active library (a separate
+code path that bypasses `ActivateAsync` entirely and was missed on the first pass - confirmed live:
+"SQLite Error 14: unable to open database file" on the very first request after restart) - both skip
+the pull/push/`EnsureCreatedAsync` sequence entirely (no metadata.db for Nawishta) while still
+setting `_schemaVerified = true`, so every existing "is a library open" check keeps working
+unmodified. `PushCurrentLibraryIfCloudAsync` and `CloudSyncLifecycleService`'s push/lock-refresh
+loop both exclude `"nawishta"` too (`IStorageProviderFactory.Current` throws
+`NotSupportedException` for any provider type `BuildProvider`'s switch doesn't recognize, by
+design) - without these, switching away from or just idly having an active Nawishta library open
+would have crashed on the next heartbeat tick. No new endpoint was needed for "connect a Nawishta
+library" - `ILibraryService.OpenCloudLibraryAsync`'s own doc comment already named Nawishta as a
+target provider from Phase 1 onward, and `POST /api/libraries/cloud` is already provider-agnostic.
+
+**Frontend (#114/#115)**: `LibrariesSettings.tsx`'s `NawishtaConnectModal` follows the same
+"Connect {Provider} library…" button pattern as S3/Google Drive/OneDrive, but is two steps instead
+of one - login (server URL/email/password) replaces itself with a `Radio.Group` library picker built
+from the login response's own list, since one Nawishta account can access several libraries; "Name"
+defaults to the picked library's own name (still editable) once one is picked, rather than being
+asked for up front. `ReconnectModal` gained a matching email/password branch (re-authenticating
+rather than a silent token refresh - #116's job) for a Nawishta entry whose cached credential has
+gone stale. Two things are deliberately guarded rather than built: the per-library "Resync" button
+is hidden for a Nawishta entry (`LibraryRescanService.RescanAsync` assumes a local folder/
+metadata.db, never adapted for Nawishta - clicking it risked an unhandled crash, not just "does
+nothing"), and `POST /api/books/import` rejects up front with a clear message for a Nawishta-active
+library (file/content management isn't implemented - see `NawishtaBookMutationService`'s own doc
+comment) rather than letting `ImportService` fail confusingly partway through. A real "Sync now"
+(re-pull book/author/series list) and content-management support are still open work, not built in
+this pass.
+
+**Book covers are eagerly cached, not lazy like content** - every "does this book have a cover"
+check (`BookEndpoints.cs`'s `GET ""`/`{id}`/`recently-added`/`continue-reading`) goes through
+`CoverLocator.Find`, a synchronous, disk-only check with no way to trigger a download itself.
+Content files can stay lazy (`NawishtaStorageProvider.GetLocalPathAsync` downloads on first real
+read, via the async `GET /{id}/cover`/`GET /{id}/file` endpoints) because nothing needs to know
+*in advance* whether a file exists - but a cover's presence has to be known before that async path
+is ever reached, or the frontend never even requests the image. `NawishtaBookQueryService.
+EnsureCoverCachedAsync` (called after mapping every book in `ListAsync`/`GetByIdAsync`/
+`ListRecentlyAddedAsync`/`ListContinueReadingAsync`) downloads and caches a book's cover
+(`{bookId}/cover.jpg`, via a new `NawishtaRawApiClient.DownloadBookCoverAsync` that follows the
+book's own `image` link the same way content follows its `download` link) up front, bounded by
+whatever page size/limit was already requested - best-effort, a failed fetch just leaves that one
+book without a cover rather than failing the whole list. **Confirmed live that book cover images
+hit the exact same upstream bug as content downloads** ([inshapardaz/api#50](https://github.com/inshapardaz/api/issues/50)
+- both go through `FileController.GetLibraryFile`) - but, per that issue's own refined finding,
+only for specific libraries with misconfigured `fileStoreSource` settings, not every Nawishta
+library (library 3 on the test account has since had this fixed server-side and covers now load
+for it; library 6 was still broken as of the last check). `NawishtaStorageProvider.ExistsAsync`
+also had to gain a real (not just disk-cache-based) check for the same reason, used by the async
+`CoverLocator.FindAsync` path `GET /{id}/cover` itself goes through.
+
+**A second, unrelated bug also blocked every Nawishta cover/file/text request outright, independent
+of the upstream file-storage issue above** - `BookEndpoints.cs`'s `GET /{id}/cover`, `GET /{id}/file`,
+and `GET /{id}/text` still queried `MaktabaDbContext db` directly for a book's `FolderPath`/`Files`,
+a leftover from before the query-service abstraction (`ILibraryQueryServiceFactory`, Phase A) existed
+- missed when `GET ""`/`GET /{id}` were migrated to it. A Nawishta library has no local `metadata.db`
+at all, so this 500ed unconditionally, on every request, regardless of whether the underlying
+Nawishta file itself would have resolved - found via live testing against library 3 right after its
+server-side storage fix landed (real image bytes at the raw Nawishta URL, but `GET /api/books/{id}/cover`
+through Maktaba's own backend still 500ed). Fixed by routing all three through
+`queryServices.Books.GetByIdAsync`, the same call `GET /{id}` already made.
+
+**The Nawishta server URL is never shown as a field** in `NawishtaConnectModal`/`ReconnectModal` -
+fixed to `NAWISHTA_DEFAULT_SERVER_URL` (`https://api.nawishta.co.uk`) internally. Unlike S3/Google
+Drive/OneDrive (third-party services with real self-hosted/alternate-endpoint use cases), Nawishta
+is the one server Maktaba's own developer runs, so a URL field would only invite typos into a value
+that's never meant to vary. Both forms show a short privacy note (`librariesSettings.
+nawishtaPrivacyNote`) next to the email/password fields - true today: `nawishtaLogin` sends the
+password straight through to Nawishta's own `/Accounts/authenticate` and only the resulting
+`NawishtaCredential` (access/refresh tokens) is ever passed to `window.maktaba.saveCloudCredential`
+for encrypted, on-device persistence - the raw email/password are never written anywhere.
+
+**Access-token auto-refresh is proactive (expiry-tracked), not just reactive-on-401.** The first
+pass here (live testing surfaced "authors/series aren't loading" - every read worked fine against a
+*fresh* token, but Nawishta's 10-minute access token had nothing renewing it) only refreshed on a
+401. That turned out to be insufficient: further live testing found **Nawishta silently returns
+*partial*, not-erroring data for some endpoints once the token's gone stale, instead of a 401** -
+so a session running past the 10-minute mark could keep "working" while quietly missing data, with
+nothing to signal that's what happened. Fixed by tracking the token's own expiry and renewing ahead
+of it, not waiting to be told it's stale:
+
+- `NawishtaRawApiClient.SetAccessToken(accessToken, expiresAt?)` now records the expiry alongside
+  the token itself (`_accessTokenExpiresAt`), fed from `NawishtaProviderOptions.
+  AccessTokenExpiresAtUnixMs` at construction and from each renewal's own `NawishtaCredential.
+  ExpiresAt` afterward.
+- `EnsureFreshTokenAsync` (called at the start of *every* request-issuing method - `GetWithRefreshAsync`
+  plus `PostJsonAsync`/`PutJsonAsync`/`DeleteBookAsync`/`UploadContentAsync`, not just GETs) renews
+  30 seconds ahead of the tracked expiry (absorbs request latency/clock skew), guarded by a
+  `SemaphoreSlim` so a burst of concurrent requests right at the expiry instant doesn't each redeem
+  the same soon-to-be-stale refresh token. `GetWithRefreshAsync`'s old reactive 401-retry is kept as
+  a fallback for whatever this doesn't predict (an early-revoked token, skew beyond 30s), but is
+  expected to be the rare path now, not the common one.
+- `RefreshAccessTokenAsync`'s delegate type changed from `Func<CancellationToken, Task<string>>` to
+  `Func<CancellationToken, Task<NawishtaCredential>>` (via `NawishtaCredentialRefresher.Create`,
+  shared by `NawishtaSessionResolver` and `StorageProviderFactory.BuildNawishtaProvider`) so the
+  renewed *expiry* comes back too, not just the access token string - needed to keep
+  `_accessTokenExpiresAt` itself accurate after each renewal, not only the very first one.
+- This also closes the previously-documented POST/PUT gap ("a write made with a stale token still
+  needs a manual reconnect") for the common case: since renewal now happens *before* a write's body
+  is built and sent (not after a 401 the body can't be resent past), a write made once the token's
+  passed its tracked expiry renews first rather than failing. A write attempted in the ~30s skew
+  window right at expiry, or hitting an early/unexpected 401, can still fail without a resend -a
+  narrower edge case than "every stale-token write," not a complete guarantee.
+
+Live-verified via a temporary debug trace (removed before commit): connected with a credential whose
+tracked `expiresAt` was already in the past but whose real access/refresh tokens were still valid,
+confirmed `EnsureFreshTokenAsync`'s renew branch fired exactly once *before* `GET /api/authors` was
+ever sent to Nawishta - proving the proactive path itself, not just that the refresh mechanism
+works at all (already covered by the earlier 401-triggered test).
+
+**Nawishta's "Sync now" button is hidden**, not just "Resync" (see above) - `LibrariesSettings.tsx`
+originally only excluded `"local"` from `entry.isActive && entry.providerType !== "local"`, so every
+cloud provider including Nawishta got a sync-now button that meant nothing for it (no metadata.db to
+push - `NawishtaStorageProvider.PushDatabaseAsync` is a no-op). Now excludes `"nawishta"` explicitly.
+
+**Provider icon**: `providerIcons.tsx`'s `PROVIDER_ICONS.nawishta` is `IconWorldSearch` (a globe),
+not the generic `IconCloud` every other provider badge uses - Nawishta is a remote, server-hosted
+library catalog reached over the web, not raw cloud file storage the way S3/OneDrive/Google Drive
+are, so it reads better with a visually distinct icon.
+
+**Connecting a second library from the same Nawishta account skips the login form.** One Nawishta
+account can own several libraries (design addendum on issue #69), and re-typing the password for
+each one would be pointless - `NawishtaConnectModal` now takes an `existingLibraryId` prop
+(`LibrariesSettings.tsx` passes the id of any already-registered `"nawishta"` entry, or `null`) and,
+on open, tries reusing that library's already-cached credential before ever showing the email/
+password fields: `window.maktaba.getCloudCredential(existingLibraryId)` (the same decrypt-on-demand
+IPC path `App.tsx`'s startup reconnect and `ReconnectModal` already use) → a new
+`POST /api/nawishta/libraries` endpoint (`INawishtaAuthService.ListLibrariesAsync`, factored out of
+`LoginAsync`'s own library-listing call) lists the account's libraries with that access token → if
+the access token has gone stale (10-minute TTL - the common case, since this is by definition a
+second connect happening sometime *after* the first), falls back to `POST /api/nawishta/refresh`
+(the existing renew endpoint, now also exposed to the frontend as `nawishtaRefresh` in `api.ts`)
+before retrying the list call once. Any failure in this chain (revoked account, offline, a refresh
+token that's also expired) silently falls back to the normal email/password form rather than
+surfacing an error for something the user never directly asked for - `reusingCredential` state just
+shows a brief "Reusing your existing Nawishta sign-in…" message while this runs. The picked
+library's `remoteLibraryId` still goes through the exact same `connectCloudLibrary`/
+`saveCloudCredential` flow as a fresh login once "Connect" is clicked - only how `credential`/
+`libraries` state gets populated differs.
+
+**The library picker searches/paginates instead of dumping everything unfiltered.** The connect
+form's picker step (both a fresh login and the credential-reuse flow above) used to fetch up to 200
+libraries in one shot with no query/paging at all. `INawishtaAuthService.ListLibrariesAsync` now
+takes `query`/`pageNumber`/`pageSize` and returns a `NawishtaLibraryPage` (mirrors Nawishta's own
+`LibraryViewPageView` - `PageCount`/`CurrentPageIndex`/`TotalCount`), `POST /api/nawishta/libraries`
+carries those through, and `NawishtaConnectModal` gained a search `TextInput` (debounced 300ms,
+always resets to page 1) plus prev/next buttons once `pageCount > 1`. **Nawishta's own
+`GET /libraries` silently ignores its `query` parameter server-side** (confirmed live: an account
+with 7 libraries, `?query=پبلک` still returns all 7 - `LibraryController.GetLibraries` accepts
+`query` but never threads it into `GetLibrariesQuery`, only into the pagination links' own echoed
+`RouteArguments`) - filed as
+[inshapardaz/api#52](https://github.com/inshapardaz/api/issues/52). The `query` param is still sent
+(so this starts working for free once that's fixed upstream), but `NawishtaConnectModal` also
+applies a client-side substring filter over whatever page the server actually returned - exact for
+the common case (an account whose libraries fit on one page, like the one this was tested against),
+but won't reach across pages for a very large account until the server-side fix lands.
 
 ## Backend conventions
 

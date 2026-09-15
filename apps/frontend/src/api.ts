@@ -357,6 +357,69 @@ export interface OneDriveCredential {
   expiresAt: number;
 }
 
+// The credential shape saved via window.maktaba.saveCloudCredential/getCloudCredential for a
+// Nawishta library - see backend NawishtaProviderOptions.FromConfig, which expects exactly this
+// JSON shape. Unlike Google Drive/OneDrive's OAuth token set, this comes from a plain email/
+// password POST to the backend (nawishtaLogin below) rather than an interactive window.maktaba
+// sign-in - Nawishta has no OAuth flow of its own.
+export interface NawishtaCredential {
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: number;
+}
+
+export interface NawishtaLibrarySummary {
+  id: number;
+  name: string;
+  description: string | null;
+}
+
+// One page of an account's libraries - Nawishta's own GET /libraries is a normal searchable/paged
+// endpoint, so NawishtaConnectModal's picker can search-as-you-type/page through it instead of
+// needing every library up front (an account with many libraries used to get dumped into one
+// unpaged, unsearchable list - see CLAUDE.md's Nawishta section).
+export interface NawishtaLibraryPage {
+  libraries: NawishtaLibrarySummary[];
+  pageNumber: number;
+  pageCount: number;
+  totalCount: number;
+}
+
+// Authenticates against a Nawishta server and, in the same round trip, lists the first page of the
+// account's libraries - see Maktaba.Api's NawishtaEndpoints.cs. The connect form (NawishtaConnectModal)
+// uses this to go straight from "email/password" to a library picker.
+export function nawishtaLogin(
+  serverUrl: string, email: string, password: string,
+): Promise<{ credential: NawishtaCredential; libraries: NawishtaLibraryPage }> {
+  return request("/api/nawishta/login", {
+    method: "POST",
+    body: JSON.stringify({ serverUrl, email, password }),
+  });
+}
+
+// Renews an access token from its refresh token, without an email/password login - used by
+// NawishtaConnectModal's "add another library" flow when a reused access token has gone stale
+// (10-minute TTL) but the refresh token (2-day TTL) is still good.
+export function nawishtaRefresh(serverUrl: string, refreshToken: string): Promise<NawishtaCredential> {
+  return request("/api/nawishta/refresh", {
+    method: "POST",
+    body: JSON.stringify({ serverUrl, refreshToken }),
+  });
+}
+
+// Lists (a page of, optionally filtered by query) an already-authenticated account's libraries
+// again, reusing a cached access token - lets NawishtaConnectModal offer "connect another library
+// from this account" once one Nawishta library is already connected, without asking for email/
+// password a second time, and backs the picker's own search box/prev-next paging either way.
+export function nawishtaListLibraries(
+  serverUrl: string, accessToken: string, query?: string, pageNumber?: number, pageSize?: number,
+): Promise<NawishtaLibraryPage> {
+  return request("/api/nawishta/libraries", {
+    method: "POST",
+    body: JSON.stringify({ serverUrl, accessToken, query: query || null, pageNumber, pageSize }),
+  });
+}
+
 // Generic over the credential shape (S3Credential, GoogleDriveCredential, ...) since this endpoint
 // only ever JSON.stringifies it into an opaque string the backend deserializes per providerType -
 // see LibraryEndpoints' "/cloud" handler and ILibraryService.OpenCloudLibraryAsync, neither of

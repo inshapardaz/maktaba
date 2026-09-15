@@ -9,7 +9,14 @@ namespace Maktaba.Nawishta;
 /// libraries (see the design addendum on issue #69).</summary>
 public record NawishtaLibrarySummary(int Id, string Name, string? Description);
 
-public record NawishtaLoginResult(NawishtaCredential Credential, IReadOnlyList<NawishtaLibrarySummary> Libraries);
+/// <summary>One page of the account's libraries - Nawishta's own GET /libraries is already a normal
+/// paged/searchable endpoint (query/pageNumber/pageSize), so an account with many libraries doesn't
+/// have to be dumped into the frontend's picker in one unsearchable blob. PageCount/TotalCount come
+/// straight from Nawishta's own LibraryViewPageView (falling back to 1/the returned row count if
+/// Nawishta ever omits them) - the frontend picker uses them to drive prev/next paging.</summary>
+public record NawishtaLibraryPage(IReadOnlyList<NawishtaLibrarySummary> Libraries, int PageNumber, int PageCount, long TotalCount);
+
+public record NawishtaLoginResult(NawishtaCredential Credential, NawishtaLibraryPage Libraries);
 
 /// <summary>
 /// Logs in against Nawishta's /authenticate and renews via /refresh-token (10 min access token /
@@ -20,16 +27,32 @@ public record NawishtaLoginResult(NawishtaCredential Credential, IReadOnlyList<N
 /// </summary>
 public interface INawishtaAuthService
 {
-    /// <summary>Authenticates and lists the account's libraries in one call, so the frontend's
-    /// connect form can go straight from "email/password" to a library picker without a second
-    /// round trip.</summary>
+    /// <summary>Authenticates and lists the account's libraries' first page in one call, so the
+    /// frontend's connect form can go straight from "email/password" to a library picker without a
+    /// second round trip.</summary>
     Task<NawishtaLoginResult> LoginAsync(string serverUrl, string email, string password, CancellationToken ct = default);
 
     Task<NawishtaCredential> RefreshAsync(string serverUrl, string refreshToken, CancellationToken ct = default);
+
+    /// <summary>Lists (a page of, optionally filtered by <paramref name="query"/>) the account's
+    /// libraries using an already-issued access token, without a fresh email/password login - lets
+    /// the frontend offer "add another library from this account" once one Nawishta library is
+    /// already connected, reusing its cached credential instead of asking the user to sign in again
+    /// (one Nawishta account can own several libraries - see the design addendum on issue #69), and
+    /// also powers the picker's own search-as-you-type/paging once any credential is available
+    /// (fresh login or reused).</summary>
+    Task<NawishtaLibraryPage> ListLibrariesAsync(
+        string serverUrl, string accessToken, string? query, int pageNumber, int pageSize, CancellationToken ct = default);
 }
 
 public class NawishtaAuthService(HttpClient httpClient) : INawishtaAuthService
 {
+    // The picker's default page size (LibrariesSettings.tsx's NawishtaConnectModal) - small enough
+    // that "add another library" from a large account stays scrollable/searchable rather than
+    // dumping everything into one unpaged list (the bug this replaced: FetchLibrariesAsync used to
+    // hardcode pageSize=200 with no query/paging at all).
+    private const int DefaultPageSize = 20;
+
     public async Task<NawishtaLoginResult> LoginAsync(string serverUrl, string email, string password, CancellationToken ct = default)
     {
         var baseUrl = serverUrl.TrimEnd('/');
@@ -46,19 +69,44 @@ public class NawishtaAuthService(HttpClient httpClient) : INawishtaAuthService
         httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", credential.AccessToken);
         try
         {
-            var libraryClient = new LibraryClient(baseUrl, httpClient);
-            var page = await libraryClient.GetLibrariesAsync(null, 1, 200, ct);
-            var libraries = (page.Data ?? [])
-                .Where(l => l.Id is not null && l.Name is not null)
-                .Select(l => new NawishtaLibrarySummary(l.Id!.Value, l.Name!, l.Description))
-                .ToList();
-
+            var libraries = await FetchLibrariesAsync(baseUrl, null, 1, DefaultPageSize, ct);
             return new NawishtaLoginResult(credential, libraries);
         }
         finally
         {
             httpClient.DefaultRequestHeaders.Authorization = null;
         }
+    }
+
+    public async Task<NawishtaLibraryPage> ListLibrariesAsync(
+        string serverUrl, string accessToken, string? query, int pageNumber, int pageSize, CancellationToken ct = default)
+    {
+        var baseUrl = serverUrl.TrimEnd('/');
+
+        // Same DefaultRequestHeaders dance as LoginAsync's own try/finally - see that method's
+        // comment for why this is safe (this call owns httpClient for its own duration).
+        httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        try
+        {
+            return await FetchLibrariesAsync(baseUrl, query, pageNumber, pageSize, ct);
+        }
+        finally
+        {
+            httpClient.DefaultRequestHeaders.Authorization = null;
+        }
+    }
+
+    private async Task<NawishtaLibraryPage> FetchLibrariesAsync(
+        string baseUrl, string? query, int pageNumber, int pageSize, CancellationToken ct)
+    {
+        var libraryClient = new LibraryClient(baseUrl, httpClient);
+        var page = await libraryClient.GetLibrariesAsync(query, pageNumber, pageSize, ct);
+        var libraries = (page.Data ?? [])
+            .Where(l => l.Id is not null && l.Name is not null)
+            .Select(l => new NawishtaLibrarySummary(l.Id!.Value, l.Name!, l.Description))
+            .ToList();
+        return new NawishtaLibraryPage(
+            libraries, page.CurrentPageIndex ?? pageNumber, page.PageCount ?? 1, page.TotalCount ?? libraries.Count);
     }
 
     public async Task<NawishtaCredential> RefreshAsync(string serverUrl, string refreshToken, CancellationToken ct = default)

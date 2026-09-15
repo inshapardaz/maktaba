@@ -153,6 +153,19 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
             {
                 LibraryRootPath = entryToOpen.Path;
                 CurrentLibraryId = entryToOpen.Id;
+
+                // A Nawishta library auto-opened straight out of config.json bypasses ActivateAsync
+                // entirely (this constructor sets LibraryRootPath/CurrentLibraryId directly, above) -
+                // without this, the "library must be open" middleware's very first
+                // EnsureCurrentSchemaAsync call would see _schemaVerified == false and LibraryRootPath
+                // non-null and try to EnsureCreatedAsync a metadata.db against the synthetic
+                // "nawishta://{name}" display path, which isn't a real directory - "SQLite Error 14:
+                // unable to open database file", confirmed live. See ActivateAsync's own matching
+                // branch/doc comment for why a Nawishta library never has (or needs) a metadata.db.
+                if (entryToOpen.ProviderType == "nawishta")
+                {
+                    _schemaVerified = true;
+                }
             }
         }
         catch (Exception ex) when (ex is IOException or JsonException)
@@ -369,8 +382,14 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
     // library was removed, stranding any not-yet-heartbeat-pushed edits on removal).
     private async Task PushCurrentLibraryIfCloudAsync(CancellationToken ct)
     {
+        // "nawishta" excluded alongside "local": there's no metadata.db/IStorageProvider for a
+        // Nawishta-backed library at all (Nawishta's own server is the sole source of truth for
+        // everything but the local shadow table - see NawishtaShadowDbContext's doc comment), so
+        // IStorageProviderFactory.Current would throw NotSupportedException for it (no "nawishta"
+        // case in StorageProviderFactory.BuildProvider's switch - by design, since it fundamentally
+        // isn't an IStorageProvider).
         if (CurrentLibraryId is not { } currentId
-            || _libraries.FirstOrDefault(l => l.Id == currentId) is not { ProviderType: not "local" })
+            || _libraries.FirstOrDefault(l => l.Id == currentId) is not { ProviderType: not ("local" or "nawishta") })
         {
             return;
         }
@@ -420,6 +439,23 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
         LibraryRootPath = entry.Path;
         CurrentLibraryId = entry.Id;
         _schemaVerified = false;
+
+        // Nawishta doesn't fit the pull/push/EnsureCreatedAsync sequence below at all - there's no
+        // metadata.db, no IStorageProvider, and no cloud lock (Nawishta's own server already
+        // serializes concurrent writers) for it (see NawishtaShadowDbContext's doc comment and
+        // NawishtaSessionResolver, which resolve everything a Nawishta-backed library's read/write
+        // path needs lazily, per request, instead). _schemaVerified = true here is what makes
+        // EnsureCurrentSchemaAsync's own early-return a real no-op for this library - LibraryRootPath
+        // stays non-null (a synthetic "nawishta://{name}" display string, same shape
+        // BuildCloudDisplayPath already produces for any non-s3 provider) purely so every existing
+        // "is a library open" check elsewhere (the frontend's hasLibrary, this middleware) keeps
+        // working unmodified; nothing ever treats it as a real filesystem path for this provider.
+        if (entry.ProviderType == "nawishta")
+        {
+            _schemaVerified = true;
+            SaveConfig();
+            return;
+        }
 
         // Sharing _schemaCheckLock with EnsureCurrentSchemaAsync (below) closes a real race: the
         // instant CurrentLibraryId/LibraryRootPath flip above, any *other* concurrent request

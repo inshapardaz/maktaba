@@ -31,7 +31,7 @@ public static class NawishtaEndpoints
                 var result = await auth.LoginAsync(request.ServerUrl.Trim(), request.Email.Trim(), request.Password, ct);
                 var dto = new NawishtaLoginResponseDto(
                     new NawishtaCredentialDto(result.Credential.AccessToken, result.Credential.RefreshToken, result.Credential.ExpiresAt),
-                    [.. result.Libraries.Select(l => new NawishtaLibrarySummaryDto(l.Id, l.Name, l.Description))]);
+                    ToDto(result.Libraries));
                 return Results.Ok(dto);
             }
             catch (Exception ex)
@@ -59,7 +59,37 @@ public static class NawishtaEndpoints
                 return Results.BadRequest(new { error = DescribeNawishtaError(ex) });
             }
         });
+
+        // Reuses an already-cached access token (from a previously-connected Nawishta library) to
+        // list the account's libraries again, so "connect another library" from the same account
+        // skips straight to the picker instead of asking for email/password a second time. A 401
+        // here means the token has since expired - the frontend falls back to /refresh (using that
+        // library's cached refresh token) or, failing that, the normal login form.
+        group.MapPost("/libraries", async (NawishtaListLibrariesRequestDto request, INawishtaAuthService auth, CancellationToken ct) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.ServerUrl) || string.IsNullOrWhiteSpace(request.AccessToken))
+            {
+                return Results.BadRequest(new { error = "Server URL and access token are both required." });
+            }
+
+            try
+            {
+                var page = await auth.ListLibrariesAsync(
+                    request.ServerUrl.Trim(), request.AccessToken,
+                    string.IsNullOrWhiteSpace(request.Query) ? null : request.Query.Trim(),
+                    request.PageNumber ?? 1, request.PageSize ?? 20, ct);
+                return Results.Ok(ToDto(page));
+            }
+            catch (Exception ex)
+            {
+                return Results.BadRequest(new { error = DescribeNawishtaError(ex) });
+            }
+        });
     }
+
+    private static NawishtaLibraryPageDto ToDto(NawishtaLibraryPage page) => new(
+        [.. page.Libraries.Select(l => new NawishtaLibrarySummaryDto(l.Id, l.Name, l.Description))],
+        page.PageNumber, page.PageCount, page.TotalCount);
 
     private static string DescribeNawishtaError(Exception ex) => ex switch
     {
