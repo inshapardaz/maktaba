@@ -524,10 +524,21 @@ schemas by deserializing into the request-side model classes NSwag *did* generat
 confirmed live against a real account: `GET .../books/{bookId}/contents/{contentId}` returns a
 `BookContentView`-shaped JSON description (not file bytes) whose own `download` link is what should
 serve them - `DownloadContentAsync` follows that link, but the link itself currently 404s for
-*every* content tested (4 different books' content, across two separate live sessions - traced to
+content in the test account's library 6 (`test_library`'s remote counterpart, "پبلک لائبریری" -
+the one this whole epic was built/tested against). **Not universal, though** - checked across every
+library the test account can see: libraries 1/2/4/5/7 return real file bytes fine, only libraries 3
+and 6 404 consistently, and `Authorization` makes zero difference either way for either group
+(tested with the header, without it, and as an `access_token` query param instead - identical
+result in all three cases for both a working and a broken library). So this is scoped to something
+about libraries 3/6's own data/storage configuration specifically, not a systemic bug in
+`GetLibraryFile` and not an auth/header issue - traced to
 `FileController.GetLibraryFile`/`GetFileQuery`/`FileRepository.GetFileById` returning null/empty
 `FilePath`; suspected but unconfirmed root cause is the per-request tenant-connection resolution
-issue #42 already flags on that repo). Filed upstream rather than silently worked around:
+issue #42 already flags on that repo, or something per-library in whatever `GetFileQuery` resolves
+its storage backend from. **Practical upshot: covers/content work correctly today for any Nawishta
+library other than 3 or 6** - if further testing needs working images, connect a different library
+(e.g. library 1) rather than the "پبلک لائبریری" test library. Filed upstream rather than silently
+worked around:
 [inshapardaz/api#50](https://github.com/inshapardaz/api/issues/50) (the download link) and
 [inshapardaz/api#51](https://github.com/inshapardaz/api/issues/51) (the missing response schemas -
 traced to most controller actions returning plain `Task<IActionResult>` with no
@@ -596,10 +607,12 @@ book's own `image` link the same way content follows its `download` link) up fro
 whatever page size/limit was already requested - best-effort, a failed fetch just leaves that one
 book without a cover rather than failing the whole list. **Confirmed live that book cover images
 hit the exact same upstream bug as content downloads** ([inshapardaz/api#50](https://github.com/inshapardaz/api/issues/50)
-- both go through `FileController.GetLibraryFile`), so this is currently correctly-implemented but
-not yet visibly working until that's fixed server-side - `NawishtaStorageProvider.ExistsAsync`
-also had to gain a real (not just disk-cache-based) check for the same reason, used by the async
-`CoverLocator.FindAsync` path `GET /{id}/cover` itself goes through.
+- both go through `FileController.GetLibraryFile`) - but, per that issue's own refined finding,
+only for libraries 3 and 6 specifically, not every Nawishta library; covers work correctly today
+for `test_library`'s remote counterpart's siblings (libraries 1/2/4/5/7 on the test account) and
+would work for library 6 too the moment that's fixed server-side. `NawishtaStorageProvider.
+ExistsAsync` also had to gain a real (not just disk-cache-based) check for the same reason, used by
+the async `CoverLocator.FindAsync` path `GET /{id}/cover` itself goes through.
 
 **The Nawishta server URL is never shown as a field** in `NawishtaConnectModal`/`ReconnectModal` -
 fixed to `NAWISHTA_DEFAULT_SERVER_URL` (`https://api.nawishta.co.uk`) internally. Unlike S3/Google
