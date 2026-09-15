@@ -608,11 +608,22 @@ whatever page size/limit was already requested - best-effort, a failed fetch jus
 book without a cover rather than failing the whole list. **Confirmed live that book cover images
 hit the exact same upstream bug as content downloads** ([inshapardaz/api#50](https://github.com/inshapardaz/api/issues/50)
 - both go through `FileController.GetLibraryFile`) - but, per that issue's own refined finding,
-only for libraries 3 and 6 specifically, not every Nawishta library; covers work correctly today
-for `test_library`'s remote counterpart's siblings (libraries 1/2/4/5/7 on the test account) and
-would work for library 6 too the moment that's fixed server-side. `NawishtaStorageProvider.
-ExistsAsync` also had to gain a real (not just disk-cache-based) check for the same reason, used by
-the async `CoverLocator.FindAsync` path `GET /{id}/cover` itself goes through.
+only for specific libraries with misconfigured `fileStoreSource` settings, not every Nawishta
+library (library 3 on the test account has since had this fixed server-side and covers now load
+for it; library 6 was still broken as of the last check). `NawishtaStorageProvider.ExistsAsync`
+also had to gain a real (not just disk-cache-based) check for the same reason, used by the async
+`CoverLocator.FindAsync` path `GET /{id}/cover` itself goes through.
+
+**A second, unrelated bug also blocked every Nawishta cover/file/text request outright, independent
+of the upstream file-storage issue above** - `BookEndpoints.cs`'s `GET /{id}/cover`, `GET /{id}/file`,
+and `GET /{id}/text` still queried `MaktabaDbContext db` directly for a book's `FolderPath`/`Files`,
+a leftover from before the query-service abstraction (`ILibraryQueryServiceFactory`, Phase A) existed
+- missed when `GET ""`/`GET /{id}` were migrated to it. A Nawishta library has no local `metadata.db`
+at all, so this 500ed unconditionally, on every request, regardless of whether the underlying
+Nawishta file itself would have resolved - found via live testing against library 3 right after its
+server-side storage fix landed (real image bytes at the raw Nawishta URL, but `GET /api/books/{id}/cover`
+through Maktaba's own backend still 500ed). Fixed by routing all three through
+`queryServices.Books.GetByIdAsync`, the same call `GET /{id}` already made.
 
 **The Nawishta server URL is never shown as a field** in `NawishtaConnectModal`/`ReconnectModal` -
 fixed to `NAWISHTA_DEFAULT_SERVER_URL` (`https://api.nawishta.co.uk`) internally. Unlike S3/Google

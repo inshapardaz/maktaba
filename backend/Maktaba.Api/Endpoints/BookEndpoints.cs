@@ -300,30 +300,35 @@ public static class BookEndpoints
             return Results.Ok(dto);
         });
 
-        group.MapGet("/{id}/cover", async (string id, MaktabaDbContext db, IStorageProviderFactory storageFactory, CancellationToken ct) =>
+        // These three (cover/file/text) used to query MaktabaDbContext directly for a book's
+        // FolderPath/Files - a leftover from before the Nawishta epic's ILibraryQueryServiceFactory
+        // abstraction (Phase A) existed, missed when GET "" and GET /{id} were migrated to it. A
+        // Nawishta-backed library has no local metadata.db at all (see LibraryService.ActivateAsync's
+        // Nawishta branch), so `db.Books` 500ed unconditionally for one of these - not the upstream
+        // "download link 404s" bug (inshapardaz/api#50), a genuine bug in this file that made every
+        // Nawishta book's cover/file/text-extract request fail regardless of whether the underlying
+        // Nawishta file actually existed. Now goes through queryServices.Books.GetByIdAsync, exactly
+        // like GET /{id} already does, which resolves correctly for every provider.
+        group.MapGet("/{id}/cover", async (string id, ILibraryQueryServiceFactory queryServices, IStorageProviderFactory storageFactory, CancellationToken ct) =>
         {
             if (!IdCodec.TryDecode(id, out var bookId))
             {
                 return Results.NotFound();
             }
 
-            var folderPath = await db.Books
-                .Where(b => b.Id == bookId)
-                .Select(b => b.FolderPath)
-                .FirstOrDefaultAsync();
-
-            if (folderPath is null)
+            var book = await queryServices.Books.GetByIdAsync(bookId, ct);
+            if (book is null)
             {
                 return Results.NotFound();
             }
 
-            var cover = await CoverLocator.FindAsync(storageFactory.Current, folderPath, ct);
+            var cover = await CoverLocator.FindAsync(storageFactory.Current, book.FolderPath, ct);
             return cover is { } found
                 ? Results.File(found.FilePath, found.ContentType)
                 : Results.NotFound();
         });
 
-        group.MapGet("/{id}/file", async (string id, string? format, MaktabaDbContext db, IStorageProviderFactory storageFactory, CancellationToken ct) =>
+        group.MapGet("/{id}/file", async (string id, string? format, ILibraryQueryServiceFactory queryServices, IStorageProviderFactory storageFactory, CancellationToken ct) =>
         {
             if (!IdCodec.TryDecode(id, out var bookId))
             {
@@ -335,11 +340,8 @@ public static class BookEndpoints
                 return Results.BadRequest(new { error = "Invalid or missing format." });
             }
 
-            var file = await db.Books
-                .Where(b => b.Id == bookId)
-                .SelectMany(b => b.Files)
-                .FirstOrDefaultAsync(f => f.Format == parsedFormat, ct);
-
+            var book = await queryServices.Books.GetByIdAsync(bookId, ct);
+            var file = book?.Files.FirstOrDefault(f => f.Format == parsedFormat);
             if (file is null)
             {
                 return Results.NotFound();
@@ -361,7 +363,7 @@ public static class BookEndpoints
         // Docx/Txt have no reader qari understands natively - ReaderOverlay.tsx feeds this plain
         // text to qari as a Markdown source instead of fetching the raw file like Epub/Pdf do.
         group.MapGet("/{id}/text", async (
-            string id, string? format, MaktabaDbContext db, IStorageProviderFactory storageFactory,
+            string id, string? format, ILibraryQueryServiceFactory queryServices, IStorageProviderFactory storageFactory,
             IEnumerable<IBookTextContentExtractor> textExtractors, CancellationToken ct) =>
         {
             if (!IdCodec.TryDecode(id, out var bookId))
@@ -374,11 +376,8 @@ public static class BookEndpoints
                 return Results.BadRequest(new { error = "Invalid or missing format." });
             }
 
-            var file = await db.Books
-                .Where(b => b.Id == bookId)
-                .SelectMany(b => b.Files)
-                .FirstOrDefaultAsync(f => f.Format == parsedFormat, ct);
-
+            var book = await queryServices.Books.GetByIdAsync(bookId, ct);
+            var file = book?.Files.FirstOrDefault(f => f.Format == parsedFormat);
             if (file is null)
             {
                 return Results.NotFound();
