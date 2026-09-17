@@ -10,6 +10,6 @@ public class EfCollectionQueryService(MaktabaDbContext db) : ICollectionQuerySer
     public async Task<IReadOnlyList<EntityGroupCount>> ListAsync(CancellationToken ct = default) =>
         await db.Collections
             .OrderBy(c => c.Name)
-            .Select(c => new EntityGroupCount(c.Id, c.Name, c.BookCollections.Count))
+            .Select(c => new EntityGroupCount(c.Id, c.Name, c.BookCollections.Count, c.ParentCollectionId))
             .ToListAsync(ct);
 }

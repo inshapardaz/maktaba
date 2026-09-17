@@ -18,6 +18,7 @@ import {
   useDirection,
 } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { notifications } from "@mantine/notifications";
 import {
   IconArrowsSort,
   IconBuildingStore,
@@ -35,6 +36,7 @@ import {
 } from "../icons";
 import type { Icon } from "../icons";
 import {
+  ApiError,
   authorImageUrl,
   createCollection,
   createPeriodical,
@@ -46,9 +48,11 @@ import {
   listPublisherGroups,
   listSeries,
   listTags,
+  moveCollection,
   type BrowseGroup,
 } from "../api";
 import { isBookDrag, readBookDragIds } from "../bookDrag";
+import { isCollectionDrag, readCollectionDragId, setCollectionDragData } from "../collectionDrag";
 import { shouldAttemptCloudAsset } from "../coverAvailability";
 import { useLanguage } from "../i18n/LanguageContext";
 import type { TranslationKey } from "../i18n/translations";
@@ -402,6 +406,137 @@ function GroupSection({
   );
 }
 
+export interface CollectionTreeNode {
+  group: BrowseGroup;
+  depth: number;
+}
+
+// Flattens the (sorted, sibling order already applied by the caller) collection list into a
+// depth-first tree order for indented rendering - depth-first rather than a real nested data
+// structure since CollectionTreeSection just needs "this row, at this indent", not to walk
+// children itself. Orphan/self-referencing parentIds (shouldn't happen given the server-side cycle
+// check in CollectionEndpoints.cs's PUT /{id}/parent, but the list here is just whatever's in the
+// react-query cache at render time) fall back to the top level rather than disappearing from view.
+// Exported for CollectionsView.tsx, which renders the same tree in its own full-list screen.
+export function flattenCollectionTree(groups: BrowseGroup[]): CollectionTreeNode[] {
+  const byId = new Set(groups.map((g) => g.id));
+  const byParent = new Map<string, BrowseGroup[]>();
+  const topLevel: BrowseGroup[] = [];
+  for (const group of groups) {
+    const parentId = group.parentId && byId.has(group.parentId) ? group.parentId : null;
+    if (parentId === null) {
+      topLevel.push(group);
+    } else {
+      const siblings = byParent.get(parentId) ?? [];
+      siblings.push(group);
+      byParent.set(parentId, siblings);
+    }
+  }
+
+  const result: CollectionTreeNode[] = [];
+  const visit = (siblings: BrowseGroup[], depth: number, ancestry: Set<string>) => {
+    for (const group of siblings) {
+      if (ancestry.has(group.id)) continue;
+      result.push({ group, depth });
+      const children = byParent.get(group.id);
+      if (children) visit(children, depth + 1, new Set(ancestry).add(group.id));
+    }
+  };
+  visit(topLevel, 0, new Set());
+  return result;
+}
+
+// Collections-only counterpart to GroupSection above - the one browse section with a nesting
+// concept (see Collection.ParentCollectionId on the backend), so it needs its own tree-indented
+// rendering and a second drag source (a collection row dragged onto another one, distinct from
+// dragging a *book* onto a collection row to assign it - see collectionDrag.ts). Dropping a
+// collection in the section's own empty space (the outer Box's onDrop, not any row's) promotes it
+// back to the top level.
+function CollectionTreeSection({
+  activeFilter,
+  onSelect,
+  groups,
+  onDropBooks,
+  onMoveCollection,
+}: {
+  activeFilter: GroupFilter | null;
+  onSelect: (filter: GroupFilter | null) => void;
+  groups: BrowseGroup[] | undefined;
+  onDropBooks: (target: { id: string; name: string }, bookIds: string[], shiftKey: boolean) => void;
+  onMoveCollection: (collectionId: string, parentId: string | null) => void;
+}) {
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const nodes = flattenCollectionTree(groups ?? []);
+
+  return (
+    <Box
+      px={4}
+      onDragOver={(event) => {
+        if (!isCollectionDrag(event)) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
+      }}
+      onDrop={(event) => {
+        if (!isCollectionDrag(event)) return;
+        event.preventDefault();
+        const draggedId = readCollectionDragId(event);
+        if (draggedId) onMoveCollection(draggedId, null);
+      }}
+    >
+      {nodes.map(({ group, depth }) => {
+        const isActive = activeFilter?.kind === "collectionId" && activeFilter.id === group.id;
+        return (
+          <NavLink
+            key={group.id}
+            label={group.name}
+            leftSection={<IconFolder size={16} />}
+            active={isActive}
+            draggable
+            onDragStart={(event) => setCollectionDragData(event, group.id)}
+            onClick={() => onSelect(isActive ? null : { kind: "collectionId", id: group.id, name: group.name })}
+            onDragOver={(event) => {
+              if (!isBookDrag(event) && !isCollectionDrag(event)) return;
+              event.preventDefault();
+              event.dataTransfer.dropEffect = isCollectionDrag(event) ? "move" : "copy";
+              setDragOverId(group.id);
+            }}
+            onDragLeave={() => setDragOverId((id) => (id === group.id ? null : id))}
+            onDrop={(event) => {
+              event.preventDefault();
+              // Stops the section's own onDrop (above) from also firing and re-promoting the
+              // dragged collection back to the top level right after this row nests it.
+              event.stopPropagation();
+              setDragOverId(null);
+
+              if (isCollectionDrag(event)) {
+                const draggedId = readCollectionDragId(event);
+                if (draggedId && draggedId !== group.id) {
+                  onMoveCollection(draggedId, group.id);
+                }
+                return;
+              }
+
+              const bookIds = readBookDragIds(event);
+              if (bookIds && bookIds.length > 0) {
+                onDropBooks({ id: group.id, name: group.name }, bookIds, event.shiftKey);
+              }
+            }}
+            rightSection={
+              <Badge size="sm" variant="light" color="gray">
+                {group.bookCount}
+              </Badge>
+            }
+            pl={12 + depth * 16}
+            pr="md"
+            py={5}
+            styles={sectionRowStyles(isActive, dragOverId === group.id)}
+          />
+        );
+      })}
+    </Box>
+  );
+}
+
 export function Sidebar({
   activeFilter,
   onSelect,
@@ -490,6 +625,22 @@ export function Sidebar({
       createCollectionMutation.mutate(trimmed);
     }
   };
+
+  // Backs CollectionTreeSection's drag-to-nest interaction below - a rejected move (a cycle, or a
+  // parent that no longer exists) surfaces as a notification rather than silently no-opping, same
+  // pattern App.tsx's handleDropBooksOnGroup uses for a failed book drop.
+  const moveCollectionMutation = useMutation({
+    mutationFn: ({ id, parentId }: { id: string; parentId: string | null }) => moveCollection(id, parentId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["collections"] });
+    },
+    onError: (error: unknown) => {
+      notifications.show({
+        color: "red",
+        message: error instanceof ApiError ? error.message : t("common.error"),
+      });
+    },
+  });
 
   const addCollectionAction = (
     <Popover opened={addCollectionOpen} onChange={setAddCollectionOpen} position="bottom-start" withArrow shadow="md">
@@ -748,13 +899,12 @@ export function Sidebar({
               </Group>
             }
           >
-            <GroupSection
-              kind="collectionId"
-              icon={IconFolder}
+            <CollectionTreeSection
               activeFilter={activeFilter}
               onSelect={onSelect}
               groups={sortGroups(collectionsQuery.data, sectionSorts.collections)}
               onDropBooks={(target, bookIds, shiftKey) => onDropBooks("collectionId", target, bookIds, shiftKey)}
+              onMoveCollection={(id, parentId) => moveCollectionMutation.mutate({ id, parentId })}
             />
           </CollapsibleSection>
 

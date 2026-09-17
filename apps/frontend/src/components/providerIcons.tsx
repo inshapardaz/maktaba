@@ -1,4 +1,4 @@
-import { IconCloud, type Icon } from "../icons";
+import { IconCloud, IconWorldSearch, type Icon } from "../icons";
 
 // A plain bold "G" glyph rather than lucide-react's generic HardDrive icon - lucide carries no
 // actual Google logo (no icon library here does; trademarked marks aren't something an open icon
@@ -37,5 +37,7 @@ export const PROVIDER_ICONS: Record<string, Icon> = {
   s3: IconCloud,
   onedrive: IconCloud,
   googledrive: GoogleDriveIcon as unknown as Icon,
-  nawishta: IconCloud,
+  // Nawishta is a remote, server-hosted library catalog reached over the web - not raw cloud file
+  // storage the way S3/OneDrive/Google Drive are - so it gets a distinct icon from IconCloud.
+  nawishta: IconWorldSearch,
 };

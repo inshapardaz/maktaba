@@ -1,11 +1,13 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { notifications } from "@mantine/notifications";
 import { ActionIcon, Badge, Box, Button, Group, NavLink, Stack, Text, TextInput } from "@mantine/core";
 import { IconSearch, IconTrash } from "../icons";
-import { createCollection, deleteCollection, listCollections } from "../api";
+import { ApiError, createCollection, deleteCollection, listCollections, moveCollection } from "../api";
+import { isCollectionDrag, readCollectionDragId, setCollectionDragData } from "../collectionDrag";
 import { useLanguage } from "../i18n/LanguageContext";
 import { BrowseViewHeader } from "./BrowseViewHeader";
-import type { GroupFilter } from "./Sidebar";
+import { flattenCollectionTree, type GroupFilter } from "./Sidebar";
 
 interface CollectionsViewProps {
   onSelect: (filter: GroupFilter) => void;
@@ -40,6 +42,21 @@ export function CollectionsView({ onSelect, onBack }: CollectionsViewProps) {
     },
   });
 
+  // Same drag-to-nest interaction as Sidebar.tsx's CollectionTreeSection (shares
+  // flattenCollectionTree for the indented tree order below) - a rejected move (a cycle, or a
+  // parent that no longer exists) surfaces as a notification rather than silently no-opping.
+  const moveMutation = useMutation({
+    mutationFn: ({ id, parentId }: { id: string; parentId: string | null }) => moveCollection(id, parentId),
+    onSuccess: invalidate,
+    onError: (error: unknown) => {
+      notifications.show({
+        color: "red",
+        message: error instanceof ApiError ? error.message : t("common.error"),
+      });
+    },
+  });
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = name.trim();
@@ -54,6 +71,16 @@ export function CollectionsView({ onSelect, onBack }: CollectionsViewProps) {
     const matched = term ? collections.filter((c) => c.name.toLowerCase().includes(term)) : collections;
     return [...matched].sort((a, b) => a.name.localeCompare(b.name));
   }, [collectionsQuery.data, search]);
+
+  // A search narrows to a flat, possibly-orphaned set of matches (a matched child's parent might
+  // not itself match the term) - showing those at depth 0 rather than running them through the
+  // tree builder avoids a matched row rendering indented under a parent that isn't even in view.
+  // Clearing the search goes back to the real, fully-indented tree.
+  const isSearching = search.trim().length > 0;
+  const nodes = useMemo(
+    () => (isSearching ? filtered.map((group) => ({ group, depth: 0 })) : flattenCollectionTree(filtered)),
+    [filtered, isSearching],
+  );
 
   return (
     <Box display="flex" style={{ flexDirection: "column", height: "100%" }}>
@@ -82,20 +109,57 @@ export function CollectionsView({ onSelect, onBack }: CollectionsViewProps) {
           onChange={(e) => setSearch(e.currentTarget.value)}
         />
 
-        <Stack gap={2}>
-          {filtered.length === 0 && (
+        <Stack
+          gap={2}
+          onDragOver={(event) => {
+            if (!isCollectionDrag(event)) return;
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "move";
+          }}
+          onDrop={(event) => {
+            if (!isCollectionDrag(event)) return;
+            event.preventDefault();
+            const draggedId = readCollectionDragId(event);
+            if (draggedId) moveMutation.mutate({ id: draggedId, parentId: null });
+          }}
+        >
+          {nodes.length === 0 && (
             <Text size="sm" c="dimmed">
               {t("collectionsView.empty")}
             </Text>
           )}
 
-          {filtered.map((collection) => (
+          {nodes.map(({ group: collection, depth }) => (
             <Group
               key={collection.id}
               justify="space-between"
               wrap="nowrap"
               gap="xs"
-              style={{ borderBottom: "1px solid var(--mantine-color-default-border)" }}
+              draggable
+              onDragStart={(event) => setCollectionDragData(event, collection.id)}
+              onDragOver={(event) => {
+                if (!isCollectionDrag(event)) return;
+                event.preventDefault();
+                event.dataTransfer.dropEffect = "move";
+                setDragOverId(collection.id);
+              }}
+              onDragLeave={() => setDragOverId((id) => (id === collection.id ? null : id))}
+              onDrop={(event) => {
+                if (!isCollectionDrag(event)) return;
+                event.preventDefault();
+                event.stopPropagation();
+                setDragOverId(null);
+                const draggedId = readCollectionDragId(event);
+                if (draggedId && draggedId !== collection.id) {
+                  moveMutation.mutate({ id: draggedId, parentId: collection.id });
+                }
+              }}
+              style={{
+                borderBottom: "1px solid var(--mantine-color-default-border)",
+                outline: dragOverId === collection.id ? "2px solid var(--mantine-primary-color-6)" : "2px solid transparent",
+                outlineOffset: -2,
+                borderRadius: "var(--mantine-radius-sm)",
+              }}
             >
               <NavLink
                 label={collection.name}
@@ -104,7 +168,8 @@ export function CollectionsView({ onSelect, onBack }: CollectionsViewProps) {
                   onBack();
                 }}
                 style={{ flex: 1 }}
-                px="sm"
+                pl={12 + depth * 16}
+                pr="sm"
                 py={6}
                 styles={{ root: { borderRadius: "var(--mantine-radius-sm)" } }}
                 rightSection={

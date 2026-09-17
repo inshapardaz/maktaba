@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ActionIcon,
@@ -9,6 +9,7 @@ import {
   Modal,
   PasswordInput,
   Progress,
+  Radio,
   Stack,
   Switch,
   Text,
@@ -28,6 +29,7 @@ import {
   IconPencil,
   IconPlus,
   IconRefresh,
+  IconSearch,
   IconTrash,
   IconX,
 } from "../icons";
@@ -35,6 +37,9 @@ import {
   connectCloudLibrary,
   getSyncStatus,
   listLibraries,
+  nawishtaListLibraries,
+  nawishtaLogin,
+  nawishtaRefresh,
   openLibrary,
   relocateLibrary,
   removeLibrary,
@@ -44,6 +49,8 @@ import {
   testS3Connection,
   type GoogleDriveCredential,
   type LibraryEntry,
+  type NawishtaCredential,
+  type NawishtaLibraryPage,
   type OneDriveCredential,
   type S3Credential,
 } from "../api";
@@ -202,6 +209,7 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
   const [s3ModalOpen, setS3ModalOpen] = useState(false);
   const [googleModalOpen, setGoogleModalOpen] = useState(false);
   const [oneDriveModalOpen, setOneDriveModalOpen] = useState(false);
+  const [nawishtaModalOpen, setNawishtaModalOpen] = useState(false);
   const [migratingLibraryId, setMigratingLibraryId] = useState<string | null>(null);
   const [reconnectingEntry, setReconnectingEntry] = useState<LibraryEntry | null>(null);
 
@@ -219,6 +227,12 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
 
   const handleOneDriveConnected = () => {
     setOneDriveModalOpen(false);
+    invalidateLibraries();
+    refreshActiveLibrary();
+  };
+
+  const handleNawishtaConnected = () => {
+    setNawishtaModalOpen(false);
     invalidateLibraries();
     refreshActiveLibrary();
   };
@@ -249,6 +263,14 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
           >
             {t("librariesSettings.connectOneDrive")}
           </Button>
+          <Button
+            size="sm"
+            variant="default"
+            leftSection={<PROVIDER_ICONS.nawishta size={14} />}
+            onClick={() => setNawishtaModalOpen(true)}
+          >
+            {t("librariesSettings.connectNawishta")}
+          </Button>
           <Button size="sm" leftSection={<IconPlus size={14} />} onClick={() => void handleAdd()} loading={addBusy}>
             {t("librariesSettings.addLibrary")}
           </Button>
@@ -258,6 +280,12 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
       <S3ConnectModal opened={s3ModalOpen} onClose={() => setS3ModalOpen(false)} onConnected={handleS3Connected} />
       <GoogleDriveConnectModal opened={googleModalOpen} onClose={() => setGoogleModalOpen(false)} onConnected={handleGoogleDriveConnected} />
       <OneDriveConnectModal opened={oneDriveModalOpen} onClose={() => setOneDriveModalOpen(false)} onConnected={handleOneDriveConnected} />
+      <NawishtaConnectModal
+        opened={nawishtaModalOpen}
+        onClose={() => setNawishtaModalOpen(false)}
+        onConnected={handleNawishtaConnected}
+        existingLibraryId={librariesQuery.data?.find((entry) => entry.providerType === "nawishta")?.id ?? null}
+      />
       <MigrationWizard
         opened={migratingLibraryId !== null}
         libraryId={migratingLibraryId ?? ""}
@@ -390,18 +418,25 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
                     </ActionIcon>
                   </Tooltip>
                 )}
-                <Tooltip label={t("librariesSettings.resync")}>
-                  <ActionIcon
-                    variant="subtle"
-                    color="gray"
-                    loading={rescan.libraryId === entry.id}
-                    disabled={rescan.isRunning && rescan.libraryId !== entry.id}
-                    onClick={() => handleResync(entry)}
-                    aria-label={t("librariesSettings.resync")}
-                  >
-                    <IconRefresh size={14} />
-                  </ActionIcon>
-                </Tooltip>
+                {entry.providerType !== "nawishta" && (
+                  // A Nawishta library has no local folder to walk and no metadata.db to rebuild
+                  // (LibraryRescanService.RescanAsync assumes both) - "resync" has no meaning for it
+                  // yet (issue #115's "Sync now" replacement isn't built in this pass), so the
+                  // button is hidden entirely rather than risking a click against a code path that
+                  // was never adapted for this provider.
+                  <Tooltip label={t("librariesSettings.resync")}>
+                    <ActionIcon
+                      variant="subtle"
+                      color="gray"
+                      loading={rescan.libraryId === entry.id}
+                      disabled={rescan.isRunning && rescan.libraryId !== entry.id}
+                      onClick={() => handleResync(entry)}
+                      aria-label={t("librariesSettings.resync")}
+                    >
+                      <IconRefresh size={14} />
+                    </ActionIcon>
+                  </Tooltip>
+                )}
                 {entry.isActive && entry.providerType === "local" && (
                   <Tooltip label={t("librariesSettings.migrateToCloud")}>
                     <ActionIcon
@@ -414,7 +449,9 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
                     </ActionIcon>
                   </Tooltip>
                 )}
-                {entry.isActive && entry.providerType !== "local" && (
+                {entry.isActive && entry.providerType !== "local" && entry.providerType !== "nawishta" && (
+                  // Nawishta has no metadata.db to push (its own server is the source of truth -
+                  // see NawishtaStorageProvider's doc comment) - "sync now" has no meaning for it.
                   <Tooltip label={t("librariesSettings.syncNow")}>
                     <ActionIcon
                       variant="subtle"
@@ -878,6 +915,325 @@ function OneDriveConnectModal({ opened, onClose, onConnected }: OneDriveConnectM
   );
 }
 
+interface NawishtaConnectModalProps {
+  opened: boolean;
+  onClose: () => void;
+  onConnected: () => void;
+  // The id of an already-registered Nawishta library, if one exists - lets this modal skip the
+  // email/password step entirely and reuse that library's cached credential (see the "reuse" effect
+  // below), since one Nawishta account can own several libraries (design addendum on issue #69) and
+  // re-typing the password for every one of them would be pointless.
+  existingLibraryId: string | null;
+}
+
+// Nawishta connect form (issue #114) - unlike the OAuth-based providers above, login is a plain
+// email/password POST (nawishtaLogin, see api.ts) rather than an interactive window.maktaba sign-in,
+// so this has no separate Electron-side cancel-pending-signin concept. One Nawishta account can
+// access several libraries (see the design addendum on issue #69), so login and library selection
+// are two steps: successful login replaces the login fields with a Radio.Group picker built from
+// the login response's own library list, and "Connect" only appears once one is picked. The Name
+// field defaults to the picked library's own Nawishta name (still editable) rather than being typed
+// up front, since asking for a display name before the user has even seen which libraries exist
+// would be backwards.
+//
+// The server URL is deliberately never shown - Nawishta is the one Maktaba's own developer runs
+// (unlike S3/Google Drive/OneDrive, which are third-party services with real self-hosted/alternate-
+// endpoint use cases), so exposing a server URL field would only invite typos into a value that's
+// never actually meant to vary. serverUrl still exists as internal state (fixed to
+// NAWISHTA_DEFAULT_SERVER_URL) purely because connectCloudLibrary's ProviderConfig needs one.
+const NAWISHTA_DEFAULT_SERVER_URL = "https://api.nawishta.co.uk";
+
+// Page size for the library picker's own search/paging (distinct from the picker's initial load,
+// which the backend also caps at this same size - see NawishtaAuthService.DefaultPageSize) - small
+// enough that an account with many libraries stays a scrollable, searchable list rather than one
+// long unpaged dump.
+const NAWISHTA_LIBRARY_PAGE_SIZE = 10;
+
+function NawishtaConnectModal({ opened, onClose, onConnected, existingLibraryId }: NawishtaConnectModalProps) {
+  const { t } = useLanguage();
+  const [serverUrl] = useState(NAWISHTA_DEFAULT_SERVER_URL);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [credential, setCredential] = useState<NawishtaCredential | null>(null);
+  const [libraryPage, setLibraryPage] = useState<NawishtaLibraryPage | null>(null);
+  const [libraryQuery, setLibraryQuery] = useState("");
+  const [librariesLoading, setLibrariesLoading] = useState(false);
+  const [selectedLibraryId, setSelectedLibraryId] = useState<string | null>(null);
+  const [name, setName] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  // True while trying to silently reuse an already-connected library's cached credential on open -
+  // the login form stays hidden during this so the user doesn't see it flash before the picker
+  // (the common case) or briefly before falling back to it (the stale-credential case).
+  const [reusingCredential, setReusingCredential] = useState(false);
+
+  // Fetches one page of the now-authenticated account's libraries (initial load, a new search, or
+  // prev/next) - always the single source of truth for what the picker shows, so "connect another
+  // library" (which seeds `credential` via the reuse effect below instead of a fresh login) ends up
+  // with the exact same searchable/paged picker as a brand new login does, always starting from "no
+  // filter, page 1" rather than carrying over anything from a previous connect.
+  const loadLibraries = async (cred: NawishtaCredential, query: string, pageNumber: number) => {
+    setLibrariesLoading(true);
+    try {
+      const page = await nawishtaListLibraries(serverUrl, cred.accessToken, query, pageNumber, NAWISHTA_LIBRARY_PAGE_SIZE);
+      setLibraryPage(page);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLibrariesLoading(false);
+    }
+  };
+
+  // On open, if another Nawishta library is already connected, try reusing its cached credential
+  // instead of showing the login form - reads it via window.maktaba.getCloudCredential (the same
+  // decrypt-on-demand path ReconnectModal/App.tsx's startup reconnect use), lists libraries with it,
+  // and if the access token has since gone stale (10-minute TTL), renews it first via its refresh
+  // token before falling back to asking the user to sign in again.
+  useEffect(() => {
+    if (!opened || existingLibraryId === null) {
+      return;
+    }
+
+    let cancelled = false;
+    setReusingCredential(true);
+    void (async () => {
+      try {
+        const stored = await window.maktaba.getCloudCredential(existingLibraryId);
+        if (!stored) {
+          return;
+        }
+        const cached = JSON.parse(stored) as NawishtaCredential;
+
+        let result: { credential: NawishtaCredential; libraries: NawishtaLibraryPage };
+        try {
+          const found = await nawishtaListLibraries(serverUrl, cached.accessToken, undefined, 1, NAWISHTA_LIBRARY_PAGE_SIZE);
+          result = { credential: cached, libraries: found };
+        } catch {
+          const renewed = await nawishtaRefresh(serverUrl, cached.refreshToken);
+          const found = await nawishtaListLibraries(serverUrl, renewed.accessToken, undefined, 1, NAWISHTA_LIBRARY_PAGE_SIZE);
+          result = { credential: renewed, libraries: found };
+        }
+
+        if (cancelled) {
+          return;
+        }
+        setCredential(result.credential);
+        setLibraryPage(result.libraries);
+        if (result.libraries.totalCount === 1 && result.libraries.libraries.length === 1) {
+          setSelectedLibraryId(String(result.libraries.libraries[0].id));
+          setName(result.libraries.libraries[0].name);
+        }
+      } catch {
+        // Couldn't reuse it (stale refresh token, revoked account, offline, ...) - silently fall
+        // back to the normal email/password form rather than surfacing an error for something the
+        // user never directly asked for.
+      } finally {
+        if (!cancelled) {
+          setReusingCredential(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [opened, existingLibraryId, serverUrl]);
+
+  // Debounced search-as-you-type - re-fetches page 1 under the new query whenever it (or the
+  // credential doing the fetching) changes. Also re-runs once right as `credential` first arrives
+  // (from login or the reuse effect above) with the still-empty starting query - a harmless, fast
+  // duplicate of that flow's own initial fetch, traded for not having to special-case "just arrived"
+  // vs. "the user actually typed something" here.
+  useEffect(() => {
+    if (!credential) {
+      return;
+    }
+    const handle = setTimeout(() => {
+      void loadLibraries(credential, libraryQuery, 1);
+    }, 300);
+    return () => clearTimeout(handle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadLibraries is a stable closure over serverUrl only
+  }, [credential, libraryQuery]);
+
+  const loginMutation = useMutation({
+    mutationFn: () => nawishtaLogin(serverUrl.trim(), email.trim(), password),
+    onSuccess: (result) => {
+      setCredential(result.credential);
+      setLibraryPage(result.libraries);
+      setError(null);
+      if (result.libraries.totalCount === 1 && result.libraries.libraries.length === 1) {
+        setSelectedLibraryId(String(result.libraries.libraries[0].id));
+        setName(result.libraries.libraries[0].name);
+      }
+    },
+    onError: (err) => {
+      setCredential(null);
+      setLibraryPage(null);
+      setError(err instanceof Error ? err.message : String(err));
+    },
+  });
+
+  const connectMutation = useMutation({
+    mutationFn: async () => {
+      if (!credential || selectedLibraryId === null) {
+        throw new Error("Pick a library first.");
+      }
+
+      const providerConfig = { serverUrl: serverUrl.trim(), remoteLibraryId: selectedLibraryId };
+      const entry = await connectCloudLibrary(name.trim(), "nawishta", providerConfig, credential);
+      await window.maktaba.saveCloudCredential(entry.id, JSON.stringify(credential));
+      return entry;
+    },
+    onSuccess: () => {
+      reset();
+      onConnected();
+    },
+    onError: (err) => setError(err instanceof Error ? err.message : String(err)),
+  });
+
+  const reset = () => {
+    setEmail("");
+    setPassword("");
+    setCredential(null);
+    setLibraryPage(null);
+    setLibraryQuery("");
+    setSelectedLibraryId(null);
+    setName("");
+    setError(null);
+    setReusingCredential(false);
+  };
+
+  const canLogin = email.trim().length > 0 && password.length > 0;
+  const canConnect = credential !== null && selectedLibraryId !== null && name.trim().length > 0;
+  // Nawishta's own GET /libraries currently ignores its "query" parameter server-side (confirmed -
+  // filed as inshapardaz/api#52) - it's still sent (so this starts working for free once that's
+  // fixed upstream), but this client-side filter is what actually makes the search box do anything
+  // today. Only filters within the page the server already returned, so it's exact for the common
+  // case (an account whose libraries fit on one page) but won't reach across pages for a very large
+  // account until the server-side fix lands.
+  const trimmedQuery = libraryQuery.trim().toLowerCase();
+  const libraries = (libraryPage?.libraries ?? []).filter(
+    (l) => trimmedQuery.length === 0 || l.name.toLowerCase().includes(trimmedQuery),
+  );
+
+  return (
+    <Modal
+      opened={opened}
+      onClose={() => {
+        reset();
+        onClose();
+      }}
+      title={t("librariesSettings.connectNawishta")}
+    >
+      <Stack gap="sm">
+        {reusingCredential ? (
+          <Text size="sm" c="dimmed">
+            {t("librariesSettings.nawishtaReusingCredential")}
+          </Text>
+        ) : credential === null ? (
+          <>
+            <TextInput
+              label={t("librariesSettings.nawishtaEmail")}
+              value={email}
+              onChange={(e) => setEmail(e.currentTarget.value)}
+            />
+            <PasswordInput
+              label={t("librariesSettings.nawishtaPassword")}
+              value={password}
+              onChange={(e) => setPassword(e.currentTarget.value)}
+            />
+            <Text size="xs" c="dimmed">
+              {t("librariesSettings.nawishtaPrivacyNote")}
+            </Text>
+          </>
+        ) : (
+          <>
+            <TextInput
+              label={t("librariesSettings.nawishtaPickLibrary")}
+              placeholder={t("librariesSettings.nawishtaSearchLibraries")}
+              leftSection={<IconSearch size={14} />}
+              value={libraryQuery}
+              onChange={(e) => setLibraryQuery(e.currentTarget.value)}
+            />
+            {librariesLoading ? (
+              <Text size="sm" c="dimmed">
+                {t("librariesSettings.nawishtaLoadingLibraries")}
+              </Text>
+            ) : libraries.length === 0 ? (
+              <Text size="sm" c="dimmed">
+                {t("librariesSettings.nawishtaNoLibrariesFound")}
+              </Text>
+            ) : (
+              <Radio.Group
+                value={selectedLibraryId}
+                onChange={(value) => {
+                  setSelectedLibraryId(value);
+                  const picked = libraries.find((l) => String(l.id) === value);
+                  if (picked) {
+                    setName(picked.name);
+                  }
+                }}
+              >
+                <Stack gap="xs">
+                  {libraries.map((library) => (
+                    <Radio key={library.id} value={String(library.id)} label={library.name} />
+                  ))}
+                </Stack>
+              </Radio.Group>
+            )}
+            {libraryPage && libraryPage.pageCount > 1 && (
+              <Group justify="space-between">
+                <Button
+                  size="xs"
+                  variant="subtle"
+                  disabled={librariesLoading || libraryPage.pageNumber <= 1}
+                  onClick={() => credential && void loadLibraries(credential, libraryQuery, libraryPage.pageNumber - 1)}
+                >
+                  {t("librariesSettings.nawishtaPrevPage")}
+                </Button>
+                <Text size="xs" c="dimmed">
+                  {t("librariesSettings.nawishtaPageOf", { page: String(libraryPage.pageNumber), pageCount: String(libraryPage.pageCount) })}
+                </Text>
+                <Button
+                  size="xs"
+                  variant="subtle"
+                  disabled={librariesLoading || libraryPage.pageNumber >= libraryPage.pageCount}
+                  onClick={() => credential && void loadLibraries(credential, libraryQuery, libraryPage.pageNumber + 1)}
+                >
+                  {t("librariesSettings.nawishtaNextPage")}
+                </Button>
+              </Group>
+            )}
+            <TextInput
+              label={t("librariesSettings.nawishtaName")}
+              value={name}
+              onChange={(e) => setName(e.currentTarget.value)}
+            />
+          </>
+        )}
+
+        {error && (
+          <Alert color="red" icon={<IconAlertCircle size={18} />}>
+            {error}
+          </Alert>
+        )}
+
+        <Group justify="flex-end">
+          {reusingCredential ? null : credential === null ? (
+            <Button disabled={!canLogin} loading={loginMutation.isPending} onClick={() => loginMutation.mutate()}>
+              {t("librariesSettings.nawishtaSignIn")}
+            </Button>
+          ) : (
+            <Button disabled={!canConnect} loading={connectMutation.isPending} onClick={() => connectMutation.mutate()}>
+              {t("librariesSettings.s3Connect")}
+            </Button>
+          )}
+        </Group>
+      </Stack>
+    </Modal>
+  );
+}
+
 interface ReconnectModalProps {
   // null = closed. Kept as the whole entry (not just an id) so the modal can show the library's
   // name without a separate lookup, and so closing it doesn't need to clear a second piece of state.
@@ -898,15 +1254,24 @@ function ReconnectModal({ entry, onClose, onReconnected }: ReconnectModalProps) 
   const [accessKeyId, setAccessKeyId] = useState("");
   const [secretAccessKey, setSecretAccessKey] = useState("");
   const [oauthTokens, setOauthTokens] = useState<GoogleDriveCredential | OneDriveCredential | null>(null);
+  // Never shown as a field, same reasoning as NAWISHTA_DEFAULT_SERVER_URL above - LibraryEntry
+  // doesn't carry its own ProviderConfig (only ProviderType), so this can't be read back from the
+  // entry being reconnected either way.
+  const [nawishtaServerUrl] = useState(NAWISHTA_DEFAULT_SERVER_URL);
+  const [nawishtaEmail, setNawishtaEmail] = useState("");
+  const [nawishtaPassword, setNawishtaPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const isGoogleDrive = entry?.providerType === "googledrive";
   const isOneDrive = entry?.providerType === "onedrive";
   const isOAuthProvider = isGoogleDrive || isOneDrive;
+  const isNawishta = entry?.providerType === "nawishta";
 
   const reset = () => {
     setAccessKeyId("");
     setSecretAccessKey("");
     setOauthTokens(null);
+    setNawishtaEmail("");
+    setNawishtaPassword("");
     setError(null);
   };
 
@@ -927,6 +1292,14 @@ function ReconnectModal({ entry, onClose, onReconnected }: ReconnectModalProps) 
       if (!entry) {
         return;
       }
+
+      if (isNawishta) {
+        const { credential } = await nawishtaLogin(nawishtaServerUrl.trim(), nawishtaEmail.trim(), nawishtaPassword);
+        await reopenCloudLibrary(entry.id, credential);
+        await window.maktaba.saveCloudCredential(entry.id, JSON.stringify(credential));
+        return;
+      }
+
       const credential: S3Credential | GoogleDriveCredential | OneDriveCredential | null = isOAuthProvider
         ? oauthTokens
         : { accessKeyId, secretAccessKey };
@@ -943,9 +1316,11 @@ function ReconnectModal({ entry, onClose, onReconnected }: ReconnectModalProps) 
     onError: (err) => setError(err instanceof Error ? err.message : String(err)),
   });
 
-  const canSubmit = isOAuthProvider
-    ? oauthTokens !== null
-    : accessKeyId.trim().length > 0 && secretAccessKey.length > 0;
+  const canSubmit = isNawishta
+    ? nawishtaEmail.trim().length > 0 && nawishtaPassword.length > 0
+    : isOAuthProvider
+      ? oauthTokens !== null
+      : accessKeyId.trim().length > 0 && secretAccessKey.length > 0;
 
   const cancelPendingOAuthSignIn = () => {
     if (oauthSignInMutation.isPending) {
@@ -990,6 +1365,22 @@ function ReconnectModal({ entry, onClose, onReconnected }: ReconnectModalProps) 
               {isOneDrive ? t("librariesSettings.oneDriveSignIn") : t("librariesSettings.googleDriveSignIn")}
             </Button>
           )
+        ) : isNawishta ? (
+          <>
+            <TextInput
+              label={t("librariesSettings.nawishtaEmail")}
+              value={nawishtaEmail}
+              onChange={(e) => setNawishtaEmail(e.currentTarget.value)}
+            />
+            <PasswordInput
+              label={t("librariesSettings.nawishtaPassword")}
+              value={nawishtaPassword}
+              onChange={(e) => setNawishtaPassword(e.currentTarget.value)}
+            />
+            <Text size="xs" c="dimmed">
+              {t("librariesSettings.nawishtaPrivacyNote")}
+            </Text>
+          </>
         ) : (
           <>
             <TextInput

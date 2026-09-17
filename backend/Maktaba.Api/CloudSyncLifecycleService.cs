@@ -19,9 +19,17 @@ namespace Maktaba.Api;
 /// </summary>
 public class CloudSyncLifecycleService(
     IStorageProviderFactory storageFactory,
+    ILibraryService libraryService,
     ISyncStatusTracker statusTracker,
     ILogger<CloudSyncLifecycleService> logger) : BackgroundService
 {
+    // A Nawishta-backed library isn't an IStorageProvider at all (see LibraryService.ActivateAsync's
+    // own "nawishta" branch) - storageFactory.Current would throw NotSupportedException for one, so
+    // this must be checked *before* ever touching storageFactory, not via storage.ProviderType like
+    // the "local" checks below do.
+    private bool IsNawishtaActive() =>
+        libraryService.Libraries.FirstOrDefault(l => l.Id == libraryService.CurrentLibraryId)?.ProviderType == "nawishta";
+
     private static readonly TimeSpan HeartbeatInterval = TimeSpan.FromMinutes(5);
 
     // Must stay comfortably shorter than LibraryLockInfo.IsStale's own window (2 minutes) - see that
@@ -62,6 +70,11 @@ public class CloudSyncLifecycleService(
 
     private async Task PushAsync(CancellationToken ct)
     {
+        if (IsNawishtaActive())
+        {
+            return;
+        }
+
         var storage = storageFactory.Current;
         if (storage.ProviderType == "local")
         {
@@ -83,6 +96,11 @@ public class CloudSyncLifecycleService(
 
     private async Task RefreshLockAsync(CancellationToken ct)
     {
+        if (IsNawishtaActive())
+        {
+            return;
+        }
+
         var storage = storageFactory.Current;
         if (storage.ProviderType == "local")
         {
@@ -104,6 +122,11 @@ public class CloudSyncLifecycleService(
 
     private async Task ReleaseLockAsync(CancellationToken ct)
     {
+        if (IsNawishtaActive())
+        {
+            return;
+        }
+
         var storage = storageFactory.Current;
         if (storage.ProviderType == "local")
         {

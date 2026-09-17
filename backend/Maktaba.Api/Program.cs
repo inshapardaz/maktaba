@@ -57,6 +57,7 @@ builder.Services.AddSingleton<IRescanProgressTracker, RescanProgressTracker>();
 builder.Services.AddSingleton<ICalibreConverter, CalibreConverter>();
 builder.Services.AddScoped<IBookConversionService, BookConversionService>();
 builder.Services.AddScoped<IPeriodicalService, PeriodicalService>();
+builder.Services.AddScoped<NawishtaSessionResolver>();
 builder.Services.AddScoped<ILibraryQueryServiceFactory, LibraryQueryServiceFactory>();
 
 // Issue #24: Open Library's free public API, standing in for Goodreads (whose API has had no
@@ -124,6 +125,20 @@ app.Use(async (context, next) =>
     {
         context.Response.StatusCode = StatusCodes.Status400BadRequest;
         await context.Response.WriteAsJsonAsync(new { error = ex.Message });
+    }
+    catch (LibraryLockConflictException ex)
+    {
+        // Issue #103 - without this catch, a lock conflict (thrown from deep inside whichever
+        // endpoint's handler called LibraryService.ActivateAsync - POST /open, /cloud, /{id}/open,
+        // switch-provider, all of which run "inside" this same next() call) used to propagate as an
+        // unhandled exception: no JSON body, so the frontend's request() helper (which does
+        // res.json().catch(() => null)) fell back to a bare "Request failed: 500", silently
+        // discarding the friendly, actionable message this exception already carries. 409 Conflict
+        // fits the actual situation (another device's session conflicts with this one) and lets the
+        // frontend recognize this specific case by status code (see LibrarySwitchContext.tsx/
+        // App.tsx's cloudReconnectQuery) rather than string-matching the message text.
+        context.Response.StatusCode = StatusCodes.Status409Conflict;
+        await context.Response.WriteAsJsonAsync(new { error = ex.Message, deviceName = ex.DeviceName });
     }
 });
 

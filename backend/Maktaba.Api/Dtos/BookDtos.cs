@@ -195,6 +195,12 @@ public record TestS3ConnectionRequestDto(string Bucket, string Region, string Pr
 
 public record LibraryDto(string Path, string Id, string Name, bool PeriodicalsEnabled, string ProviderType = "local");
 
+// Reason is only ever populated when Connected is false - "unreachable" (the server couldn't be
+// reached at all - a network problem) vs "auth" (the server responded, but the credential itself
+// no longer works - an expired/revoked token) are worded differently in the frontend's reconnect
+// error screen (issue #116), since only one of them is actually fixed by a plain retry.
+public record LibraryConnectionStatusDto(bool Connected, string? Reason);
+
 // Same shape as ConnectCloudLibraryRequestDto minus Name - a migration targets the *active*
 // library's existing name/id, it doesn't create a new one.
 public record StartMigrationRequestDto(string ProviderType, Dictionary<string, string> ProviderConfig, string Credential);
@@ -228,13 +234,26 @@ public record NawishtaCredentialDto(string AccessToken, string RefreshToken, lon
 // see NawishtaProviderOptions.RemoteLibraryId) - passed back as-is if the user picks this library.
 public record NawishtaLibrarySummaryDto(int Id, string Name, string? Description);
 
-public record NawishtaLoginResponseDto(NawishtaCredentialDto Credential, IReadOnlyList<NawishtaLibrarySummaryDto> Libraries);
+// Mirrors NawishtaLibraryPage - lets the connect form's picker search/page through an account's
+// libraries instead of needing every one of them in a single unpaged response.
+public record NawishtaLibraryPageDto(IReadOnlyList<NawishtaLibrarySummaryDto> Libraries, int PageNumber, int PageCount, long TotalCount);
+
+public record NawishtaLoginResponseDto(NawishtaCredentialDto Credential, NawishtaLibraryPageDto Libraries);
 
 public record NawishtaRefreshRequestDto(string ServerUrl, string RefreshToken);
 
-public record BrowseGroupDto(string Id, string Name, int BookCount, bool HasImage = false);
+// Lists (a page of, optionally filtered by Query) an already-authenticated account's libraries
+// again (reusing a cached access token) so the frontend can offer "connect another library" without
+// asking for email/password a second time, and can search/page through the result either way.
+public record NawishtaListLibrariesRequestDto(string ServerUrl, string AccessToken, string? Query, int? PageNumber, int? PageSize);
 
-public record CreateCollectionRequestDto(string Name);
+// ParentId is only ever populated for a Collection row (sqid-encoded, mirroring Id) - see
+// EntityGroupCount.ParentId's own doc comment for why every other browse group leaves it null.
+public record BrowseGroupDto(string Id, string Name, int BookCount, bool HasImage = false, string? ParentId = null);
+
+public record CreateCollectionRequestDto(string Name, string? ParentId = null);
+
+public record MoveCollectionRequestDto(string? ParentId);
 
 public record ReadingStatusCountDto(string Status, int Count);
 

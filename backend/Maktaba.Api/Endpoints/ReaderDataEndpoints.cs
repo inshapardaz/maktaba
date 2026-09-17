@@ -1,7 +1,11 @@
 using Maktaba.Api.Dtos;
 using Maktaba.Core.Entities;
 using Maktaba.Core.Ids;
+using Maktaba.Core.Services;
 using Maktaba.Data;
+using Maktaba.Data.Services;
+using Maktaba.Nawishta;
+using Maktaba.Nawishta.Generated;
 using Microsoft.EntityFrameworkCore;
 
 namespace Maktaba.Api.Endpoints;
@@ -12,11 +16,32 @@ public static class ReaderDataEndpoints
     {
         var group = app.MapGroup("/api/books/{id}");
 
-        group.MapGet("/bookmarks", async (string id, MaktabaDbContext db, CancellationToken ct) =>
+        // Bookmarks/notes now have a real server-side equivalent on Nawishta (inshapardaz/api#53/
+        // #54, shipped and live) - routed through NawishtaRawApiClient the same way progress/
+        // reading-activity below already branch on IsNawishtaLibrary, rather than the earlier
+        // stub (empty list / "not supported" 400) this used to return before that API existed.
+        // Nawishta's own ClientId concept is exactly Maktaba's own bookmarkId/noteId route
+        // parameter - both are the client-generated id qari's bookmarkAdapter/noteAdapter already
+        // mint, so it's passed straight through rather than translated.
+        group.MapGet("/bookmarks", async (
+            string id, ILibraryService libraryService, NawishtaSessionResolver nawishtaResolver, MaktabaDbContext db, CancellationToken ct) =>
         {
             if (!IdCodec.TryDecode(id, out var bookId))
             {
                 return Results.NotFound();
+            }
+
+            if (BookEndpoints.IsNawishtaLibrary(libraryService))
+            {
+                if (!nawishtaResolver.TryResolve(out var n))
+                {
+                    return Results.Ok(Array.Empty<BookmarkDto>());
+                }
+
+                var remoteBookmarks = await n.Api.GetBookmarksAsync(n.RemoteLibraryId, bookId, ct);
+                return Results.Ok(remoteBookmarks.Select(b => new BookmarkDto(
+                    b.Id ?? "", b.ChapterId, b.Position ?? 0, b.Name,
+                    b.DateAdded?.UtcDateTime ?? DateTime.UtcNow, b.DateUpdated?.UtcDateTime)));
             }
 
             var bookmarks = await db.Bookmarks
@@ -28,9 +53,41 @@ public static class ReaderDataEndpoints
         });
 
         group.MapPut("/bookmarks/{bookmarkId}", async (
-            string id, string bookmarkId, SaveBookmarkRequestDto request, MaktabaDbContext db, CancellationToken ct) =>
+            string id, string bookmarkId, SaveBookmarkRequestDto request, ILibraryService libraryService,
+            NawishtaSessionResolver nawishtaResolver, MaktabaDbContext db, CancellationToken ct) =>
         {
-            if (!IdCodec.TryDecode(id, out var bookId) || !await db.Books.AnyAsync(b => b.Id == bookId, ct))
+            if (!IdCodec.TryDecode(id, out var bookId))
+            {
+                return Results.NotFound();
+            }
+
+            if (BookEndpoints.IsNawishtaLibrary(libraryService))
+            {
+                if (!nawishtaResolver.TryResolve(out var n))
+                {
+                    return Results.NotFound();
+                }
+
+                try
+                {
+                    var upserted = await n.Api.UpsertBookmarkAsync(n.RemoteLibraryId, bookId, bookmarkId, new BookmarkView
+                    {
+                        ChapterId = request.ChapterId,
+                        Position = request.Position,
+                        Name = request.Name,
+                    }, ct);
+                    return upserted is null ? Results.NotFound() : Results.NoContent();
+                }
+                catch (NawishtaApiException ex) when (ex.StatusCode == 404)
+                {
+                    // Nawishta's own PUT 404s cleanly for a book that doesn't exist - see
+                    // UpsertBookmarkAsync's own doc comment for why this isn't folded into a null
+                    // return there.
+                    return Results.NotFound();
+                }
+            }
+
+            if (!await db.Books.AnyAsync(b => b.Id == bookId, ct))
             {
                 return Results.NotFound();
             }
@@ -53,11 +110,22 @@ public static class ReaderDataEndpoints
         });
 
         group.MapDelete("/bookmarks/{bookmarkId}", async (
-            string id, string bookmarkId, MaktabaDbContext db, CancellationToken ct) =>
+            string id, string bookmarkId, ILibraryService libraryService,
+            NawishtaSessionResolver nawishtaResolver, MaktabaDbContext db, CancellationToken ct) =>
         {
             if (!IdCodec.TryDecode(id, out var bookId))
             {
                 return Results.NotFound();
+            }
+
+            if (BookEndpoints.IsNawishtaLibrary(libraryService))
+            {
+                if (nawishtaResolver.TryResolve(out var n))
+                {
+                    await n.Api.DeleteBookmarkAsync(n.RemoteLibraryId, bookId, bookmarkId, ct);
+                }
+
+                return Results.NoContent();
             }
 
             var deleted = await db.Bookmarks
@@ -67,11 +135,25 @@ public static class ReaderDataEndpoints
             return deleted > 0 ? Results.NoContent() : Results.NotFound();
         });
 
-        group.MapGet("/notes", async (string id, MaktabaDbContext db, CancellationToken ct) =>
+        group.MapGet("/notes", async (
+            string id, ILibraryService libraryService, NawishtaSessionResolver nawishtaResolver, MaktabaDbContext db, CancellationToken ct) =>
         {
             if (!IdCodec.TryDecode(id, out var bookId))
             {
                 return Results.NotFound();
+            }
+
+            if (BookEndpoints.IsNawishtaLibrary(libraryService))
+            {
+                if (!nawishtaResolver.TryResolve(out var n))
+                {
+                    return Results.Ok(Array.Empty<NoteDto>());
+                }
+
+                var remoteNotes = await n.Api.GetNotesAsync(n.RemoteLibraryId, bookId, ct);
+                return Results.Ok(remoteNotes.Select(note => new NoteDto(
+                    note.Id ?? "", note.ChapterId, note.StartOffset ?? 0, note.EndOffset ?? 0, note.Text, note.Comment,
+                    note.DateAdded?.UtcDateTime ?? DateTime.UtcNow, note.DateUpdated?.UtcDateTime)));
             }
 
             var notes = await db.Notes
@@ -83,9 +165,40 @@ public static class ReaderDataEndpoints
         });
 
         group.MapPut("/notes/{noteId}", async (
-            string id, string noteId, SaveNoteRequestDto request, MaktabaDbContext db, CancellationToken ct) =>
+            string id, string noteId, SaveNoteRequestDto request, ILibraryService libraryService,
+            NawishtaSessionResolver nawishtaResolver, MaktabaDbContext db, CancellationToken ct) =>
         {
-            if (!IdCodec.TryDecode(id, out var bookId) || !await db.Books.AnyAsync(b => b.Id == bookId, ct))
+            if (!IdCodec.TryDecode(id, out var bookId))
+            {
+                return Results.NotFound();
+            }
+
+            if (BookEndpoints.IsNawishtaLibrary(libraryService))
+            {
+                if (!nawishtaResolver.TryResolve(out var n))
+                {
+                    return Results.NotFound();
+                }
+
+                try
+                {
+                    var upserted = await n.Api.UpsertNoteAsync(n.RemoteLibraryId, bookId, noteId, new NoteView
+                    {
+                        ChapterId = request.ChapterId,
+                        StartOffset = request.StartOffset,
+                        EndOffset = request.EndOffset,
+                        Text = request.Text,
+                        Comment = request.Comment,
+                    }, ct);
+                    return upserted is null ? Results.NotFound() : Results.NoContent();
+                }
+                catch (NawishtaApiException ex) when (ex.StatusCode == 404)
+                {
+                    return Results.NotFound();
+                }
+            }
+
+            if (!await db.Books.AnyAsync(b => b.Id == bookId, ct))
             {
                 return Results.NotFound();
             }
@@ -110,11 +223,22 @@ public static class ReaderDataEndpoints
         });
 
         group.MapDelete("/notes/{noteId}", async (
-            string id, string noteId, MaktabaDbContext db, CancellationToken ct) =>
+            string id, string noteId, ILibraryService libraryService,
+            NawishtaSessionResolver nawishtaResolver, MaktabaDbContext db, CancellationToken ct) =>
         {
             if (!IdCodec.TryDecode(id, out var bookId))
             {
                 return Results.NotFound();
+            }
+
+            if (BookEndpoints.IsNawishtaLibrary(libraryService))
+            {
+                if (nawishtaResolver.TryResolve(out var n))
+                {
+                    await n.Api.DeleteNoteAsync(n.RemoteLibraryId, bookId, noteId, ct);
+                }
+
+                return Results.NoContent();
             }
 
             var deleted = await db.Notes
@@ -124,11 +248,32 @@ public static class ReaderDataEndpoints
             return deleted > 0 ? Results.NoContent() : Results.NotFound();
         });
 
-        group.MapGet("/progress", async (string id, MaktabaDbContext db, CancellationToken ct) =>
+        group.MapGet("/progress", async (
+            string id, ILibraryService libraryService, NawishtaSessionResolver nawishtaResolver, MaktabaDbContext db, CancellationToken ct) =>
         {
             if (!IdCodec.TryDecode(id, out var bookId))
             {
                 return Results.NotFound();
+            }
+
+            // A Nawishta-backed library has no metadata.db - progress lives in the local shadow DB
+            // instead (NawishtaBookState), local-only rather than synced to Nawishta's own server
+            // (see NawishtaShadowDbContext.cs's doc comment on those fields). LastReadAt doubles as
+            // "has progress ever been saved for this book", same role ReadingProgress.UpdatedAt
+            // plays for a local library below.
+            if (BookEndpoints.IsNawishtaLibrary(libraryService))
+            {
+                NawishtaBookState? state = nawishtaResolver.TryResolve(out var n)
+                    ? await n.Shadow.BookStates.AsNoTracking().FirstOrDefaultAsync(s => s.RemoteBookId == bookId, ct)
+                    : null;
+
+                ReadingProgressDto? nawishtaDto = state?.LastReadAt is not { } lastReadAt
+                    ? null
+                    : new ReadingProgressDto(
+                        state.CurrentChapter, state.TotalChapters, state.CurrentPage, state.TotalPages,
+                        state.ChapterTitle, state.Percentage, state.ChapterId, state.Position, lastReadAt);
+
+                return Results.Ok(nawishtaDto);
             }
 
             var progress = await db.ReadingProgress.AsNoTracking().FirstOrDefaultAsync(rp => rp.BookId == bookId, ct);
@@ -145,11 +290,45 @@ public static class ReaderDataEndpoints
         });
 
         group.MapPut("/progress", async (
-            string id, SaveReadingProgressRequestDto request, MaktabaDbContext db, CancellationToken ct) =>
+            string id, SaveReadingProgressRequestDto request, ILibraryService libraryService,
+            NawishtaSessionResolver nawishtaResolver, MaktabaDbContext db, CancellationToken ct) =>
         {
             if (!IdCodec.TryDecode(id, out var bookId))
             {
                 return Results.NotFound();
+            }
+
+            if (BookEndpoints.IsNawishtaLibrary(libraryService))
+            {
+                if (!nawishtaResolver.TryResolve(out var n))
+                {
+                    return Results.NotFound();
+                }
+
+                var state = await n.Shadow.BookStates.FirstOrDefaultAsync(s => s.RemoteBookId == bookId, ct);
+                if (state is null)
+                {
+                    state = new NawishtaBookState { RemoteBookId = bookId };
+                    n.Shadow.BookStates.Add(state);
+                }
+
+                // Same partial-merge semantics as the local-library branch below (a field omitted
+                // in the request means "this writer doesn't know it", not "clear it") - written via
+                // ?? rather than the local branch's "is { } x" pattern to avoid that pattern
+                // variable's scope (the rest of this lambda body) colliding with the same names
+                // reused below.
+                state.CurrentChapter = request.CurrentChapter ?? state.CurrentChapter;
+                state.TotalChapters = request.TotalChapters ?? state.TotalChapters;
+                state.CurrentPage = request.CurrentPage ?? state.CurrentPage;
+                state.TotalPages = request.TotalPages ?? state.TotalPages;
+                state.ChapterTitle = request.ChapterTitle ?? state.ChapterTitle;
+                state.Percentage = request.Percentage ?? state.Percentage;
+                state.ChapterId = request.ChapterId ?? state.ChapterId;
+                state.Position = request.Position ?? state.Position;
+                state.LastReadAt = DateTime.UtcNow;
+
+                await n.Shadow.SaveChangesAsync(ct);
+                return Results.NoContent();
             }
 
             if (!await db.Books.AnyAsync(b => b.Id == bookId, ct))
@@ -191,7 +370,8 @@ public static class ReaderDataEndpoints
         // than modeled as session start/end, so a crash or force-close never loses more than one
         // heartbeat's worth of time (see ReadingActivity's doc comment).
         group.MapPost("/reading-activity", async (
-            string id, RecordReadingActivityRequestDto request, MaktabaDbContext db, CancellationToken ct) =>
+            string id, RecordReadingActivityRequestDto request, ILibraryService libraryService,
+            NawishtaSessionResolver nawishtaResolver, MaktabaDbContext db, CancellationToken ct) =>
         {
             if (!IdCodec.TryDecode(id, out var bookId))
             {
@@ -200,6 +380,29 @@ public static class ReaderDataEndpoints
 
             if (request.Seconds <= 0)
             {
+                return Results.NoContent();
+            }
+
+            // No per-day/hour breakdown for Nawishta (unlike ReadingActivities below) - just a
+            // running lifetime total on the shadow row, which is all GetReadingStatsAsync/the
+            // Continue Reading feed actually read back for a Nawishta-backed library today.
+            if (BookEndpoints.IsNawishtaLibrary(libraryService))
+            {
+                if (!nawishtaResolver.TryResolve(out var n))
+                {
+                    return Results.NotFound();
+                }
+
+                var nawishtaState = await n.Shadow.BookStates.FirstOrDefaultAsync(s => s.RemoteBookId == bookId, ct);
+                if (nawishtaState is null)
+                {
+                    nawishtaState = new NawishtaBookState { RemoteBookId = bookId };
+                    n.Shadow.BookStates.Add(nawishtaState);
+                }
+
+                nawishtaState.SecondsRead += request.Seconds;
+                nawishtaState.LastReadAt = DateTime.UtcNow;
+                await n.Shadow.SaveChangesAsync(ct);
                 return Results.NoContent();
             }
 

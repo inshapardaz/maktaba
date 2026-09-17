@@ -3,12 +3,23 @@ using Maktaba.Core.Entities;
 using Maktaba.Core.Ids;
 using Maktaba.Core.Services;
 using Maktaba.Data;
+using Maktaba.Data.Services;
+using Maktaba.Nawishta;
 using Microsoft.EntityFrameworkCore;
 
 namespace Maktaba.Api.Endpoints;
 
 public static class BookEndpoints
 {
+    // PUT/PATCH/DELETE below branch on this rather than going through a registered
+    // IBookEditService/IBookRemovalService (see NawishtaBookMutationService's own doc comment for
+    // why it isn't one) - "nawishta" is the only provider type any of these three branches ever
+    // take, every other provider keeps going through the existing EF-backed services unchanged.
+    // Internal (not private) so ReaderDataEndpoints.cs can reuse the same check for
+    // bookmarks/notes/progress/reading-activity rather than duplicating it.
+    internal static bool IsNawishtaLibrary(ILibraryService libraryService) =>
+        libraryService.Libraries.FirstOrDefault(l => l.Id == libraryService.CurrentLibraryId)?.ProviderType == "nawishta";
+
     // Shared by every endpoint below that builds a BookSummaryDto/ContinueReadingBookDto -
     // AuthorRefDto is the same "name + id + photo presence" shape BookDetailDto already uses for
     // BookDetailPanel's pills, so the Home view/grid rows can reuse it for avatars too.
@@ -227,8 +238,27 @@ public static class BookEndpoints
             var fileDtos = new List<BookFileDto>();
             foreach (var f in book.Files)
             {
+                // A remote provider's GetLocalPathAsync can genuinely fail (a dead network, a
+                // revoked credential, or - confirmed live against a real Nawishta account - a
+                // server-side bug in its own advertised "download" link for some content) without
+                // that meaning the whole book detail view should 500: the title/authors/etc. below
+                // are still valid and worth showing, with this one file just not openable until
+                // whatever's wrong resolves. An empty AbsolutePath (BookFileDto's own type is
+                // non-nullable string, not worth a wire-contract change here) means "couldn't
+                // resolve this file right now" - opening it fails the same way any other missing/
+                // unreadable file already does.
+                string absolutePath;
+                try
+                {
+                    absolutePath = await storage.GetLocalPathAsync(f.FilePath, ct);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    absolutePath = "";
+                }
+
                 fileDtos.Add(new BookFileDto(
-                    IdCodec.Encode(f.Id), f.Format.ToString(), f.FileSizeBytes, await storage.GetLocalPathAsync(f.FilePath, ct), f.ContentHash,
+                    IdCodec.Encode(f.Id), f.Format.ToString(), f.FileSizeBytes, absolutePath, f.ContentHash,
                     await storage.GetWebViewUrlAsync(f.FilePath, ct)));
             }
 
@@ -272,30 +302,35 @@ public static class BookEndpoints
             return Results.Ok(dto);
         });
 
-        group.MapGet("/{id}/cover", async (string id, MaktabaDbContext db, IStorageProviderFactory storageFactory, CancellationToken ct) =>
+        // These three (cover/file/text) used to query MaktabaDbContext directly for a book's
+        // FolderPath/Files - a leftover from before the Nawishta epic's ILibraryQueryServiceFactory
+        // abstraction (Phase A) existed, missed when GET "" and GET /{id} were migrated to it. A
+        // Nawishta-backed library has no local metadata.db at all (see LibraryService.ActivateAsync's
+        // Nawishta branch), so `db.Books` 500ed unconditionally for one of these - not the upstream
+        // "download link 404s" bug (inshapardaz/api#50), a genuine bug in this file that made every
+        // Nawishta book's cover/file/text-extract request fail regardless of whether the underlying
+        // Nawishta file actually existed. Now goes through queryServices.Books.GetByIdAsync, exactly
+        // like GET /{id} already does, which resolves correctly for every provider.
+        group.MapGet("/{id}/cover", async (string id, ILibraryQueryServiceFactory queryServices, IStorageProviderFactory storageFactory, CancellationToken ct) =>
         {
             if (!IdCodec.TryDecode(id, out var bookId))
             {
                 return Results.NotFound();
             }
 
-            var folderPath = await db.Books
-                .Where(b => b.Id == bookId)
-                .Select(b => b.FolderPath)
-                .FirstOrDefaultAsync();
-
-            if (folderPath is null)
+            var book = await queryServices.Books.GetByIdAsync(bookId, ct);
+            if (book is null)
             {
                 return Results.NotFound();
             }
 
-            var cover = await CoverLocator.FindAsync(storageFactory.Current, folderPath, ct);
+            var cover = await CoverLocator.FindAsync(storageFactory.Current, book.FolderPath, ct);
             return cover is { } found
                 ? Results.File(found.FilePath, found.ContentType)
                 : Results.NotFound();
         });
 
-        group.MapGet("/{id}/file", async (string id, string? format, MaktabaDbContext db, IStorageProviderFactory storageFactory, CancellationToken ct) =>
+        group.MapGet("/{id}/file", async (string id, string? format, ILibraryQueryServiceFactory queryServices, IStorageProviderFactory storageFactory, CancellationToken ct) =>
         {
             if (!IdCodec.TryDecode(id, out var bookId))
             {
@@ -307,11 +342,8 @@ public static class BookEndpoints
                 return Results.BadRequest(new { error = "Invalid or missing format." });
             }
 
-            var file = await db.Books
-                .Where(b => b.Id == bookId)
-                .SelectMany(b => b.Files)
-                .FirstOrDefaultAsync(f => f.Format == parsedFormat, ct);
-
+            var book = await queryServices.Books.GetByIdAsync(bookId, ct);
+            var file = book?.Files.FirstOrDefault(f => f.Format == parsedFormat);
             if (file is null)
             {
                 return Results.NotFound();
@@ -333,7 +365,7 @@ public static class BookEndpoints
         // Docx/Txt have no reader qari understands natively - ReaderOverlay.tsx feeds this plain
         // text to qari as a Markdown source instead of fetching the raw file like Epub/Pdf do.
         group.MapGet("/{id}/text", async (
-            string id, string? format, MaktabaDbContext db, IStorageProviderFactory storageFactory,
+            string id, string? format, ILibraryQueryServiceFactory queryServices, IStorageProviderFactory storageFactory,
             IEnumerable<IBookTextContentExtractor> textExtractors, CancellationToken ct) =>
         {
             if (!IdCodec.TryDecode(id, out var bookId))
@@ -346,11 +378,8 @@ public static class BookEndpoints
                 return Results.BadRequest(new { error = "Invalid or missing format." });
             }
 
-            var file = await db.Books
-                .Where(b => b.Id == bookId)
-                .SelectMany(b => b.Files)
-                .FirstOrDefaultAsync(f => f.Format == parsedFormat, ct);
-
+            var book = await queryServices.Books.GetByIdAsync(bookId, ct);
+            var file = book?.Files.FirstOrDefault(f => f.Format == parsedFormat);
             if (file is null)
             {
                 return Results.NotFound();
@@ -368,7 +397,8 @@ public static class BookEndpoints
         });
 
         group.MapPut("/{id}", async (
-            string id, BookEditRequestDto request, IBookEditService editService, CancellationToken ct) =>
+            string id, BookEditRequestDto request, IBookEditService editService,
+            ILibraryService libraryService, NawishtaSessionResolver nawishtaResolver, CancellationToken ct) =>
         {
             if (!IdCodec.TryDecode(id, out var bookId))
             {
@@ -411,12 +441,21 @@ public static class BookEndpoints
                 request.VolumeNumber,
                 request.IssueDate);
 
+            if (IsNawishtaLibrary(libraryService))
+            {
+                nawishtaResolver.TryResolve(out var n);
+                var updated = await new NawishtaBookMutationService(n.Api, n.RemoteLibraryId, n.Shadow)
+                    .UpdateMetadataAsync(bookId, editRequest, ct);
+                return updated is null ? Results.NotFound() : Results.NoContent();
+            }
+
             var book = await editService.UpdateAsync(bookId, editRequest, ct);
             return book is null ? Results.NotFound() : Results.NoContent();
         });
 
         group.MapPatch("/{id}/status", async (
-            string id, UpdateBookStatusRequestDto request, MaktabaDbContext db, CancellationToken ct) =>
+            string id, UpdateBookStatusRequestDto request, MaktabaDbContext db,
+            ILibraryService libraryService, NawishtaSessionResolver nawishtaResolver, CancellationToken ct) =>
         {
             if (!IdCodec.TryDecode(id, out var bookId))
             {
@@ -426,6 +465,13 @@ public static class BookEndpoints
             if (!Enum.TryParse<ReadingStatus>(request.ReadingStatus, ignoreCase: true, out var status))
             {
                 return Results.BadRequest(new { error = "Invalid reading status." });
+            }
+
+            if (IsNawishtaLibrary(libraryService))
+            {
+                nawishtaResolver.TryResolve(out var n);
+                var ok = await new NawishtaBookMutationService(n.Api, n.RemoteLibraryId, n.Shadow).SetReadingStatusAsync(bookId, status, ct);
+                return ok ? Results.NoContent() : Results.NotFound();
             }
 
             var book = await db.Books.FirstOrDefaultAsync(b => b.Id == bookId, ct);
@@ -473,11 +519,22 @@ public static class BookEndpoints
             };
         });
 
-        group.MapDelete("/{id}", async (string id, IBookRemovalService removalService, CancellationToken ct) =>
+        group.MapDelete("/{id}", async (
+            string id, IBookRemovalService removalService,
+            ILibraryService libraryService, NawishtaSessionResolver nawishtaResolver, CancellationToken ct) =>
         {
             if (!IdCodec.TryDecode(id, out var bookId))
             {
                 return Results.NotFound();
+            }
+
+            if (IsNawishtaLibrary(libraryService))
+            {
+                nawishtaResolver.TryResolve(out var n);
+                var deleted = await new NawishtaBookMutationService(n.Api, n.RemoteLibraryId, n.Shadow).DeleteAsync(bookId, ct);
+                return deleted
+                    ? Results.Ok(new { folderPath = (string?)null, requiresLocalTrash = false, parentFolderPath = (string?)null })
+                    : Results.NotFound();
             }
 
             var result = await removalService.RemoveAsync(bookId, ct);
@@ -624,8 +681,23 @@ public static class BookEndpoints
         });
 
         group.MapPost("/import", async (
-            ImportBookRequest request, IImportService importService, ILogger<Program> logger, CancellationToken ct) =>
+            ImportBookRequest request, IImportService importService, ILibraryService libraryService,
+            ILogger<Program> logger, CancellationToken ct) =>
         {
+            // Nawishta's content model (chapters/pages/OCR/bind/publish) doesn't map onto "attach an
+            // EPUB/PDF file" the way local/S3/Google Drive/OneDrive import does, and needs live
+            // verification before it's safe to build (see NawishtaBookMutationService's own doc
+            // comment) - a clear, friendly rejection here rather than letting ImportService proceed
+            // and fail confusingly partway through against NawishtaStorageProvider's file-write
+            // methods, which do throw NotSupportedException but with a less specific message.
+            if (IsNawishtaLibrary(libraryService))
+            {
+                return Results.BadRequest(new
+                {
+                    error = "Importing files isn't supported yet for a Nawishta-backed library - add books directly on the Nawishta server for now.",
+                });
+            }
+
             if (string.IsNullOrWhiteSpace(request.FilePath) || !File.Exists(request.FilePath))
             {
                 return Results.BadRequest(new { error = "File not found." });

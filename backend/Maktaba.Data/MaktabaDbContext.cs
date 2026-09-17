@@ -60,6 +60,14 @@ public class MaktabaDbContext(DbContextOptions<MaktabaDbContext> options) : DbCo
             e.HasOne(bc => bc.Collection).WithMany(c => c.BookCollections).HasForeignKey(bc => bc.CollectionId);
         });
 
+        // SetNull (not the default Cascade) - see Collection.ParentCollectionId's own doc comment
+        // for why deleting a parent should promote its children rather than delete them too.
+        modelBuilder.Entity<Collection>()
+            .HasOne(c => c.Parent)
+            .WithMany(c => c.Children)
+            .HasForeignKey(c => c.ParentCollectionId)
+            .OnDelete(DeleteBehavior.SetNull);
+
         modelBuilder.Entity<BookFile>()
             .HasOne(f => f.Book)
             .WithMany(b => b.Files)

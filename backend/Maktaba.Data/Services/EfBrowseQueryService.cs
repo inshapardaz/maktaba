@@ -18,7 +18,9 @@ public class EfBrowseQueryService(MaktabaDbContext db) : IBrowseQueryService
         var authors = await db.Authors
             .Where(a => a.BookAuthors.Count > 0)
             .OrderBy(a => a.Name)
-            .Select(a => new EntityGroupCount(a.Id, a.Name, a.BookAuthors.Count))
+            // Explicit null (not the default) - EF Core can't translate a constructor call that
+            // relies on an optional-argument default inside an expression tree (CS0854).
+            .Select(a => new EntityGroupCount(a.Id, a.Name, a.BookAuthors.Count, null))
             .ToListAsync(ct);
         return authors;
     }
@@ -30,14 +32,14 @@ public class EfBrowseQueryService(MaktabaDbContext db) : IBrowseQueryService
         await db.Series
             .Where(s => s.BookSeries.Count > 0)
             .OrderBy(s => s.Name)
-            .Select(s => new EntityGroupCount(s.Id, s.Name, s.BookSeries.Count))
+            .Select(s => new EntityGroupCount(s.Id, s.Name, s.BookSeries.Count, null))
             .ToListAsync(ct);
 
     public async Task<IReadOnlyList<EntityGroupCount>> ListTagsAsync(CancellationToken ct = default) =>
         await db.Tags
             .Where(t => t.BookTags.Count > 0)
             .OrderBy(t => t.Name)
-            .Select(t => new EntityGroupCount(t.Id, t.Name, t.BookTags.Count))
+            .Select(t => new EntityGroupCount(t.Id, t.Name, t.BookTags.Count, null))
             .ToListAsync(ct);
 
     public async Task<IReadOnlyList<string>> ListPublishersAsync(CancellationToken ct = default) =>
