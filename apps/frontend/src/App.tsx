@@ -419,9 +419,36 @@ function App() {
 
   // Surfaced as a toast (not inline UI) since the sync that failed could have been started from
   // Settings, which may well be closed again by the time it finishes - see LibrarySyncContext.
+  // Issue #103's remaining gap: previously this was the dead end it looks like - the only way to
+  // try again was reopening Settings and clicking "Sync to cloud now" from scratch. A Retry action
+  // right on the toast re-runs the same sync (LibrarySyncContext.retry - no confirmation popup
+  // needed, the user already confirmed once) and doesn't auto-dismiss, since a sync failure isn't
+  // something to miss the way a routine 4-second toast assumes.
   useEffect(() => {
     if (librarySync.error) {
-      notifications.show({ color: "red", title: t("app.syncFailedTitle"), message: librarySync.error });
+      const message = librarySync.error;
+      const notificationId = notifications.show({
+        color: "red",
+        title: t("app.syncFailedTitle"),
+        autoClose: false,
+        message: (
+          <Stack gap="xs">
+            <Text size="sm">{message}</Text>
+            <Group>
+              <Button
+                size="xs"
+                variant="light"
+                onClick={() => {
+                  notifications.hide(notificationId);
+                  librarySync.retry();
+                }}
+              >
+                {t("backend.retry")}
+              </Button>
+            </Group>
+          </Stack>
+        ),
+      });
       librarySync.dismissError();
     }
   }, [librarySync.error, librarySync, t]);

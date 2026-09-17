@@ -16,6 +16,11 @@ interface LibrarySyncContextValue {
   confirm: () => void;
   cancel: () => void;
   dismissError: () => void;
+  // Re-runs the sync without the confirmation popup - the user already confirmed once to get here,
+  // so a failed sync's own "Retry" action (App.tsx's toast) shouldn't ask again. Issue #103's
+  // remaining gap: previously a failed sync only left a dismissable error toast, with no way to
+  // retry short of reopening Settings and clicking "Sync to cloud now" again from scratch.
+  retry: () => void;
 }
 
 const LibrarySyncContext = createContext<LibrarySyncContextValue | null>(null);
@@ -39,8 +44,7 @@ export function LibrarySyncProvider({ children }: { children: ReactNode }) {
     setConfirming(false);
   }
 
-  function confirm() {
-    setConfirming(false);
+  function runSync() {
     setIsSyncing(true);
     syncNow()
       .then(() => {
@@ -54,6 +58,16 @@ export function LibrarySyncProvider({ children }: { children: ReactNode }) {
       .finally(() => setIsSyncing(false));
   }
 
+  function confirm() {
+    setConfirming(false);
+    runSync();
+  }
+
+  function retry() {
+    setError(null);
+    runSync();
+  }
+
   const value: LibrarySyncContextValue = {
     confirming,
     isSyncing,
@@ -62,6 +76,7 @@ export function LibrarySyncProvider({ children }: { children: ReactNode }) {
     confirm,
     cancel,
     dismissError: () => setError(null),
+    retry,
   };
 
   return <LibrarySyncContext.Provider value={value}>{children}</LibrarySyncContext.Provider>;
