@@ -25,6 +25,7 @@ import {
   reopenCloudLibrary,
   updateBook,
   updateBookStatus,
+  verifyLibraryConnection,
   type BookEditRequest,
   type BookFilters,
   type S3Credential,
@@ -385,6 +386,20 @@ function App() {
         throw new Error(t("app.cloudReconnectMissingCredential"));
       }
       await reopenCloudLibrary(id, JSON.parse(credentialJson) as S3Credential);
+
+      // S3/Google Drive/OneDrive already proved their credential works inside reopenCloudLibrary
+      // above (it would have thrown otherwise) - a Nawishta-backed library's own reopen is a pure
+      // no-op with no network call at all, so without this it would report success here and only
+      // fail later, on whatever request runs next, with none of this error screen's messaging
+      // (issue #116). Always {connected: true} for every other provider, so this is a harmless
+      // extra round trip for them.
+      const status = await verifyLibraryConnection();
+      if (!status.connected) {
+        throw new Error(
+          status.reason === "auth" ? t("app.cloudReconnectTokenExpired") : t("app.cloudReconnectUnreachable"),
+        );
+      }
+
       return true;
     },
     enabled: needsCloudReconnect,
@@ -424,9 +439,17 @@ function App() {
       // credentials are in-memory only, cleared every backend restart, and only the last-active
       // library gets auto-reconnected on startup).
       notifications.show({
-        color: "red",
-        title: t("app.switchFailedTitle"),
+        // Issue #103 - a lock conflict (another device already has this cloud library open) gets
+        // its own color/title and doesn't auto-dismiss, same reasoning as the needsReconnect
+        // branch below: it's not fixed by retrying a moment later the way a transient network blip
+        // would be, so it shouldn't disappear before the user has actually read it. The message
+        // itself (LibraryLockConflictException's own text) already names the other device and what
+        // to do, so there's nothing further to add here beyond framing it distinctly from a plain
+        // failure.
+        color: librarySwitch.isLockConflict ? "orange" : "red",
+        title: librarySwitch.isLockConflict ? t("app.switchLockConflictTitle") : t("app.switchFailedTitle"),
         message: librarySwitch.needsReconnect ? t("app.switchNeedsReconnect") : librarySwitch.error,
+        autoClose: librarySwitch.isLockConflict ? false : undefined,
       });
       if (librarySwitch.needsReconnect) {
         setSettingsTab("libraries");

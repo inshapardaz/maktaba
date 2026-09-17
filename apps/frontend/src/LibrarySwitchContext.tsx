@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { openLibraryById, reopenCloudLibrary, type LibraryEntry } from "./api";
+import { ApiError, openLibraryById, reopenCloudLibrary, type LibraryEntry } from "./api";
 import { invalidateLibraryQueries } from "./queries";
 
 interface LibrarySwitchContextValue {
@@ -18,6 +18,13 @@ interface LibrarySwitchContextValue {
   // dead-end error toast isn't actionable on its own - App.tsx uses this to also jump straight to
   // Settings -> Libraries, where the key-icon Reconnect action actually solves it.
   needsReconnect: boolean;
+  // True alongside `error` when the backend refused because a *different*, non-stale device
+  // already has this cloud library open (issue #103's lock-conflict case - see
+  // LibraryLockConflictException). Distinguished by HTTP status (409) rather than string-matching
+  // the message the way needsReconnect above does, since the backend now sends a real status code
+  // for this one. `error` itself already reads as a complete, actionable sentence for this case, so
+  // there's nothing else to surface beyond flagging it for a distinct toast treatment.
+  isLockConflict: boolean;
   // onSuccess is caller-supplied (rather than baked in here) because what should happen after a
   // successful switch differs by caller - App.tsx's handleLibraryChanged resets a bunch of its own
   // view state (selection, nav history, current view) that this context has no business knowing
@@ -38,6 +45,7 @@ export function LibrarySwitchProvider({ children }: { children: ReactNode }) {
   const [isSwitching, setIsSwitching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [needsReconnect, setNeedsReconnect] = useState(false);
+  const [isLockConflict, setIsLockConflict] = useState(false);
 
   // Same recovery App.tsx's cloudReconnectQuery already does for whichever library was active at
   // startup - a plain openLibraryById(id) supplies no credential at all, so without this, switching
@@ -51,6 +59,7 @@ export function LibrarySwitchProvider({ children }: { children: ReactNode }) {
   async function switchTo(id: string, onSuccess?: () => void) {
     setError(null);
     setNeedsReconnect(false);
+    setIsLockConflict(false);
     setIsSwitching(true);
     try {
       const target = queryClient.getQueryData<LibraryEntry[]>(["libraries"])?.find((l) => l.id === id);
@@ -70,6 +79,7 @@ export function LibrarySwitchProvider({ children }: { children: ReactNode }) {
       const message = err instanceof Error ? err.message : String(err);
       setError(message);
       setNeedsReconnect(message.includes("credentials haven't been supplied"));
+      setIsLockConflict(err instanceof ApiError && err.status === 409);
     } finally {
       setIsSwitching(false);
     }
@@ -79,10 +89,12 @@ export function LibrarySwitchProvider({ children }: { children: ReactNode }) {
     isSwitching,
     error,
     needsReconnect,
+    isLockConflict,
     switchTo,
     dismissError: () => {
       setError(null);
       setNeedsReconnect(false);
+      setIsLockConflict(false);
     },
   };
 

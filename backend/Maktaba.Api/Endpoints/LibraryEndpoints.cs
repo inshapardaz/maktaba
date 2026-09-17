@@ -1,5 +1,8 @@
 using Maktaba.Api.Dtos;
 using Maktaba.Core.Services;
+using Maktaba.Data.Services;
+using Maktaba.Nawishta;
+using Maktaba.Nawishta.Generated;
 
 namespace Maktaba.Api.Endpoints;
 
@@ -18,6 +21,58 @@ public static class LibraryEndpoints
 
             var active = libraryService.Libraries.First(l => l.Id == libraryService.CurrentLibraryId);
             return Results.Ok(new LibraryDto(active.Path, active.Id, active.Name, active.PeriodicalsEnabled, active.ProviderType));
+        });
+
+        // Issue #116 - called by the frontend's cloudReconnectQuery right after reopening a cloud
+        // library with its re-supplied credential. S3/Google Drive/OneDrive already validate the
+        // credential synchronously inside ActivateAsync (its EnsureCreatedAsync pull), so any
+        // problem there already threw before this endpoint would ever be reached - always {true} for
+        // them. A Nawishta-backed library's ActivateAsync is a pure no-op (see that method's own
+        // doc comment - there's no metadata.db to pull, nothing to validate eagerly), so a stale/
+        // revoked refresh token or an unreachable server would otherwise go unnoticed until whatever
+        // request happens to run next (typically the book list), with none of this app's usual
+        // reconnect-failure UI. This gives Nawishta the same synchronous check: a cheap authenticated
+        // round trip (GetAuthorsAsync, already used elsewhere purely for its side effect of proving
+        // the connection works) that separates "the server can't be reached at all" from "the
+        // credential itself no longer works" - two cases the frontend needs to word, and let the
+        // user act on, differently (a plain retry fixes neither the same way).
+        group.MapGet("/verify-connection", async (ILibraryService libraryService, NawishtaSessionResolver nawishtaResolver, CancellationToken ct) =>
+        {
+            if (!BookEndpoints.IsNawishtaLibrary(libraryService))
+            {
+                return Results.Ok(new LibraryConnectionStatusDto(true, null));
+            }
+
+            (NawishtaRawApiClient Api, int RemoteLibraryId, NawishtaShadowDbContext Shadow, ICloudCacheManager CacheManager, string LibraryId) n;
+            try
+            {
+                if (!nawishtaResolver.TryResolve(out n))
+                {
+                    return Results.Ok(new LibraryConnectionStatusDto(true, null));
+                }
+            }
+            catch (InvalidOperationException)
+            {
+                // TryResolve's own "credential hasn't been supplied yet" case - shouldn't normally
+                // happen here since cloudReconnectQuery always calls reopenCloudLibrary (which sets
+                // the credential cache) before this, but treat it as the same "needs reconnecting"
+                // case as an actual auth failure rather than letting it 500.
+                return Results.Ok(new LibraryConnectionStatusDto(false, "auth"));
+            }
+
+            try
+            {
+                await n.Api.GetAuthorsAsync(n.RemoteLibraryId, ct);
+                return Results.Ok(new LibraryConnectionStatusDto(true, null));
+            }
+            catch (NawishtaApiException ex) when (ex.StatusCode is 401 or 403)
+            {
+                return Results.Ok(new LibraryConnectionStatusDto(false, "auth"));
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Net.Sockets.SocketException)
+            {
+                return Results.Ok(new LibraryConnectionStatusDto(false, "unreachable"));
+            }
         });
 
         group.MapPost("/open", async (OpenLibraryRequest request, ILibraryService libraryService, CancellationToken ct) =>
