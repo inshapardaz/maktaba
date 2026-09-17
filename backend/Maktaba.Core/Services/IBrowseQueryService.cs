@@ -3,8 +3,11 @@ using Maktaba.Core.Entities;
 namespace Maktaba.Core.Services;
 
 /// <summary>A named group with a book count - the read-model shared by every browse-sidebar list
-/// (authors/series/tags/collections) that's backed by a real entity with its own int id.</summary>
-public record EntityGroupCount(int Id, string Name, int Count);
+/// (authors/series/tags/collections) that's backed by a real entity with its own int id. ParentId
+/// is only ever non-null for a Collection (see Collection.ParentCollectionId) - every other
+/// producer (authors/series/tags) leaves it at its null default, since none of those have a
+/// nesting concept.</summary>
+public record EntityGroupCount(int Id, string Name, int Count, int? ParentId = null);
 
 /// <summary>Same shape as <see cref="EntityGroupCount"/> but for a plain string column (Publisher,
 /// Language) with no entity/table of its own - the name doubles as its own "id".</summary>

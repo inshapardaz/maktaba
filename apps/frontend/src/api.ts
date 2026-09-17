@@ -125,6 +125,9 @@ export interface BrowseGroup {
   // Only ever populated for listAuthors() (issue #28's author photo) - other browse groups
   // (Series/Tags/Collections/...) always get false/undefined here.
   hasImage?: boolean;
+  // Only ever populated for listCollections() - the id of the collection this one is nested
+  // under, null/undefined for a top-level collection. See moveCollection below.
+  parentId?: string | null;
 }
 
 export interface BookEditRequest {
@@ -448,6 +451,20 @@ export function reopenCloudLibrary<TCredential>(id: string, credential: TCredent
 // it's cloud-backed.
 export function syncNow(): Promise<void> {
   return request<void>("/api/libraries/sync-now", { method: "POST" });
+}
+
+export interface LibraryConnectionStatus {
+  connected: boolean;
+  // Only populated when connected is false - "unreachable" (network problem) vs "auth" (the
+  // credential itself no longer works, e.g. a revoked refresh token) - App.tsx's cloudReconnectQuery
+  // words these differently since only one is actually fixed by a plain retry (issue #116).
+  // Always {connected: true} for a non-Nawishta library, which already validates its credential
+  // synchronously during reopenCloudLibrary above.
+  reason?: "unreachable" | "auth";
+}
+
+export function verifyLibraryConnection(): Promise<LibraryConnectionStatus> {
+  return request<LibraryConnectionStatus>("/api/libraries/verify-connection");
 }
 
 // Cloud Sync Core - polled by TitleBar.tsx's SyncStatusIndicator to show a small persistent
@@ -780,15 +797,24 @@ export function listLanguageGroups(): Promise<BrowseGroup[]> {
   return request<BrowseGroup[]>("/api/languages/grouped");
 }
 
-export function createCollection(name: string): Promise<BrowseGroup> {
+export function createCollection(name: string, parentId?: string | null): Promise<BrowseGroup> {
   return request<BrowseGroup>("/api/collections", {
     method: "POST",
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({ name, parentId: parentId ?? null }),
   });
 }
 
 export function deleteCollection(id: string): Promise<void> {
   return request<void>(`/api/collections/${id}`, { method: "DELETE" });
+}
+
+// Nests a collection under a new parent, or promotes it to top-level when parentId is null - the
+// "drag one collection row onto another to nest it" interaction (Sidebar.tsx/CollectionsView.tsx).
+export function moveCollection(id: string, parentId: string | null): Promise<BrowseGroup> {
+  return request<BrowseGroup>(`/api/collections/${id}/parent`, {
+    method: "PUT",
+    body: JSON.stringify({ parentId }),
+  });
 }
 
 export function listReadingStatusCounts(): Promise<ReadingStatusCount[]> {

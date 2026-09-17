@@ -492,9 +492,7 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
                 var existingLock = await storage.ReadLockAsync(ct);
                 if (existingLock is { } lockInfo && !lockInfo.IsThisDevice() && !lockInfo.IsStale(DateTimeOffset.UtcNow))
                 {
-                    throw new InvalidOperationException(
-                        $"This library is currently open on \"{lockInfo.DeviceName}\". Close it there first, " +
-                        "or try again in a couple of minutes if that device is offline or crashed.");
+                    throw new LibraryLockConflictException(lockInfo.DeviceName);
                 }
 
                 await storage.WriteLockAsync(LibraryLockInfo.ForThisDevice(), ct);
@@ -714,6 +712,7 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
             await db.Periodicals.Select(p => new { p.Language, p.Publisher, p.Editor }).Take(1).ToListAsync(ct);
             await db.PeriodicalTags.Select(pt => pt.PeriodicalId).Take(1).ToListAsync(ct);
             await db.Books.Select(b => b.PageCount).Take(1).ToListAsync(ct);
+            await db.Collections.Select(c => c.ParentCollectionId).Take(1).ToListAsync(ct);
             return true;
         }
         catch (SqliteException)
