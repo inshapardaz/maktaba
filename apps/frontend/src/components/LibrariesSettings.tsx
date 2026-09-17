@@ -41,6 +41,7 @@ import {
   nawishtaLogin,
   nawishtaRefresh,
   openLibrary,
+  refreshNawishtaCovers,
   relocateLibrary,
   removeLibrary,
   renameLibrary,
@@ -174,6 +175,16 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
         refreshActiveLibrary();
       }
     },
+    onError: (err) => setActionError(err instanceof Error ? err.message : String(err)),
+  });
+
+  // Issue #115's "Sync now" for a Nawishta library - deliberately its own mutation rather than
+  // routed through useLibrarySync (which is built around "briefly closes and reopens the library"
+  // semantics that don't apply to a plain cover re-download - see LibraryEndpoints.cs's
+  // /refresh-covers doc comment). No confirmation popup needed either, for the same reason.
+  const refreshCoversMutation = useMutation({
+    mutationFn: refreshNawishtaCovers,
+    onSuccess: refreshActiveLibrary,
     onError: (err) => setActionError(err instanceof Error ? err.message : String(err)),
   });
 
@@ -451,7 +462,8 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
                 )}
                 {entry.isActive && entry.providerType !== "local" && entry.providerType !== "nawishta" && (
                   // Nawishta has no metadata.db to push (its own server is the source of truth -
-                  // see NawishtaStorageProvider's doc comment) - "sync now" has no meaning for it.
+                  // see NawishtaStorageProvider's doc comment) - "sync now" has no meaning for it
+                  // in this form. See the refresh-covers button just below for its own variant.
                   <Tooltip label={t("librariesSettings.syncNow")}>
                     <ActionIcon
                       variant="subtle"
@@ -459,6 +471,23 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
                       loading={librarySync.isSyncing}
                       onClick={librarySync.requestSync}
                       aria-label={t("librariesSettings.syncNow")}
+                    >
+                      <IconCloudUpload size={14} />
+                    </ActionIcon>
+                  </Tooltip>
+                )}
+                {entry.isActive && entry.providerType === "nawishta" && (
+                  // Issue #115 - re-downloads every book's cover rather than pushing a metadata.db
+                  // (there isn't one) - see refreshCoversMutation/LibraryEndpoints.cs's own doc
+                  // comments for why this is a distinct action from the S3/Google Drive/OneDrive
+                  // "Sync now" above rather than a branch of it.
+                  <Tooltip label={t("librariesSettings.refreshCovers")}>
+                    <ActionIcon
+                      variant="subtle"
+                      color="gray"
+                      loading={refreshCoversMutation.isPending}
+                      onClick={() => refreshCoversMutation.mutate()}
+                      aria-label={t("librariesSettings.refreshCovers")}
                     >
                       <IconCloudUpload size={14} />
                     </ActionIcon>

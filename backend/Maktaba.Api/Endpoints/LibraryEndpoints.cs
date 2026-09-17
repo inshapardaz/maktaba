@@ -201,6 +201,33 @@ public static class LibraryEndpoints
             }
         });
 
+        // Issue #115's "Sync now" for a Nawishta library - a separate endpoint from /sync-now
+        // above rather than a branch inside it, since it's not the same operation at all: there's
+        // no metadata.db to push (Nawishta's own server is already the live source of truth for
+        // book/author/series data on every request), so the one thing actually worth refreshing on
+        // demand is the local cover cache - see NawishtaBookQueryService.RefreshCoversAsync's own
+        // doc comment for why a cover can silently go stale otherwise. Deliberately doesn't share
+        // /sync-now's ISyncStatusTracker/blocking-page treatment either - that's built around
+        // "briefly closes and reopens the library" semantics (see the frontend's confirm dialog
+        // copy), which doesn't apply here.
+        group.MapPost("/refresh-covers", async (
+            ILibraryService libraryService, NawishtaSessionResolver nawishtaResolver, CancellationToken ct) =>
+        {
+            if (!BookEndpoints.IsNawishtaLibrary(libraryService))
+            {
+                return Results.BadRequest(new { error = "Not supported for this library." });
+            }
+
+            if (!nawishtaResolver.TryResolve(out var n))
+            {
+                return Results.NotFound();
+            }
+
+            var bookQuery = new NawishtaBookQueryService(n.Api, n.RemoteLibraryId, n.Shadow, n.CacheManager, n.LibraryId);
+            await bookQuery.RefreshCoversAsync(ct);
+            return Results.NoContent();
+        });
+
         // Migration wizard (Cloud: Phase 3) - copies the active library to a new provider in the
         // background; the frontend polls /migrate/status the same way it polls /rescan/progress.
         // /migrate/preview backs the wizard's "Review" step - a plain listing, no downloads.
