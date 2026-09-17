@@ -52,6 +52,19 @@ public class NawishtaBookState
     // Percentage through whichever content file was last read - same single-number simplification
     // BookFile-less callers elsewhere in this app already make (see ContinueReadingEntry.Percentage).
     public double Percentage { get; set; }
+
+    // The rest of Maktaba.Core.Entities.ReadingProgress's fields (see that entity's own doc
+    // comment) - a Nawishta-backed library has no metadata.db to hold a real ReadingProgress row,
+    // so these live here instead, local-only (never pushed to Nawishta's own server - see
+    // ReaderDataEndpoints.cs's Nawishta branch). LastReadAt above doubles as this data's
+    // "UpdatedAt"/"has progress ever been saved" signal, same as ReadingProgress.UpdatedAt.
+    public int CurrentChapter { get; set; }
+    public int TotalChapters { get; set; }
+    public int CurrentPage { get; set; }
+    public int TotalPages { get; set; }
+    public string? ChapterTitle { get; set; }
+    public string? ChapterId { get; set; }
+    public double? Position { get; set; }
 }
 
 /// <summary>A user-created collection, scoped to this one Nawishta library - same "create is
@@ -62,6 +75,13 @@ public class NawishtaShadowCollection
 {
     public int Id { get; set; }
     public string Name { get; set; } = string.Empty;
+
+    // Mirrors Maktaba.Core.Entities.Collection.ParentCollectionId (same nesting feature, same
+    // "null for top-level, deleting a parent promotes its children" semantics) - no FK/nav property
+    // here since the shadow DB doesn't model relationships the way metadata.db does; ancestor-chain
+    // walks and the "promote children on delete" step are done in application code instead (see
+    // CollectionEndpoints.cs's Nawishta branches).
+    public int? ParentCollectionId { get; set; }
 }
 
 public class NawishtaBookCollectionLink

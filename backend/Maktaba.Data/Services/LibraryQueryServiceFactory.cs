@@ -12,12 +12,15 @@ namespace Maktaba.Data.Services;
 /// BookEndpoints.cs's write-path handlers, so both see the same in-flight raw API client/shadow
 /// DbContext within one request).
 ///
-/// Doesn't proactively renew a near-expired Nawishta access token (its own TTL is a short 10
-/// minutes) - a stale token instead surfaces as a 401 NawishtaApiException from whatever request
-/// actually uses it, the same "credential went stale, frontend re-supplies it" pattern S3/Google
-/// Drive/OneDrive already use via ICloudCredentialCache (see StorageProviderFactory.Current's own
-/// "credentials haven't been supplied" exception) - issue #116 (Nawishta unreachable/token-expiry
-/// UX) is expected to build the actual retry-with-refresh flow on top of that.</summary>
+/// A near-expired Nawishta access token is proactively renewed by NawishtaRawApiClient itself
+/// (EnsureFreshTokenAsync, tracked-expiry-based, called at the start of every request-issuing
+/// method) before this factory's own resolved service ever makes a call - not something this class
+/// needs to think about. What this class's resolution doesn't itself validate is whether the
+/// *credential* still works at all (a revoked refresh token, an unreachable server) - that surfaces
+/// as a thrown NawishtaApiException/HttpRequestException from whatever request first hits it, same
+/// "credential went stale, frontend re-supplies it" shape S3/Google Drive/OneDrive already use via
+/// ICloudCredentialCache. Issue #116 (Nawishta unreachable/token-expiry UX) gave the frontend a way
+/// to catch that eagerly and word it clearly - see LibraryEndpoints.cs's GET /verify-connection.</summary>
 public class LibraryQueryServiceFactory(MaktabaDbContext db, NawishtaSessionResolver nawishta) : ILibraryQueryServiceFactory
 {
     public IBookQueryService Books =>

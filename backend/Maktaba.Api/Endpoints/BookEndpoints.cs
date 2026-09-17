@@ -15,7 +15,9 @@ public static class BookEndpoints
     // IBookEditService/IBookRemovalService (see NawishtaBookMutationService's own doc comment for
     // why it isn't one) - "nawishta" is the only provider type any of these three branches ever
     // take, every other provider keeps going through the existing EF-backed services unchanged.
-    private static bool IsNawishtaLibrary(ILibraryService libraryService) =>
+    // Internal (not private) so ReaderDataEndpoints.cs can reuse the same check for
+    // bookmarks/notes/progress/reading-activity rather than duplicating it.
+    internal static bool IsNawishtaLibrary(ILibraryService libraryService) =>
         libraryService.Libraries.FirstOrDefault(l => l.Id == libraryService.CurrentLibraryId)?.ProviderType == "nawishta";
 
     // Shared by every endpoint below that builds a BookSummaryDto/ContinueReadingBookDto -

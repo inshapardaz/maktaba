@@ -266,6 +266,47 @@ public class NawishtaRawApiClient(HttpClient httpClient, string serverUrl)
         return string.IsNullOrWhiteSpace(text) ? null : JsonSerializer.Deserialize<BookContentView>(text, JsonOptions);
     }
 
+    // Bookmarks/notes (inshapardaz/api#53/#54) - unlike most of this client's other methods, these
+    // endpoints *do* have a typed response schema on Nawishta's own swagger (see BookmarkView/
+    // NoteView's own generated definitions), since the [Produces] attribute was added deliberately
+    // when they were built - but still routed through this hand-written client rather than the
+    // generated UserClient, for the same reason every other call here is: one place with
+    // EnsureFreshTokenAsync's proactive token refresh, rather than every caller needing its own.
+    public async Task<List<BookmarkView>> GetBookmarksAsync(int libraryId, int bookId, CancellationToken ct) =>
+        await GetJsonAsync<List<BookmarkView>>($"{_baseUrl}/libraries/{libraryId}/my/books/{bookId}/bookmarks", ct) ?? [];
+
+    // Nawishta's own PUT here 404s (a clean, non-throwing response server-side) if the book itself
+    // doesn't exist - ThrowIfErrorAsync would otherwise turn that into a thrown NawishtaApiException
+    // the same as any other failure, so the caller distinguishes "not found" from a real error via
+    // NawishtaApiException.StatusCode rather than this method swallowing it into a null return
+    // (unlike GetJsonAsync, which already treats 404 as a normal "nothing there" case for a read).
+    public Task<BookmarkView?> UpsertBookmarkAsync(int libraryId, int bookId, string clientId, BookmarkView body, CancellationToken ct) =>
+        PutJsonAsync<BookmarkView>(
+            $"{_baseUrl}/libraries/{libraryId}/my/books/{bookId}/bookmarks/{Uri.EscapeDataString(clientId)}", body, ct);
+
+    public async Task DeleteBookmarkAsync(int libraryId, int bookId, string clientId, CancellationToken ct)
+    {
+        await EnsureFreshTokenAsync(ct);
+        using var response = await httpClient.DeleteAsync(
+            $"{_baseUrl}/libraries/{libraryId}/my/books/{bookId}/bookmarks/{Uri.EscapeDataString(clientId)}", ct);
+        await ThrowIfErrorAsync(response, ct);
+    }
+
+    public async Task<List<NoteView>> GetNotesAsync(int libraryId, int bookId, CancellationToken ct) =>
+        await GetJsonAsync<List<NoteView>>($"{_baseUrl}/libraries/{libraryId}/my/books/{bookId}/notes", ct) ?? [];
+
+    public Task<NoteView?> UpsertNoteAsync(int libraryId, int bookId, string clientId, NoteView body, CancellationToken ct) =>
+        PutJsonAsync<NoteView>(
+            $"{_baseUrl}/libraries/{libraryId}/my/books/{bookId}/notes/{Uri.EscapeDataString(clientId)}", body, ct);
+
+    public async Task DeleteNoteAsync(int libraryId, int bookId, string clientId, CancellationToken ct)
+    {
+        await EnsureFreshTokenAsync(ct);
+        using var response = await httpClient.DeleteAsync(
+            $"{_baseUrl}/libraries/{libraryId}/my/books/{bookId}/notes/{Uri.EscapeDataString(clientId)}", ct);
+        await ThrowIfErrorAsync(response, ct);
+    }
+
     private async Task<T?> GetJsonAsync<T>(string url, CancellationToken ct)
     {
         using var response = await GetWithRefreshAsync(url, HttpCompletionOption.ResponseContentRead, ct);

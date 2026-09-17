@@ -1,5 +1,7 @@
 using Maktaba.Core.Services;
 using Maktaba.Nawishta;
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
 
 namespace Maktaba.Data.Services;
 
@@ -48,11 +50,34 @@ public class NawishtaSessionResolver(
             nawishtaAuth, credentials, entry.Id, options.ServerUrl, options.RefreshToken);
 
         var shadow = new NawishtaShadowDbContext(NawishtaShadowDbContext.GetDbPath(entry.Id));
-        shadow.Database.EnsureCreated();
+        EnsureCurrentShadowSchema(shadow);
 
         var value = (api, options.RemoteLibraryId, shadow, cacheManager, entry.Id);
         _cached = value;
         result = value;
         return true;
+    }
+
+    // Same "no real EF Core migrations, EnsureCreated only creates a *missing* file" gap
+    // LibraryService.EnsureCurrentSchemaAsync already works around for metadata.db (see that
+    // method's own doc comment) - without this, a NawishtaShadow/{libraryId}.db left over from
+    // before the read-progress fields were added to NawishtaBookState would throw "no such column"
+    // on every read/write of them instead of transparently rebuilding. The shadow DB is documented
+    // as local-only, rebuildable state (NawishtaShadowDbContext's own doc comment), so wiping and
+    // recreating it on a detected mismatch is the intended recovery, same trade-off as metadata.db.
+    private static void EnsureCurrentShadowSchema(NawishtaShadowDbContext shadow)
+    {
+        shadow.Database.EnsureCreated();
+
+        try
+        {
+            shadow.BookStates.Select(s => new { s.ChapterId, s.Position }).Take(1).ToList();
+            shadow.Collections.Select(c => c.ParentCollectionId).Take(1).ToList();
+        }
+        catch (SqliteException)
+        {
+            shadow.Database.EnsureDeleted();
+            shadow.Database.EnsureCreated();
+        }
     }
 }

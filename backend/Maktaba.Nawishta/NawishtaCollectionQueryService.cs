@@ -21,7 +21,7 @@ public class NawishtaCollectionQueryService(NawishtaShadowDbContext shadow) : IC
         var countById = counts.ToDictionary(c => c.CollectionId, c => c.Count);
 
         return collections
-            .Select(c => new EntityGroupCount(c.Id, c.Name, countById.GetValueOrDefault(c.Id)))
+            .Select(c => new EntityGroupCount(c.Id, c.Name, countById.GetValueOrDefault(c.Id), c.ParentCollectionId))
             .OrderBy(g => g.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
