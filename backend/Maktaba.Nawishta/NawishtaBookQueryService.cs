@@ -135,12 +135,16 @@ public class NawishtaBookQueryService(
             return;
         }
 
-        var relativePath = $"{bookId}/cover.jpg";
-        if (cacheManager.Exists(libraryId, relativePath))
+        if (cacheManager.Exists(libraryId, $"{bookId}/cover.jpg"))
         {
             return;
         }
 
+        await DownloadAndCacheCoverAsync(bookId, ct);
+    }
+
+    private async Task DownloadAndCacheCoverAsync(int bookId, CancellationToken ct)
+    {
         try
         {
             var cover = await api.DownloadBookCoverAsync(remoteLibraryId, bookId, ct);
@@ -150,11 +154,51 @@ public class NawishtaBookQueryService(
             }
 
             using var stream = new MemoryStream(cover.Value.Bytes);
-            await cacheManager.WriteAsync(libraryId, relativePath, stream, ct);
+            await cacheManager.WriteAsync(libraryId, $"{bookId}/cover.jpg", stream, ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // Swallowed on purpose - see this method's own doc comment.
+            // Swallowed on purpose - see EnsureCoverCachedAsync/RefreshCoversAsync's own doc
+            // comments for why a failed fetch degrades rather than propagating.
+        }
+    }
+
+    /// <summary>Issue #115's "Sync now" for a Nawishta library - re-downloads every book's cover
+    /// unconditionally, unlike EnsureCoverCachedAsync above (which only fills in a *missing* one).
+    /// A cover changed on the Nawishta server after this device already cached the old one would
+    /// otherwise never be noticed: WriteAsync overwrites happily, but nothing re-triggers it, since
+    /// cacheManager.Exists is a presence-only check that can't tell "stale" from "still fine".
+    /// CoverLocator.GetVersion (BookEndpoints.cs) reads the cached file's own last-write time, so
+    /// overwriting it here is what actually busts the frontend's cache-aware &lt;img&gt; src - no
+    /// separate "cover version" bookkeeping needed. Walks every page rather than assuming the whole
+    /// library fits in one call, same as GetAuthorsAsync's own ?pageSize convention elsewhere.</summary>
+    public async Task RefreshCoversAsync(CancellationToken ct = default)
+    {
+        const int pageSize = 100;
+        var page = 1;
+        while (true)
+        {
+            var result = await api.GetBooksAsync(remoteLibraryId, null, page, pageSize, null, null, null, ct);
+            var books = result.Data ?? [];
+            if (books.Count == 0)
+            {
+                break;
+            }
+
+            foreach (var view in books)
+            {
+                if (view.Id is { } bookId && view.Links?.Any(l => l.Rel == "image") == true)
+                {
+                    await DownloadAndCacheCoverAsync(bookId, ct);
+                }
+            }
+
+            if (books.Count < pageSize)
+            {
+                break;
+            }
+
+            page++;
         }
     }
 

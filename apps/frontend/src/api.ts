@@ -453,6 +453,14 @@ export function syncNow(): Promise<void> {
   return request<void>("/api/libraries/sync-now", { method: "POST" });
 }
 
+// Issue #115's "Sync now" for a Nawishta-backed library - re-downloads every book's cover, since
+// that's the one thing actually worth refreshing on demand (book/author/series data is already
+// read live from Nawishta on every request, unlike syncNow's "push metadata.db" which has no
+// Nawishta equivalent at all - see LibraryEndpoints.cs's own doc comment on this endpoint).
+export function refreshNawishtaCovers(): Promise<void> {
+  return request<void>("/api/libraries/refresh-covers", { method: "POST" });
+}
+
 export interface LibraryConnectionStatus {
   connected: boolean;
   // Only populated when connected is false - "unreachable" (network problem) vs "auth" (the
