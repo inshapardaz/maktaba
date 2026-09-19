@@ -309,6 +309,30 @@ public class NawishtaRawApiClient(HttpClient httpClient, string serverUrl)
         return string.IsNullOrWhiteSpace(text) ? null : JsonSerializer.Deserialize<BookContentView>(text, JsonOptions);
     }
 
+    /// <summary>Issue #142 - best-effort push of this device's reading progress to Nawishta's own
+    /// server (POST .../my/books/{bookId}, ReadProgressView{progressType, progressId, progressValue}),
+    /// confirmed against the api repo's own domain model/controller (not just its swagger surface):
+    /// <c>progressType</c> is a fixed 4-value enum sent as its exact C# name ("Unknown"/"Chapter"/
+    /// "File"/"Pages" - anything else silently coerces to "Unknown" server-side), and
+    /// <c>progressValue</c> is a 0-100 percentage. Callers always pass "Pages" here - Maktaba/qari's
+    /// own resume-position model (NawishtaBookState's ChapterId/Position - see that type's own doc
+    /// comment) has no honest mapping onto Nawishta's numeric ProgressId at all for an EPUB (ChapterId
+    /// is a non-numeric spine id string, not a long), so only the one piece that genuinely round-trips
+    /// cleanly - the overall percentage - is ever sent; ProgressId is 0 unless CurrentPage is a real
+    /// page number (meaningful for PDF, not EPUB).
+    ///
+    /// Deliberately NOT the corresponding read path: confirmed live-code-audit against the api repo
+    /// that reading it back (GET .../books/{bookId} or GET .../my/books) is unreliable - its SQL
+    /// Server backend never populates ReadProgress on either endpoint at all, and its MySQL backend
+    /// populates it via a RecentBooks join with no AccountId filter, so it isn't guaranteed to even be
+    /// the calling user's own progress. Filed upstream as inshapardaz/api#61 rather than building a
+    /// read path against a contract confirmed broken. Maktaba's own NawishtaBookState (shadow db)
+    /// stays the sole read-side source of truth - see ReaderDataEndpoints.cs's GET /progress.</summary>
+    public Task<ReadProgressView?> UpdateUserBookProgressAsync(int libraryId, int bookId, string progressType, long progressId, double progressValue, CancellationToken ct) =>
+        PostJsonAsync<ReadProgressView>(
+            $"{_baseUrl}/libraries/{libraryId}/my/books/{bookId}",
+            new { progressType, progressId, progressValue }, ct);
+
     // Bookmarks/notes (inshapardaz/api#53/#54) - unlike most of this client's other methods, these
     // endpoints *do* have a typed response schema on Nawishta's own swagger (see BookmarkView/
     // NoteView's own generated definitions), since the [Produces] attribute was added deliberately
