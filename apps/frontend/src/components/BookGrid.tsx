@@ -169,7 +169,7 @@ function BookCard({ book, index, selected, selectedIds, onSelect, onEdit, onMerg
               borderRadius: "var(--mantine-radius-sm)",
             }}
           >
-            {readableFormats.length > 1 ? (
+            {readableFormats.length > 1 && (
               <Menu position="top" withinPortal>
                 <ActionIcon.Group>
                   <Tooltip label={t("bookGrid.read")}>
@@ -206,7 +206,8 @@ function BookCard({ book, index, selected, selectedIds, onSelect, onEdit, onMerg
                   ))}
                 </Menu.Dropdown>
               </Menu>
-            ) : (
+            )}
+            {readableFormats.length === 1 && (
               <Tooltip label={t("bookGrid.read")}>
                 <ActionIcon
                   size="lg"

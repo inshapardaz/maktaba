@@ -372,7 +372,7 @@ export function BookRow({ book, index, selected, selectedIds, onSelect, onEdit, 
             now live together on this permanently-visible second row, with the duplicate-files
             warning moved here too so it sits right next to the format badges it's about. */}
         <Group gap={4} wrap="nowrap" style={{ flexShrink: 0 }}>
-          {readableFormats.length > 1 ? (
+          {readableFormats.length > 1 && (
             <Menu position="bottom-end" withinPortal>
               <ActionIcon.Group>
                 <Tooltip label={t("bookGrid.read")}>
@@ -410,7 +410,8 @@ export function BookRow({ book, index, selected, selectedIds, onSelect, onEdit, 
                 ))}
               </Menu.Dropdown>
             </Menu>
-          ) : (
+          )}
+          {readableFormats.length === 1 && (
             <Tooltip label={t("bookGrid.read")}>
               <ActionIcon
                 size="sm"
