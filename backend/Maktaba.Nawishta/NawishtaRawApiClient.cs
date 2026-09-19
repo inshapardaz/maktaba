@@ -173,9 +173,9 @@ public class NawishtaRawApiClient(HttpClient httpClient, string serverUrl)
         await ThrowIfErrorAsync(response, ct);
     }
 
-    /// <summary>Downloads one of a book's content files (BookView.Contents[i].Id) as raw bytes -
-    /// see NawishtaBookQueryService's doc comment for why a "content" maps 1:1 to a Maktaba
-    /// BookFile. Returns (bytes, mimeType, fileName).
+    /// <summary>Resolves one of a book's content files (BookView.Contents[i].Id) to its actual
+    /// download response - see NawishtaBookQueryService's doc comment for why a "content" maps 1:1
+    /// to a Maktaba BookFile.
     ///
     /// GET .../contents/{contentId} itself (confirmed live, against a real account) doesn't return
     /// the file's bytes at all - it returns a BookContentView-shaped JSON description of the
@@ -184,21 +184,23 @@ public class NawishtaRawApiClient(HttpClient httpClient, string serverUrl)
     /// (<c>/libraries/{libraryId}/files/{fileId}</c> - a different id than contentId entirely) is
     /// what actually serves the bytes, confirmed by following it directly. This method always takes
     /// that two-step route (fetch the description, follow its "download" link) rather than gambling
-    /// on Accept-header content negotiation against the first URL.</summary>
-    public async Task<(byte[] Bytes, string? MimeType, string? FileName)> DownloadContentAsync(
-        int libraryId, int bookId, long contentId, CancellationToken ct)
+    /// on Accept-header content negotiation against the first URL.
+    ///
+    /// Returns the live HttpResponseMessage (caller disposes) rather than buffering the body into a
+    /// byte[] itself - issue #138: the caller (NawishtaStorageProvider) streams straight into
+    /// ICloudCacheManager.WriteAsync so its own copy loop can report real download progress, which
+    /// a fully-buffered ReadAsByteArrayAsync here would have already finished (silently) by the time
+    /// this method returned.</summary>
+    public async Task<HttpResponseMessage> DownloadContentResponseAsync(int libraryId, int bookId, long contentId, CancellationToken ct)
     {
         var description = await GetJsonAsync<NawishtaContentDescription>(
             $"{_baseUrl}/libraries/{libraryId}/books/{bookId}/contents/{contentId}", ct);
         var downloadUrl = description?.Links?.FirstOrDefault(l => l.Rel == "download")?.Href
             ?? throw new InvalidOperationException($"Nawishta content {contentId} has no \"download\" link.");
 
-        using var response = await GetWithRefreshAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead, ct);
+        var response = await GetWithRefreshAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead, ct);
         await ThrowIfErrorAsync(response, ct);
-        var bytes = await response.Content.ReadAsByteArrayAsync(ct);
-        var mimeType = response.Content.Headers.ContentType?.MediaType ?? description?.MimeType;
-        var fileName = response.Content.Headers.ContentDisposition?.FileName ?? description?.FileName;
-        return (bytes, mimeType, fileName);
+        return response;
     }
 
     /// <summary>The book's own "image" (cover) link, same {libraries}/files/{fileId}-via-

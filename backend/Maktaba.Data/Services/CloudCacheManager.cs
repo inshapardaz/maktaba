@@ -3,7 +3,7 @@ using Maktaba.Core.Services;
 namespace Maktaba.Data.Services;
 
 /// <inheritdoc cref="ICloudCacheManager"/>
-public class CloudCacheManager : ICloudCacheManager
+public class CloudCacheManager(IDownloadProgressTracker progressTracker) : ICloudCacheManager
 {
     public string GetCacheRoot(string libraryId)
     {
@@ -20,7 +20,10 @@ public class CloudCacheManager : ICloudCacheManager
         return File.Exists(path) || Directory.Exists(path);
     }
 
-    public async Task WriteAsync(string libraryId, string relativePath, Stream content, CancellationToken ct = default)
+    public Task WriteAsync(string libraryId, string relativePath, Stream content, CancellationToken ct = default) =>
+        WriteAsync(libraryId, relativePath, content, totalBytes: null, ct);
+
+    public async Task WriteAsync(string libraryId, string relativePath, Stream content, long? totalBytes, CancellationToken ct = default)
     {
         var path = GetLocalPath(libraryId, relativePath);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
@@ -35,17 +38,33 @@ public class CloudCacheManager : ICloudCacheManager
         // sharing is stricter than POSIX), so it gets a short retry - this is exactly what surfaced
         // as an unhandled 500 on library reconnect: the very first pull of an existing metadata.db.
         var tempPath = path + $".tmp-{Guid.NewGuid():N}";
+        // Issue #138 - "{libraryId}:{relativePath}" matches exactly what BookEndpoints.cs's
+        // GET /{id}/download-progress polls with (it resolves the same BookFile.FilePath this
+        // method is called with for the book/format the reader asked for).
+        var progressKey = $"{libraryId}:{relativePath}";
         try
         {
             await using (var fileStream = File.Create(tempPath))
             {
-                await content.CopyToAsync(fileStream, ct);
+                // A manual buffered copy loop (rather than content.CopyToAsync) purely so each
+                // chunk read can be reported - functionally identical otherwise, same default
+                // 81920-byte buffer size Stream.CopyToAsync itself uses internally.
+                var buffer = new byte[81920];
+                long bytesDownloaded = 0;
+                int bytesRead;
+                while ((bytesRead = await content.ReadAsync(buffer, ct)) > 0)
+                {
+                    await fileStream.WriteAsync(buffer.AsMemory(0, bytesRead), ct);
+                    bytesDownloaded += bytesRead;
+                    progressTracker.Report(progressKey, bytesDownloaded, totalBytes);
+                }
             }
 
             await MoveWithRetryAsync(tempPath, path, ct);
         }
         finally
         {
+            progressTracker.Clear(progressKey);
             if (File.Exists(tempPath))
             {
                 File.Delete(tempPath);

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Alert, Box, Button, Center, Loader, useComputedColorScheme } from "@mantine/core";
+import { Alert, Box, Button, Center, Loader, Progress, Stack, Text, useComputedColorScheme } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconCircleCheck } from "../icons";
 import {
@@ -16,6 +16,7 @@ import {
   getBook,
   getBookFile,
   getBookText,
+  getDownloadProgress,
   getPeriodical,
   listBookmarks,
   saveBookmark,
@@ -193,6 +194,24 @@ export function ReaderOverlay({ bookId, format, onClose, embedded }: ReaderOverl
   });
 
   const fileQuery = isTextFormat ? textFileQuery : binaryFileQuery;
+
+  // Issue #138 - polls the same key ICloudCacheManager.WriteAsync reports into while fileQuery
+  // above is still downloading a not-yet-cached cloud file (a no-op, near-instant fetch for a
+  // local library's file, which never populates a tracker entry - see api.ts's doc comment on
+  // getDownloadProgress). 400ms matches RescanContext.tsx's own polling interval for the same
+  // kind of "in-progress backend operation" UX. Stops as soon as fileQuery settles either way.
+  const downloadProgressQuery = useQuery({
+    queryKey: ["downloadProgress", bookId, format],
+    queryFn: () => getDownloadProgress(bookId, format),
+    enabled: fileQuery.isLoading,
+    refetchInterval: fileQuery.isLoading ? 400 : false,
+    staleTime: 0,
+  });
+  const downloadProgress = fileQuery.isLoading ? downloadProgressQuery.data : null;
+  const downloadPercent =
+    downloadProgress?.totalBytes && downloadProgress.totalBytes > 0
+      ? Math.min(100, Math.round((downloadProgress.bytesDownloaded / downloadProgress.totalBytes) * 100))
+      : null;
 
   // Two independent uses: picking a PDF's reading direction (see `direction` below - EPUBs already
   // carry their own page-progression-direction metadata that qari's "auto" detection reads
@@ -438,7 +457,19 @@ export function ReaderOverlay({ bookId, format, onClose, embedded }: ReaderOverl
     >
       {fileQuery.isLoading && (
         <Center h="100%">
-          <Loader />
+          {downloadProgress ? (
+            <Stack align="center" gap="xs" w={280}>
+              <Loader size="sm" />
+              <Text size="sm" c="dimmed">
+                {downloadPercent !== null
+                  ? t("reader.downloadingWithPercent", { percent: downloadPercent })
+                  : t("reader.downloading")}
+              </Text>
+              <Progress value={downloadPercent ?? 100} animated={downloadPercent === null} w="100%" />
+            </Stack>
+          ) : (
+            <Loader />
+          )}
         </Center>
       )}
 

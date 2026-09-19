@@ -29,6 +29,16 @@ public interface ICloudCacheManager
     /// <summary>Writes (or overwrites) a cached file's contents, creating its parent folder(s) first.</summary>
     Task WriteAsync(string libraryId, string relativePath, Stream content, CancellationToken ct = default);
 
+    /// <summary>Same as the overload above, but also reports download progress as it copies (issue
+    /// #138 - via IDownloadProgressTracker, keyed "{libraryId}:{relativePath}"). A separate overload
+    /// rather than an extra optional parameter on the one above, since CancellationToken has to stay
+    /// the last parameter for every existing positional `ct` call site to keep compiling.
+    /// totalBytes is the source's own reported size if the caller has one cheaply available (an HTTP
+    /// response's Content-Length, S3's own ContentLength, ...), null when it doesn't (e.g. the Graph
+    /// SDK's plain Stream for OneDrive) - progress is still reported either way, just without a
+    /// percentage to go with the bytes-downloaded-so-far count when it's null.</summary>
+    Task WriteAsync(string libraryId, string relativePath, Stream content, long? totalBytes, CancellationToken ct = default);
+
     void Delete(string libraryId, string relativePath, bool recursive = false);
 
     void Move(string libraryId, string fromRelativePath, string toRelativePath);

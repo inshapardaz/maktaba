@@ -875,6 +875,19 @@ export async function getBookText(id: string, format: ReadableFormat): Promise<s
   return res.text();
 }
 
+// Issue #138 - polled from ReaderOverlay.tsx while getBookFile/getBookText above is still in
+// flight for a not-yet-cached cloud file, so the reader can show real download progress. null
+// means "nothing in flight for this key" (not yet started, already finished, or a local library
+// that never needed downloading) - see BookEndpoints.cs's GET /{id}/download-progress doc comment.
+export interface DownloadProgress {
+  bytesDownloaded: number;
+  totalBytes: number | null;
+}
+
+export function getDownloadProgress(id: string, format: ReadableFormat): Promise<DownloadProgress | null> {
+  return request<DownloadProgress | null>(`/api/books/${id}/download-progress?format=${format}`);
+}
+
 export interface BookmarkInfo {
   id: string;
   chapterId: string;

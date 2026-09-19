@@ -188,7 +188,7 @@ public class GoogleDriveStorageProvider : IStorageProvider, IDisposable
         using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
         response.EnsureSuccessStatusCode();
         await using var stream = await response.Content.ReadAsStreamAsync(ct);
-        await _cache.WriteAsync(_libraryId, relativePath, stream, ct);
+        await _cache.WriteAsync(_libraryId, relativePath, stream, response.Content.Headers.ContentLength, ct);
     }
 
     public async Task NotifyWrittenAsync(string relativePath, CancellationToken ct = default)
