@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { notifications } from "@mantine/notifications";
-import { ActionIcon, Badge, Box, Button, Group, NavLink, Stack, Text, TextInput } from "@mantine/core";
+import { ActionIcon, Badge, Box, Button, Center, Group, Loader, NavLink, Stack, Text, TextInput } from "@mantine/core";
 import { IconSearch, IconTrash } from "../icons";
 import { ApiError, createCollection, deleteCollection, listCollections, moveCollection } from "../api";
 import { isCollectionDrag, readCollectionDragId, setCollectionDragData } from "../collectionDrag";
@@ -109,6 +109,12 @@ export function CollectionsView({ onSelect, onBack }: CollectionsViewProps) {
           onChange={(e) => setSearch(e.currentTarget.value)}
         />
 
+        {collectionsQuery.isLoading && (
+          <Center py="xl">
+            <Loader size="sm" />
+          </Center>
+        )}
+
         <Stack
           gap={2}
           onDragOver={(event) => {
@@ -123,7 +129,7 @@ export function CollectionsView({ onSelect, onBack }: CollectionsViewProps) {
             if (draggedId) moveMutation.mutate({ id: draggedId, parentId: null });
           }}
         >
-          {nodes.length === 0 && (
+          {!collectionsQuery.isLoading && nodes.length === 0 && (
             <Text size="sm" c="dimmed">
               {t("collectionsView.empty")}
             </Text>

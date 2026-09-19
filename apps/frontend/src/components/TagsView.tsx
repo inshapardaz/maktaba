@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ActionIcon, Badge, Box, Group, NavLink, Stack, Text, TextInput, Tooltip } from "@mantine/core";
+import { ActionIcon, Badge, Box, Center, Group, Loader, NavLink, Stack, Text, TextInput, Tooltip } from "@mantine/core";
 import { IconCheck, IconPencil, IconSearch, IconX } from "../icons";
 import { listTags, renameTag } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
@@ -78,8 +78,14 @@ export function TagsView({ onSelect, onBack }: TagsViewProps) {
           </Text>
         )}
 
+        {tagsQuery.isLoading && (
+          <Center py="xl">
+            <Loader size="sm" />
+          </Center>
+        )}
+
         <Stack gap={2}>
-          {filtered.length === 0 && (
+          {!tagsQuery.isLoading && filtered.length === 0 && (
             <Text size="sm" c="dimmed">
               {t("tagsView.empty")}
             </Text>

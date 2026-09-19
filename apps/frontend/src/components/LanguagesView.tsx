@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Badge, Box, NavLink, Stack, Text, TextInput } from "@mantine/core";
+import { Badge, Box, Center, Loader, NavLink, Stack, Text, TextInput } from "@mantine/core";
 import { IconSearch } from "../icons";
 import { listLanguageGroups } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
@@ -44,8 +44,14 @@ export function LanguagesView({ onSelect, onBack }: LanguagesViewProps) {
           onChange={(e) => setSearch(e.currentTarget.value)}
         />
 
+        {languagesQuery.isLoading && (
+          <Center py="xl">
+            <Loader size="sm" />
+          </Center>
+        )}
+
         <Stack gap={2}>
-          {filtered.length === 0 && (
+          {!languagesQuery.isLoading && filtered.length === 0 && (
             <Text size="sm" c="dimmed">
               {t("languagesView.empty")}
             </Text>

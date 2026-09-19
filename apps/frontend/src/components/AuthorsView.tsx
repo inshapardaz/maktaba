@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ActionIcon, Avatar, Badge, Box, FileButton, Group, NavLink, Stack, Text, TextInput, Tooltip } from "@mantine/core";
+import { ActionIcon, Avatar, Badge, Box, Center, FileButton, Group, Loader, NavLink, Stack, Text, TextInput, Tooltip } from "@mantine/core";
 import { IconCheck, IconPencil, IconSearch, IconTrash, IconUser, IconX } from "../icons";
 import { authorImageUrl, deleteAuthorImage, listAuthors, renameAuthor, uploadAuthorImage, type BrowseGroup } from "../api";
 import { useShouldAttemptCloudAsset } from "../coverAvailability";
@@ -128,8 +128,14 @@ export function AuthorsView({ onSelect, onBack }: AuthorsViewProps) {
           </Text>
         )}
 
+        {authorsQuery.isLoading && (
+          <Center py="xl">
+            <Loader size="sm" />
+          </Center>
+        )}
+
         <Stack gap={2}>
-          {filtered.length === 0 && (
+          {!authorsQuery.isLoading && filtered.length === 0 && (
             <Text size="sm" c="dimmed">
               {t("authorsView.empty")}
             </Text>

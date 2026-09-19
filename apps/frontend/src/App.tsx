@@ -982,29 +982,43 @@ function App() {
               style={darkChromeStyle}
             >
               <DarkChromeScope active={useDarkChrome} theme={whiteTheme} rootRef={navbarRef}>
-                <Sidebar
-                  activeFilter={groupFilter}
-                  onSelect={handleSelectFilter}
-                  width={sidebarWidth}
-                  onWidthChange={setSidebarWidth}
-                  onOpenAuthors={() => setMainView("authors")}
-                  onOpenCollections={() => setMainView("collections")}
-                  onOpenTags={() => setMainView("tags")}
-                  onOpenSeries={() => setMainView("series")}
-                  onOpenPeriodicals={() => {
-                    setMainView("periodicals");
-                    setSelectedPeriodicalId(null);
-                    setGroupFilter(null);
-                  }}
-                  onOpenPublishers={() => setMainView("publishers")}
-                  onOpenLanguages={() => setMainView("languages")}
-                  onOpenSettings={(tab) => {
-                    setSettingsTab(tab);
-                    setSettingsOpen(true);
-                  }}
-                  onLibraryChanged={handleLibraryChanged}
-                  onDropBooks={handleDropBooksOnGroup}
-                />
+                {/* Issue #139 follow-up: the Navbar itself was only ever gated on showShellChrome,
+                    not hasLibrary - so during a library switch/cloud sync the previous library's
+                    Sidebar (with its data already reset/invalidated) stayed mounted right next to
+                    the full-page "Switching library…"/"Syncing…" overlay in AppShell.Main, instead
+                    of that overlay covering the whole loading transition. Swapping in a plain
+                    centered Loader here (rather than unmounting AppShell.Navbar entirely) keeps the
+                    sidebar's width/geometry stable, so nothing jumps once the real Sidebar comes
+                    back once hasLibrary is true again. */}
+                {hasLibrary ? (
+                  <Sidebar
+                    activeFilter={groupFilter}
+                    onSelect={handleSelectFilter}
+                    width={sidebarWidth}
+                    onWidthChange={setSidebarWidth}
+                    onOpenAuthors={() => setMainView("authors")}
+                    onOpenCollections={() => setMainView("collections")}
+                    onOpenTags={() => setMainView("tags")}
+                    onOpenSeries={() => setMainView("series")}
+                    onOpenPeriodicals={() => {
+                      setMainView("periodicals");
+                      setSelectedPeriodicalId(null);
+                      setGroupFilter(null);
+                    }}
+                    onOpenPublishers={() => setMainView("publishers")}
+                    onOpenLanguages={() => setMainView("languages")}
+                    onOpenSettings={(tab) => {
+                      setSettingsTab(tab);
+                      setSettingsOpen(true);
+                    }}
+                    onLibraryChanged={handleLibraryChanged}
+                    onDropBooks={handleDropBooksOnGroup}
+                  />
+                ) : (
+                  <Center h="100%">
+                    <Loader size="sm" />
+                  </Center>
+                )}
               </DarkChromeScope>
             </AppShell.Navbar>
           )}
