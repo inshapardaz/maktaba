@@ -114,7 +114,9 @@ public static class NawishtaEntityMapper
                 // {bookId}/{contentId}{extension}, downloaded and cached on first read.
                 FilePath = $"{book.Id}/{contentId}{extension}",
                 FileSizeBytes = 0,
-                ContentHash = string.Empty,
+                // Issue #144 - see BookContentView.Checksum's own doc comment (NawishtaGeneratedExtensions.cs)
+                // for why this field exists at all despite not being in Nawishta's own swagger spec.
+                ContentHash = content.Checksum ?? string.Empty,
             });
         }
 
