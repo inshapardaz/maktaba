@@ -198,6 +198,13 @@ public class NawishtaRawApiClient(HttpClient httpClient, string serverUrl)
     public Task<AuthorView?> CreateAuthorAsync(int libraryId, string name, CancellationToken ct) =>
         PostJsonAsync<AuthorView>($"{_baseUrl}/libraries/{libraryId}/authors", new { name, authorType = "writer" }, ct);
 
+    // Issue #145 - PUT (not a partial patch), so callers fetch the existing AuthorView via
+    // GetAuthorByIdAsync first and send the whole thing back with just Name changed, same
+    // "fetch, mutate the one field, PUT the whole representation" pattern
+    // NawishtaBookMutationService.UpdateMetadataAsync already uses for books.
+    public Task<AuthorView?> UpdateAuthorAsync(int libraryId, int authorId, AuthorView body, CancellationToken ct) =>
+        PutJsonAsync<AuthorView>($"{_baseUrl}/libraries/{libraryId}/authors/{authorId}", body, ct);
+
     public Task<SeriesView?> CreateSeriesAsync(int libraryId, string name, CancellationToken ct) =>
         PostJsonAsync<SeriesView>($"{_baseUrl}/libraries/{libraryId}/series", new { name }, ct);
 

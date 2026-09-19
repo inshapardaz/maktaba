@@ -3,6 +3,7 @@ using Maktaba.Core.Ids;
 using Maktaba.Core.Services;
 using Maktaba.Data;
 using Maktaba.Data.Services;
+using Maktaba.Nawishta;
 
 namespace Maktaba.Api.Endpoints;
 
@@ -15,7 +16,8 @@ public static class AuthorEndpoints
         // Cascades to every book by this author - see IAuthorRenameService for the on-disk folder
         // move this triggers for books where they're the primary author.
         group.MapPut("/{id}/name", async (
-            string id, RenameAuthorRequestDto request, IAuthorRenameService renameService, CancellationToken ct) =>
+            string id, RenameAuthorRequestDto request, IAuthorRenameService renameService,
+            ILibraryService libraryService, NawishtaSessionResolver nawishtaResolver, CancellationToken ct) =>
         {
             var name = request.Name?.Trim();
             if (string.IsNullOrEmpty(name))
@@ -26,6 +28,40 @@ public static class AuthorEndpoints
             if (!IdCodec.TryDecode(id, out var authorId))
             {
                 return Results.NotFound();
+            }
+
+            // Issue #145: IAuthorRenameService (below) queries MaktabaDbContext directly, which
+            // doesn't exist for a Nawishta-backed library (no metadata.db) - renamed via Nawishta's
+            // own real author-update endpoint instead, same "fetch existing, mutate the one field,
+            // PUT the whole representation back" pattern NawishtaBookMutationService.
+            // UpdateMetadataAsync already uses for books.
+            if (BookEndpoints.IsNawishtaLibrary(libraryService))
+            {
+                if (!nawishtaResolver.TryResolve(out var n))
+                {
+                    return Results.NotFound();
+                }
+
+                var existing = await n.Api.GetAuthorByIdAsync(n.RemoteLibraryId, authorId, ct);
+                if (existing is null)
+                {
+                    return Results.NotFound();
+                }
+
+                // Same collision rule as the local-library branch below - excludes the author's own
+                // row, so renaming to a different case/whitespace variant of their own existing name
+                // isn't treated as a collision.
+                var allAuthors = await n.Api.GetAuthorsAsync(n.RemoteLibraryId, ct);
+                var collision = (allAuthors.Data ?? []).Any(a =>
+                    a.Id != authorId && string.Equals(a.Name, name, StringComparison.OrdinalIgnoreCase));
+                if (collision)
+                {
+                    return Results.Conflict(new { error = $"An author named \"{name}\" already exists." });
+                }
+
+                existing.Name = name;
+                var updated = await n.Api.UpdateAuthorAsync(n.RemoteLibraryId, authorId, existing, ct) ?? existing;
+                return Results.Ok(new BrowseGroupDto(IdCodec.Encode(authorId), updated.Name ?? name, updated.BookCount ?? 0));
             }
 
             var result = await renameService.RenameAsync(authorId, name, ct);
