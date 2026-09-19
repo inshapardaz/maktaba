@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Badge, Box, NavLink, Stack, Text, TextInput } from "@mantine/core";
+import { Badge, Box, Center, Loader, NavLink, Stack, Text, TextInput } from "@mantine/core";
 import { IconSearch } from "../icons";
 import { listPublisherGroups } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
@@ -39,8 +39,14 @@ export function PublishersView({ onSelect, onBack }: PublishersViewProps) {
           onChange={(e) => setSearch(e.currentTarget.value)}
         />
 
+        {publishersQuery.isLoading && (
+          <Center py="xl">
+            <Loader size="sm" />
+          </Center>
+        )}
+
         <Stack gap={2}>
-          {filtered.length === 0 && (
+          {!publishersQuery.isLoading && filtered.length === 0 && (
             <Text size="sm" c="dimmed">
               {t("publishersView.empty")}
             </Text>

@@ -4,8 +4,10 @@ import {
   Avatar,
   Badge,
   Box,
+  Center,
   Group,
   HoverCard,
+  Loader,
   NavLink,
   Popover,
   ScrollArea,
@@ -326,6 +328,7 @@ function GroupSection({
   activeFilter,
   onSelect,
   groups,
+  isLoading,
   onDropBooks,
 }: {
   kind: GroupFilterKind;
@@ -339,12 +342,24 @@ function GroupSection({
   activeFilter: GroupFilter | null;
   onSelect: (filter: GroupFilter | null) => void;
   groups: BrowseGroup[] | undefined;
+  // Issue #139: true only while this section's own query has never resolved yet (no cached data
+  // at all, matching React Query's own isLoading semantics) - shows a small spinner instead of a
+  // silently-empty section, so "still loading" and "genuinely has zero items" don't look identical.
+  isLoading?: boolean;
   // Only passed for Authors/Series/Tags/Collections/Publishers (see Sidebar's own onDropBooks
   // prop) - issue #10's "drag a book from the grid/list onto a sidebar row to edit it" feature.
   // Undefined here (reading-status rows don't get one) just means those rows aren't drop targets.
   onDropBooks?: (target: { id: string; name: string }, bookIds: string[], shiftKey: boolean) => void;
 }) {
   const [dragOverId, setDragOverId] = useState<string | null>(null);
+
+  if (isLoading) {
+    return (
+      <Center py="sm">
+        <Loader size="xs" />
+      </Center>
+    );
+  }
 
   return (
     <Box px={4}>
@@ -456,17 +471,28 @@ function CollectionTreeSection({
   activeFilter,
   onSelect,
   groups,
+  isLoading,
   onDropBooks,
   onMoveCollection,
 }: {
   activeFilter: GroupFilter | null;
   onSelect: (filter: GroupFilter | null) => void;
   groups: BrowseGroup[] | undefined;
+  // Issue #139 - see GroupSection's own doc comment on this prop.
+  isLoading?: boolean;
   onDropBooks: (target: { id: string; name: string }, bookIds: string[], shiftKey: boolean) => void;
   onMoveCollection: (collectionId: string, parentId: string | null) => void;
 }) {
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const nodes = flattenCollectionTree(groups ?? []);
+
+  if (isLoading) {
+    return (
+      <Center py="sm">
+        <Loader size="xs" />
+      </Center>
+    );
+  }
 
   return (
     <Box
@@ -878,6 +904,7 @@ export function Sidebar({
               activeFilter={activeFilter}
               onSelect={onSelect}
               groups={sortGroups(withUnknownAuthorLabel(authorsQuery.data, t), sectionSorts.authors)}
+              isLoading={authorsQuery.isLoading}
               onDropBooks={(target, bookIds, shiftKey) => onDropBooks("authorId", target, bookIds, shiftKey)}
             />
           </CollapsibleSection>
@@ -903,6 +930,7 @@ export function Sidebar({
               activeFilter={activeFilter}
               onSelect={onSelect}
               groups={sortGroups(collectionsQuery.data, sectionSorts.collections)}
+              isLoading={collectionsQuery.isLoading}
               onDropBooks={(target, bookIds, shiftKey) => onDropBooks("collectionId", target, bookIds, shiftKey)}
               onMoveCollection={(id, parentId) => moveCollectionMutation.mutate({ id, parentId })}
             />
@@ -927,6 +955,7 @@ export function Sidebar({
               activeFilter={activeFilter}
               onSelect={onSelect}
               groups={sortGroups(seriesQuery.data, sectionSorts.series)}
+              isLoading={seriesQuery.isLoading}
               onDropBooks={(target, bookIds, shiftKey) => onDropBooks("seriesId", target, bookIds, shiftKey)}
             />
           </CollapsibleSection>
@@ -950,6 +979,7 @@ export function Sidebar({
               activeFilter={activeFilter}
               onSelect={onSelect}
               groups={sortGroups(tagsQuery.data, sectionSorts.tags)}
+              isLoading={tagsQuery.isLoading}
               onDropBooks={(target, bookIds, shiftKey) => onDropBooks("tagId", target, bookIds, shiftKey)}
             />
           </CollapsibleSection>
@@ -976,6 +1006,7 @@ export function Sidebar({
                 groups={byBookCount(
                   (periodicalsQuery.data ?? []).map((p) => ({ id: p.id, name: p.name, bookCount: p.issueCount })),
                 )}
+                isLoading={periodicalsQuery.isLoading}
                 onDropBooks={(target, bookIds, shiftKey) => onDropBooks("periodicalId", target, bookIds, shiftKey)}
               />
             </CollapsibleSection>
@@ -1003,6 +1034,7 @@ export function Sidebar({
               activeFilter={activeFilter}
               onSelect={onSelect}
               groups={sortGroups(publishersQuery.data, sectionSorts.publishers)}
+              isLoading={publishersQuery.isLoading}
               onDropBooks={(target, bookIds, shiftKey) => onDropBooks("publisher", target, bookIds, shiftKey)}
             />
           </CollapsibleSection>
@@ -1024,6 +1056,7 @@ export function Sidebar({
                 ...group,
                 name: languageDisplayName(group.id, t),
               }))}
+              isLoading={languagesQuery.isLoading}
               onDropBooks={(target, bookIds, shiftKey) => onDropBooks("language", target, bookIds, shiftKey)}
             />
           </CollapsibleSection>

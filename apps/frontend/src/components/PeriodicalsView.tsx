@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ActionIcon, Alert, Badge, Box, Button, Group, Modal, NavLink, Select, Stack, Text, TextInput, Tooltip } from "@mantine/core";
+import { ActionIcon, Alert, Badge, Box, Button, Center, Group, Loader, Modal, NavLink, Select, Stack, Text, TextInput, Tooltip } from "@mantine/core";
 import { IconAlertCircle, IconSearch, IconTrash } from "../icons";
 import { createPeriodical, deletePeriodical, listPeriodicals, type Periodical, type PeriodicalFrequency } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
@@ -99,8 +99,14 @@ export function PeriodicalsView({ onOpen, onBack }: PeriodicalsViewProps) {
           onChange={(e) => setSearch(e.currentTarget.value)}
         />
 
+        {periodicalsQuery.isLoading && (
+          <Center py="xl">
+            <Loader size="sm" />
+          </Center>
+        )}
+
         <Stack gap={2}>
-          {filtered.length === 0 && (
+          {!periodicalsQuery.isLoading && filtered.length === 0 && (
             <Text size="sm" c="dimmed">
               {t("periodicalsView.empty")}
             </Text>
