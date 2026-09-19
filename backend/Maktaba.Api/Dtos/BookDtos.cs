@@ -102,6 +102,10 @@ public record BookFileDto(string Id, string Format, long FileSizeBytes, string A
 
 public record RenameBookFileRequestDto(string FileName);
 
+// Issue #138 - GET /{id}/download-progress's response shape while a cloud provider's
+// ICloudCacheManager.WriteAsync is still copying that book's file into the local cache.
+public record DownloadProgressDto(long BytesDownloaded, long? TotalBytes);
+
 // Issue #49 - the book at the URL's {id} is the merge target (whose metadata survives); this is
 // the other book being merged into it.
 public record MergeBooksRequestDto(string SourceBookId);

@@ -34,6 +34,7 @@ builder.Services.AddSingleton<ILibraryPathProvider>(sp => sp.GetRequiredService<
 
 builder.Services.AddSingleton<LocalFileSystemProvider>();
 builder.Services.AddSingleton<IStorageProviderFactory, StorageProviderFactory>();
+builder.Services.AddSingleton<IDownloadProgressTracker, DownloadProgressTracker>();
 builder.Services.AddSingleton<ICloudCacheManager, CloudCacheManager>();
 builder.Services.AddSingleton<ISyncStatusTracker, SyncStatusTracker>();
 builder.Services.AddSingleton<ICloudCredentialCache, CloudCredentialCache>();

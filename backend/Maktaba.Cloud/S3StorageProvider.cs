@@ -64,7 +64,7 @@ public class S3StorageProvider(
         try
         {
             using var response = await _client.GetObjectAsync(options.Bucket, ToKey(relativePath), ct);
-            await cache.WriteAsync(libraryId, relativePath, response.ResponseStream, ct);
+            await cache.WriteAsync(libraryId, relativePath, response.ResponseStream, response.ContentLength, ct);
         }
         catch (AmazonS3Exception ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
         {

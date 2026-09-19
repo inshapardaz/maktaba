@@ -54,8 +54,13 @@ public class NawishtaStorageProvider(
         }
 
         var (bookId, contentId) = ParseContentPath(relativePath);
-        var (bytes, _, _) = await api.DownloadContentAsync(remoteLibraryId, bookId, contentId, ct);
-        await CacheAsync(relativePath, bytes, ct);
+        // Issue #138 - streamed straight into the cache rather than buffered into a byte[] first
+        // (unlike the cover path above), so ICloudCacheManager.WriteAsync's own copy loop can report
+        // real download progress for a book's actual content, the one download the reader UI blocks
+        // on and therefore the one worth showing progress for.
+        using var response = await api.DownloadContentResponseAsync(remoteLibraryId, bookId, contentId, ct);
+        await using var stream = await response.Content.ReadAsStreamAsync(ct);
+        await cacheManager.WriteAsync(libraryId, relativePath, stream, response.Content.Headers.ContentLength, ct);
         return cacheManager.GetLocalPath(libraryId, relativePath);
     }
 

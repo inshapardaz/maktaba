@@ -362,6 +362,37 @@ public static class BookEndpoints
             return Results.File(localPath, contentType);
         });
 
+        // Issue #138 - polled by ReaderOverlay.tsx while the /file request above is still in flight
+        // for a not-yet-cached cloud file, so the reader can show real download progress instead of a
+        // bare spinner. Returns null (not 404) once nothing's in flight for this key - either it
+        // hasn't started yet, it's already fully cached (ICloudCacheManager.WriteAsync clears the key
+        // in its own finally block the moment a download finishes), or it never needed downloading at
+        // all (a local library) - the frontend treats null the same as "no progress to show" either way.
+        group.MapGet("/{id}/download-progress", async (
+            string id, string? format, ILibraryQueryServiceFactory queryServices, ILibraryService libraryService,
+            IDownloadProgressTracker progressTracker, CancellationToken ct) =>
+        {
+            if (!IdCodec.TryDecode(id, out var bookId))
+            {
+                return Results.NotFound();
+            }
+
+            if (!Enum.TryParse<BookFormat>(format, ignoreCase: true, out var parsedFormat))
+            {
+                return Results.BadRequest(new { error = "Invalid or missing format." });
+            }
+
+            var book = await queryServices.Books.GetByIdAsync(bookId, ct);
+            var file = book?.Files.FirstOrDefault(f => f.Format == parsedFormat);
+            if (file is null || libraryService.CurrentLibraryId is not { } libraryId)
+            {
+                return Results.NotFound();
+            }
+
+            var snapshot = progressTracker.TryGet($"{libraryId}:{file.FilePath}");
+            return Results.Ok(snapshot is { } s ? new DownloadProgressDto(s.BytesDownloaded, s.TotalBytes) : null);
+        });
+
         // Docx/Txt have no reader qari understands natively - ReaderOverlay.tsx feeds this plain
         // text to qari as a Markdown source instead of fetching the raw file like Epub/Pdf do.
         group.MapGet("/{id}/text", async (
