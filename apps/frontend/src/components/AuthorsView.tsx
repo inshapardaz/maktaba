@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ActionIcon, Avatar, Badge, Box, Center, FileButton, Group, Loader, NavLink, Stack, Text, TextInput, Tooltip } from "@mantine/core";
+import { notifications } from "@mantine/notifications";
 import { IconCheck, IconPencil, IconSearch, IconTrash, IconUser, IconX } from "../icons";
 import { authorImageUrl, deleteAuthorImage, listAuthors, renameAuthor, uploadAuthorImage, type BrowseGroup } from "../api";
 import { useShouldAttemptCloudAsset } from "../coverAvailability";
@@ -12,6 +13,10 @@ interface AuthorsViewProps {
   onSelect: (filter: GroupFilter) => void;
   onBack: () => void;
 }
+
+// Keyed per author (not one fixed id) so uploading photos for two different authors in quick
+// succession shows two independent toasts instead of the second silently replacing the first.
+const notificationId = (authorId: string) => `author-image-upload-${authorId}`;
 
 interface AuthorAvatarProps {
   author: BrowseGroup;
@@ -71,9 +76,45 @@ export function AuthorsView({ onSelect, onBack }: AuthorsViewProps) {
   // Issue #28: an uploadable author photo, shown as an avatar next to each row - a bump on
   // hasImage's cache-busting param isn't needed since the id-keyed URL only ever changes what
   // file it resolves to server-side, and the query invalidation below refetches the row anyway.
+  // A loading toast (rather than just the row's own spinner - see AuthorAvatar's `uploading` prop
+  // below) matters most for a Nawishta-backed library, where the upload is a real network request
+  // rather than an instant local disk write - see notificationId's own doc comment.
   const imageMutation = useMutation({
-    mutationFn: ({ id, file }: { id: string; file: File }) => uploadAuthorImage(id, file),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["authors"] }),
+    mutationFn: async ({ id, file }: { id: string; file: File }) => {
+      notifications.show({
+        id: notificationId(id),
+        loading: true,
+        title: t("authorsView.uploadingImage"),
+        message: file.name,
+        autoClose: false,
+        withCloseButton: false,
+      });
+      await uploadAuthorImage(id, file);
+    },
+    onSuccess: (_data, { id }) => {
+      notifications.update({
+        id: notificationId(id),
+        loading: false,
+        color: "green",
+        icon: <IconCheck size={16} />,
+        title: t("authorsView.uploadImageSuccess"),
+        message: null,
+        autoClose: 3000,
+        withCloseButton: true,
+      });
+      void queryClient.invalidateQueries({ queryKey: ["authors"] });
+    },
+    onError: (err, { id }) => {
+      notifications.update({
+        id: notificationId(id),
+        loading: false,
+        color: "red",
+        title: t("authorsView.uploadImageError"),
+        message: err instanceof Error ? err.message : String(err),
+        autoClose: false,
+        withCloseButton: true,
+      });
+    },
   });
 
   const deleteImageMutation = useMutation({
