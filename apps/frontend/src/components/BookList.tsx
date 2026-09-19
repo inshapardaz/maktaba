@@ -278,7 +278,7 @@ export function BookRow({ book, index, selected, selectedIds, onSelect, onEdit, 
 
         <Stack gap={0} style={{ minWidth: 0, flex: 1 }}>
           {isIssue ? (
-            <Text fw={600} truncate="end" style={{ maxWidth: "100%" }}>
+            <Text fw={600} truncate="end" style={{ maxWidth: "100%" }} title={displayTitle(book, t)}>
               {displayTitle(book, t)}
             </Text>
           ) : editingTitle ? (
@@ -296,14 +296,15 @@ export function BookRow({ book, index, selected, selectedIds, onSelect, onEdit, 
               onBlur={commitTitle}
             />
           ) : (
-            <Group gap={4} wrap="nowrap">
+            <Group gap={4} wrap="nowrap" style={{ minWidth: 0 }}>
               <UnstyledButton
                 onClick={(event) => {
                   event.stopPropagation();
                   setEditingTitle(true);
                 }}
+                style={{ minWidth: 0, flex: 1 }}
               >
-                <Text fw={600} truncate="end" style={{ maxWidth: "100%" }}>
+                <Text fw={600} truncate="end" style={{ maxWidth: "100%" }} title={book.title}>
                   {book.title}
                 </Text>
               </UnstyledButton>
@@ -323,7 +324,7 @@ export function BookRow({ book, index, selected, selectedIds, onSelect, onEdit, 
               )}
             </Group>
           )}
-          <Text size="sm" c="dimmed" truncate="end" style={{ maxWidth: "100%" }}>
+          <Text size="sm" c="dimmed" truncate="end" style={{ maxWidth: "100%" }} title={displaySubtitle(book, t)}>
             {displaySubtitle(book, t)}
           </Text>
           {(book.seriesName || book.tags.length > 0 || book.collectionNames.length > 0) && (
