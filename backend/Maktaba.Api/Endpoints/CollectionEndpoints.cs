@@ -45,11 +45,18 @@ public static class CollectionEndpoints
                     return Results.NotFound();
                 }
 
+                // Issue #140: a collection's existence/name/count now live on Nawishta's own real
+                // Bookshelves API, so both the parent-exists check and the find-or-create-by-name
+                // match below read the live shelf list rather than the (now nesting-only) shadow db -
+                // a parent that's a real shelf but has never been nested before has no shadow row at
+                // all yet, which the old shadow-only AnyAsync check would have wrongly rejected.
+                var existingShelves = await n.Api.GetBookShelvesAsync(n.RemoteLibraryId, ct);
+
                 int? nawishtaParentId = null;
                 if (request.ParentId is { Length: > 0 } rawNawishtaParentId)
                 {
                     if (!IdCodec.TryDecode(rawNawishtaParentId, out var decodedNawishtaParentId) ||
-                        !await n.Shadow.Collections.AnyAsync(c => c.Id == decodedNawishtaParentId, ct))
+                        !existingShelves.Any(s => s.Id == decodedNawishtaParentId))
                     {
                         return Results.BadRequest(new { error = "Parent collection not found." });
                     }
@@ -57,21 +64,25 @@ public static class CollectionEndpoints
                     nawishtaParentId = decodedNawishtaParentId;
                 }
 
-                var existingNawishta = await n.Shadow.Collections
-                    .Where(c => c.Name.ToLower() == name.ToLower())
-                    .FirstOrDefaultAsync(ct);
-
+                var existingNawishta = existingShelves.FirstOrDefault(s => string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase));
                 if (existingNawishta is not null)
                 {
-                    var existingCount = await n.Shadow.BookCollectionLinks.CountAsync(l => l.CollectionId == existingNawishta.Id, ct);
-                    return Results.Ok(new BrowseGroupDto(IdCodec.Encode(existingNawishta.Id), existingNawishta.Name, existingCount));
+                    return Results.Ok(new BrowseGroupDto(IdCodec.Encode(existingNawishta.Id!.Value), existingNawishta.Name, existingNawishta.BookCount ?? 0));
                 }
 
-                var nawishtaCollection = new NawishtaShadowCollection { Name = name, ParentCollectionId = nawishtaParentId };
-                n.Shadow.Collections.Add(nawishtaCollection);
-                await n.Shadow.SaveChangesAsync(ct);
+                var created = await n.Api.CreateBookShelfAsync(n.RemoteLibraryId, name, ct)
+                    ?? throw new InvalidOperationException("Nawishta didn't return the created bookshelf.");
 
-                var nawishtaDto = new BrowseGroupDto(IdCodec.Encode(nawishtaCollection.Id), nawishtaCollection.Name, 0, ParentId: request.ParentId);
+                // Nesting has no Nawishta equivalent (see NawishtaShadowCollection's own doc comment)
+                // - only written locally when a parent was actually requested; a brand-new top-level
+                // shelf needs no shadow row at all.
+                if (nawishtaParentId is { } parentToSet)
+                {
+                    n.Shadow.Collections.Add(new NawishtaShadowCollection { Id = created.Id!.Value, ParentCollectionId = parentToSet });
+                    await n.Shadow.SaveChangesAsync(ct);
+                }
+
+                var nawishtaDto = new BrowseGroupDto(IdCodec.Encode(created.Id!.Value), created.Name, 0, ParentId: request.ParentId);
                 return Results.Created($"/api/collections/{nawishtaDto.Id}", nawishtaDto);
             }
 
@@ -127,18 +138,30 @@ public static class CollectionEndpoints
                     return Results.NotFound();
                 }
 
-                var nawishtaCollection = await n.Shadow.Collections.FirstOrDefaultAsync(c => c.Id == collectionId, ct);
-                if (nawishtaCollection is null)
+                // Issue #140: collectionId itself might be a real Nawishta bookshelf with no shadow
+                // row at all yet (never nested before) - validated against the live shelf list, not
+                // shadow existence, same reasoning as POST "" above.
+                var shelves = await n.Api.GetBookShelvesAsync(n.RemoteLibraryId, ct);
+                var shelf = shelves.FirstOrDefault(s => s.Id == collectionId);
+                if (shelf is null)
                 {
                     return Results.NotFound();
                 }
 
+                var existingShadowRow = await n.Shadow.Collections.FirstOrDefaultAsync(c => c.Id == collectionId, ct);
+
                 if (request.ParentId is not { Length: > 0 } rawNawishtaParentId)
                 {
-                    nawishtaCollection.ParentCollectionId = null;
-                    await n.Shadow.SaveChangesAsync(ct);
-                    var count = await n.Shadow.BookCollectionLinks.CountAsync(l => l.CollectionId == collectionId, ct);
-                    return Results.Ok(new BrowseGroupDto(IdCodec.Encode(nawishtaCollection.Id), nawishtaCollection.Name, count));
+                    // Clearing to top-level: a missing shadow row already reads as top-level (see
+                    // NawishtaCollectionQueryService), so there's nothing to persist beyond removing
+                    // whatever row exists.
+                    if (existingShadowRow is not null)
+                    {
+                        n.Shadow.Collections.Remove(existingShadowRow);
+                        await n.Shadow.SaveChangesAsync(ct);
+                    }
+
+                    return Results.Ok(new BrowseGroupDto(IdCodec.Encode(shelf.Id!.Value), shelf.Name, shelf.BookCount ?? 0));
                 }
 
                 if (!IdCodec.TryDecode(rawNawishtaParentId, out var nawishtaParentId))
@@ -158,17 +181,24 @@ public static class CollectionEndpoints
                     return Results.BadRequest(new { error = "Can't move a collection under one of its own sub-collections." });
                 }
 
-                if (!await n.Shadow.Collections.AnyAsync(c => c.Id == nawishtaParentId, ct))
+                if (!shelves.Any(s => s.Id == nawishtaParentId))
                 {
                     return Results.BadRequest(new { error = "Parent collection not found." });
                 }
 
-                nawishtaCollection.ParentCollectionId = nawishtaParentId;
+                if (existingShadowRow is null)
+                {
+                    n.Shadow.Collections.Add(new NawishtaShadowCollection { Id = collectionId, ParentCollectionId = nawishtaParentId });
+                }
+                else
+                {
+                    existingShadowRow.ParentCollectionId = nawishtaParentId;
+                }
+
                 await n.Shadow.SaveChangesAsync(ct);
 
-                var nawishtaCount = await n.Shadow.BookCollectionLinks.CountAsync(l => l.CollectionId == collectionId, ct);
                 return Results.Ok(new BrowseGroupDto(
-                    IdCodec.Encode(nawishtaCollection.Id), nawishtaCollection.Name, nawishtaCount, ParentId: rawNawishtaParentId));
+                    IdCodec.Encode(shelf.Id!.Value), shelf.Name, shelf.BookCount ?? 0, ParentId: rawNawishtaParentId));
             }
 
             var collection = await db.Collections.FirstOrDefaultAsync(c => c.Id == collectionId, ct);
@@ -228,25 +258,33 @@ public static class CollectionEndpoints
                     return Results.NotFound();
                 }
 
-                var nawishtaCollection = await n.Shadow.Collections.FindAsync([collectionId], ct);
-                if (nawishtaCollection is null)
+                var shelves = await n.Api.GetBookShelvesAsync(n.RemoteLibraryId, ct);
+                if (!shelves.Any(s => s.Id == collectionId))
                 {
                     return Results.NotFound();
                 }
 
+                // Deletes the real Nawishta bookshelf itself - the api repo's own BookShelfBook join
+                // table cascade-deletes that shelf's book memberships server-side, so no membership
+                // cleanup call is needed here, only this app's own local mirrors.
+                await n.Api.DeleteBookShelfAsync(n.RemoteLibraryId, collectionId, ct);
+
                 // No FK-level SetNull here (the shadow DB doesn't model relationships) - promoting
                 // children to top-level is done by hand, same behavior as the local-library branch's
-                // DeleteBehavior.SetNull below.
+                // DeleteBehavior.SetNull below. A child with no shadow row is already top-level, so
+                // only rows that actually reference this collection need removing.
                 var children = await n.Shadow.Collections.Where(c => c.ParentCollectionId == collectionId).ToListAsync(ct);
-                foreach (var child in children)
+                n.Shadow.Collections.RemoveRange(children);
+
+                var ownRow = await n.Shadow.Collections.FirstOrDefaultAsync(c => c.Id == collectionId, ct);
+                if (ownRow is not null)
                 {
-                    child.ParentCollectionId = null;
+                    n.Shadow.Collections.Remove(ownRow);
                 }
 
                 var links = await n.Shadow.BookCollectionLinks.Where(l => l.CollectionId == collectionId).ToListAsync(ct);
                 n.Shadow.BookCollectionLinks.RemoveRange(links);
 
-                n.Shadow.Collections.Remove(nawishtaCollection);
                 await n.Shadow.SaveChangesAsync(ct);
                 return Results.NoContent();
             }

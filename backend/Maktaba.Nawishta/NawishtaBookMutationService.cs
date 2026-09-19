@@ -40,8 +40,8 @@ public class NawishtaBookMutationService(NawishtaRawApiClient api, int remoteLib
         // Tags and Categories are deliberately left as fetched, not overwritten: Nawishta's own
         // reference editor (library-editor) never edits Book.Tags at all (it's read-only/system
         // output as far as that app is concerned - confirmed by its complete absence from
-        // bookForm.jsx's fields), and Categories is out of scope here (Collections stay
-        // shadow-local - see the design addendum on issue #69).
+        // bookForm.jsx's fields), and Categories is a separate, distinct concept from Collections
+        // (which map onto Nawishta's own Bookshelves as of issue #140 - see SyncCollectionsAsync).
 
         var updated = await api.UpdateBookAsync(remoteLibraryId, bookId, existing, ct) ?? existing;
 
@@ -95,13 +95,30 @@ public class NawishtaBookMutationService(NawishtaRawApiClient api, int remoteLib
         return true;
     }
 
+    // Issue #140: book<->shelf membership now round-trips through Nawishta's real Bookshelves API
+    // (AddBookToBookShelfAsync/RemoveBookFromBookShelfAsync - confirmed additive/independent server-
+    // side, a book can sit on any number of shelves at once). The shadow BookCollectionLinks rows are
+    // still diffed against here first, purely because Nawishta has no reverse "which shelves is this
+    // book on" query to diff against directly (see NawishtaBookCollectionLink's own doc comment) -
+    // they're a mirror of this app's own writes, kept in lockstep with every real API call below.
     private async Task SyncCollectionsAsync(int bookId, IReadOnlyList<int> collectionIds, CancellationToken ct)
     {
         var existing = await shadow.BookCollectionLinks.Where(l => l.RemoteBookId == bookId).ToListAsync(ct);
-        var toRemove = existing.Where(l => !collectionIds.Contains(l.CollectionId));
-        shadow.BookCollectionLinks.RemoveRange(toRemove);
+        var toRemove = existing.Where(l => !collectionIds.Contains(l.CollectionId)).ToList();
+        var toAdd = collectionIds.Except(existing.Select(l => l.CollectionId)).ToList();
 
-        foreach (var collectionId in collectionIds.Except(existing.Select(l => l.CollectionId)))
+        foreach (var link in toRemove)
+        {
+            await api.RemoveBookFromBookShelfAsync(remoteLibraryId, link.CollectionId, bookId, ct);
+        }
+
+        foreach (var collectionId in toAdd)
+        {
+            await api.AddBookToBookShelfAsync(remoteLibraryId, collectionId, bookId, ct);
+        }
+
+        shadow.BookCollectionLinks.RemoveRange(toRemove);
+        foreach (var collectionId in toAdd)
         {
             shadow.BookCollectionLinks.Add(new NawishtaBookCollectionLink { RemoteBookId = bookId, CollectionId = collectionId });
         }

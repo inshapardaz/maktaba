@@ -309,6 +309,50 @@ public class NawishtaRawApiClient(HttpClient httpClient, string serverUrl)
         await ThrowIfErrorAsync(response, ct);
     }
 
+    // Issue #140 - Bookshelves (BookShelfClient in the generated client returns bare Task for every
+    // method, same missing-response-schema situation as Books/Authors/Series/Categories, so these go
+    // through this hand-written client too). Confirmed against the api repo's own source
+    // (BookShelfController/BookShelfRepository, not just its swagger surface): BookShelf<->Book is a
+    // real many-to-many join table (BookShelfBook), and "add book to shelf" is purely additive - a
+    // book can sit on any number of shelves at once, matching Maktaba's own Collections semantics.
+    // BookShelfView itself has no parent/nesting field at all (confirmed both in the generated DTO
+    // and the api repo's own BookShelfModel/migration) - Nawishta has no nesting concept, so
+    // NawishtaCollectionQueryService/CollectionEndpoints.cs keep parent/child relationships local-only
+    // (NawishtaShadowDbContext), layered on top of these real, flat shelves.
+    public async Task<List<BookShelfView>> GetBookShelvesAsync(int libraryId, CancellationToken ct) =>
+        (await GetJsonAsync<NawishtaPageView<BookShelfView>>($"{_baseUrl}/libraries/{libraryId}/bookshelves?pageSize=1000", ct))?.Data ?? [];
+
+    public Task<BookShelfView?> CreateBookShelfAsync(int libraryId, string name, CancellationToken ct) =>
+        PostJsonAsync<BookShelfView>($"{_baseUrl}/libraries/{libraryId}/bookshelves", new { name }, ct);
+
+    public Task<BookShelfView?> UpdateBookShelfAsync(int libraryId, int bookShelfId, string name, CancellationToken ct) =>
+        PutJsonAsync<BookShelfView>($"{_baseUrl}/libraries/{libraryId}/bookshelves/{bookShelfId}", new { name }, ct);
+
+    public async Task DeleteBookShelfAsync(int libraryId, int bookShelfId, CancellationToken ct)
+    {
+        await EnsureFreshTokenAsync(ct);
+        using var response = await httpClient.DeleteAsync($"{_baseUrl}/libraries/{libraryId}/bookshelves/{bookShelfId}", ct);
+        await ThrowIfErrorAsync(response, ct);
+    }
+
+    // Additive (confirmed server-side - see this section's own doc comment above): adding a book
+    // already on another shelf does not move it, it just gains a second membership row.
+    public async Task AddBookToBookShelfAsync(int libraryId, int bookShelfId, int bookId, CancellationToken ct)
+    {
+        await EnsureFreshTokenAsync(ct);
+        using var response = await httpClient.PostAsJsonAsync(
+            $"{_baseUrl}/libraries/{libraryId}/bookshelves/{bookShelfId}/books", new { bookId }, JsonOptions, ct);
+        await ThrowIfErrorAsync(response, ct);
+    }
+
+    public async Task RemoveBookFromBookShelfAsync(int libraryId, int bookShelfId, int bookId, CancellationToken ct)
+    {
+        await EnsureFreshTokenAsync(ct);
+        using var response = await httpClient.DeleteAsync(
+            $"{_baseUrl}/libraries/{libraryId}/bookshelves/{bookShelfId}/books/{bookId}", ct);
+        await ThrowIfErrorAsync(response, ct);
+    }
+
     private async Task<T?> GetJsonAsync<T>(string url, CancellationToken ct)
     {
         using var response = await GetWithRefreshAsync(url, HttpCompletionOption.ResponseContentRead, ct);
