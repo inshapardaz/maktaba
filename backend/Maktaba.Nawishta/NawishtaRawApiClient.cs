@@ -144,6 +144,47 @@ public class NawishtaRawApiClient(HttpClient httpClient, string serverUrl)
     public async Task<NawishtaPageView<AuthorView>> GetAuthorsAsync(int libraryId, CancellationToken ct) =>
         await GetJsonAsync<NawishtaPageView<AuthorView>>($"{_baseUrl}/libraries/{libraryId}/authors?pageSize=1000", ct) ?? new();
 
+    public Task<AuthorView?> GetAuthorByIdAsync(int libraryId, int authorId, CancellationToken ct) =>
+        GetJsonAsync<AuthorView>($"{_baseUrl}/libraries/{libraryId}/authors/{authorId}", ct);
+
+    /// <summary>Issue #141 - same "self" link convention as a book's own cover
+    /// (DownloadBookCoverAsync), just on AuthorView's own Links instead of BookView's. Null if the
+    /// author has no image set at all, distinct from the fetch itself failing.</summary>
+    public async Task<(byte[] Bytes, string? MimeType)?> DownloadAuthorImageAsync(int libraryId, int authorId, CancellationToken ct)
+    {
+        var author = await GetAuthorByIdAsync(libraryId, authorId, ct);
+        var imageUrl = author?.Links?.FirstOrDefault(l => l.Rel == "image")?.Href;
+        if (imageUrl is null)
+        {
+            return null;
+        }
+
+        using var response = await GetWithRefreshAsync(imageUrl, HttpCompletionOption.ResponseHeadersRead, ct);
+        await ThrowIfErrorAsync(response, ct);
+        var bytes = await response.Content.ReadAsByteArrayAsync(ct);
+        return (bytes, response.Content.Headers.ContentType?.MediaType);
+    }
+
+    /// <summary>PUT .../authors/{authorId}/image (confirmed against the api repo's own
+    /// AuthorController - [FromForm] IFormFile "file" - and its reference editor's authors.api.js,
+    /// which uploads under that exact field name; the NSwag-generated UpdateAuthorImageAsync guesses
+    /// a different, wrong multipart shape for this operation, same class of gap as UploadContentAsync
+    /// working around Nawishta's missing content-upload schema). No DELETE-image endpoint exists on
+    /// Nawishta's side at all (confirmed absent from AuthorController) - AuthorEndpoints.cs rejects a
+    /// delete for a Nawishta-backed author cleanly rather than attempting one.</summary>
+    public async Task UpdateAuthorImageAsync(int libraryId, int authorId, string fileName, string mimeType, Stream content, CancellationToken ct)
+    {
+        await EnsureFreshTokenAsync(ct);
+        using var form = new MultipartFormDataContent();
+        using var fileContent = new StreamContent(content);
+        fileContent.Headers.ContentType = MediaTypeHeaderValue.Parse(mimeType);
+        form.Add(fileContent, "file", fileName);
+
+        using var request = new HttpRequestMessage(HttpMethod.Put, $"{_baseUrl}/libraries/{libraryId}/authors/{authorId}/image") { Content = form };
+        using var response = await httpClient.SendAsync(request, ct);
+        await ThrowIfErrorAsync(response, ct);
+    }
+
     public async Task<NawishtaPageView<SeriesView>> GetSeriesAsync(int libraryId, CancellationToken ct) =>
         await GetJsonAsync<NawishtaPageView<SeriesView>>($"{_baseUrl}/libraries/{libraryId}/series?pageSize=1000", ct) ?? new();
 
