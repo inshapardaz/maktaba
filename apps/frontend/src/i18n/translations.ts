@@ -84,6 +84,7 @@ const en = {
 
   "sidebar.authors": "Authors",
   "sidebar.sortBy": "Sort",
+  "sidebar.movingCollection": "Moving collection…",
   "sidebar.sortByCount": "By book count",
   "sidebar.sortByName": "Alphabetical",
   "sidebar.series": "Series",
@@ -191,6 +192,8 @@ const en = {
   "dragDrop.language_one": 'Language set to "{name}" for {count} book',
   "dragDrop.language_other": 'Language set to "{name}" for {count} books',
   "dragDrop.partialFailure": "Updated {done} of {total} books - some failed",
+  "dragDrop.applying_one": "Updating {count} book…",
+  "dragDrop.applying_other": "Updating {count} books…",
 
   "filterBar.allFormats": "All formats",
   "filterBar.anyRating": "Any rating",
@@ -654,6 +657,7 @@ const ur: TranslationDict = {
 
   "sidebar.authors": "مصنفین",
   "sidebar.sortBy": "ترتیب",
+  "sidebar.movingCollection": "مجموعہ منتقل ہو رہا ہے…",
   "sidebar.sortByCount": "کتابوں کی تعداد کے مطابق",
   "sidebar.sortByName": "حروف تہجی کے مطابق",
   "sidebar.series": "سیریز",
@@ -757,6 +761,8 @@ const ur: TranslationDict = {
   "dragDrop.language_one": '{count} کتاب کے لیے زبان "{name}" مقرر کر دی گئی',
   "dragDrop.language_other": '{count} کتابوں کے لیے زبان "{name}" مقرر کر دی گئی',
   "dragDrop.partialFailure": "{total} میں سے {done} کتابیں اپ ڈیٹ ہوئیں - کچھ ناکام رہیں",
+  "dragDrop.applying_one": "{count} کتاب اپ ڈیٹ ہو رہی ہے…",
+  "dragDrop.applying_other": "{count} کتابیں اپ ڈیٹ ہو رہی ہیں…",
 
   "filterBar.allFormats": "تمام فارمیٹس",
   "filterBar.anyRating": "کوئی بھی درجہ بندی",
