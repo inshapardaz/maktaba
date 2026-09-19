@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ApiError, openLibraryById, reopenCloudLibrary, type LibraryEntry } from "./api";
-import { invalidateLibraryQueries } from "./queries";
+import { resetLibraryQueries } from "./queries";
 
 interface LibrarySwitchContextValue {
   // True from the moment a switch is requested until it (success or failure) finishes - App.tsx
@@ -73,7 +73,11 @@ export function LibrarySwitchProvider({ children }: { children: ReactNode }) {
 
       void queryClient.invalidateQueries({ queryKey: ["libraries"] });
       void queryClient.invalidateQueries({ queryKey: ["library"] });
-      invalidateLibraryQueries(queryClient);
+      // A real reset, not just an invalidate - see resetLibraryQueries's own doc comment. Every one
+      // of these query keys is shared across every library, so a plain invalidate would otherwise
+      // leave the *previous* library's authors/tags/etc briefly on screen (and never show issue
+      // #139's loading indicators at all, since isLoading only means "never fetched", not "stale").
+      resetLibraryQueries(queryClient);
       onSuccess?.();
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
