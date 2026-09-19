@@ -444,17 +444,35 @@ export function ReaderOverlay({ bookId, format, onClose, embedded }: ReaderOverl
 
       {fileQuery.isError && (
         <Center h="100%" p="xl">
-          <Alert color="red" icon={<IconAlertCircle size={18} />} title={t("reader.loadErrorTitle")} maw={480}>
-            {fileQuery.error instanceof Error ? fileQuery.error.message : String(fileQuery.error)}
-          </Alert>
+          <Box maw={480}>
+            <Alert color="red" icon={<IconAlertCircle size={18} />} title={t("reader.loadErrorTitle")}>
+              {fileQuery.error instanceof Error ? fileQuery.error.message : String(fileQuery.error)}
+            </Alert>
+            {/* Issue #137 - a failed load used to be a dead end: the error Alert rendered instead
+                of the Reader component, so qari's own close button (only ever rendered as part of
+                a successfully-mounted Reader, see showCloseButton below) never appeared either. In
+                the embedded/inline case (onClose provided) this goes back to the library view, same
+                as qari's own close button. In the pop-out reader window case (no onClose - see this
+                prop's own doc comment) that window already has native OS chrome/a close button, but
+                window.close() here still gives the error state its own explicit, impossible-to-miss
+                way out instead of relying on the user to notice the native titlebar. */}
+            <Button mt="md" onClick={onClose ?? (() => window.close())}>
+              {t("reader.close")}
+            </Button>
+          </Box>
         </Center>
       )}
 
       {readerError && (
         <Center h="100%" p="xl">
-          <Alert color="red" icon={<IconAlertCircle size={18} />} title={t("reader.errorTitle")} maw={480}>
-            {readerError.message}
-          </Alert>
+          <Box maw={480}>
+            <Alert color="red" icon={<IconAlertCircle size={18} />} title={t("reader.errorTitle")}>
+              {readerError.message}
+            </Alert>
+            <Button mt="md" onClick={onClose ?? (() => window.close())}>
+              {t("reader.close")}
+            </Button>
+          </Box>
         </Center>
       )}
 
