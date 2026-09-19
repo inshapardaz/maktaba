@@ -257,10 +257,16 @@ public static class ReaderDataEndpoints
             }
 
             // A Nawishta-backed library has no metadata.db - progress lives in the local shadow DB
-            // instead (NawishtaBookState), local-only rather than synced to Nawishta's own server
-            // (see NawishtaShadowDbContext.cs's doc comment on those fields). LastReadAt doubles as
-            // "has progress ever been saved for this book", same role ReadingProgress.UpdatedAt
-            // plays for a local library below.
+            // instead (NawishtaBookState). This stays the sole *read* source even after issue #142
+            // (which added a best-effort *push* of the overall percentage to Nawishta's own server,
+            // see PUT /progress below and NawishtaRawApiClient.UpdateUserBookProgressAsync's own doc
+            // comment) - reading it back from Nawishta was confirmed unreliable (its SQL Server
+            // backend never returns it at all, its MySQL backend can return a different account's
+            // progress via an unscoped join), and even a correct read would only ever carry a coarse
+            // percentage, not the exact chapter/position qari needs to actually resume a book -
+            // switching the read side to it would be a strict downgrade for the one device that
+            // actually saved this progress. LastReadAt doubles as "has progress ever been saved for
+            // this book", same role ReadingProgress.UpdatedAt plays for a local library below.
             if (BookEndpoints.IsNawishtaLibrary(libraryService))
             {
                 NawishtaBookState? state = nawishtaResolver.TryResolve(out var n)
@@ -291,7 +297,7 @@ public static class ReaderDataEndpoints
 
         group.MapPut("/progress", async (
             string id, SaveReadingProgressRequestDto request, ILibraryService libraryService,
-            NawishtaSessionResolver nawishtaResolver, MaktabaDbContext db, CancellationToken ct) =>
+            NawishtaSessionResolver nawishtaResolver, MaktabaDbContext db, ILogger<Program> logger, CancellationToken ct) =>
         {
             if (!IdCodec.TryDecode(id, out var bookId))
             {
@@ -328,6 +334,23 @@ public static class ReaderDataEndpoints
                 state.LastReadAt = DateTime.UtcNow;
 
                 await n.Shadow.SaveChangesAsync(ct);
+
+                // Issue #142 - best-effort push of the overall percentage to Nawishta's own server
+                // too (see NawishtaRawApiClient.UpdateUserBookProgressAsync's own doc comment for why
+                // only the percentage, not the full resume position). Never blocks/fails the save
+                // itself on this - the shadow DB write above is what the reader actually depends on
+                // to resume correctly on this device, this is purely a "let other clients see roughly
+                // how far along this book is" sync, and Nawishta being briefly unreachable shouldn't
+                // turn into a lost local progress save.
+                try
+                {
+                    await n.Api.UpdateUserBookProgressAsync(n.RemoteLibraryId, bookId, "Pages", state.CurrentPage, state.Percentage, ct);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Failed to sync reading progress for Nawishta book {BookId} to the server.", bookId);
+                }
+
                 return Results.NoContent();
             }
 
