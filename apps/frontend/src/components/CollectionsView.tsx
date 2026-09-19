@@ -7,7 +7,7 @@ import { ApiError, createCollection, deleteCollection, listCollections, moveColl
 import { isCollectionDrag, readCollectionDragId, setCollectionDragData } from "../collectionDrag";
 import { useLanguage } from "../i18n/LanguageContext";
 import { BrowseViewHeader } from "./BrowseViewHeader";
-import { flattenCollectionTree, type GroupFilter } from "./Sidebar";
+import { flattenCollectionTree, MOVE_COLLECTION_NOTIFICATION_ID, type GroupFilter } from "./Sidebar";
 
 interface CollectionsViewProps {
   onSelect: (filter: GroupFilter) => void;
@@ -45,13 +45,31 @@ export function CollectionsView({ onSelect, onBack }: CollectionsViewProps) {
   // Same drag-to-nest interaction as Sidebar.tsx's CollectionTreeSection (shares
   // flattenCollectionTree for the indented tree order below) - a rejected move (a cycle, or a
   // parent that no longer exists) surfaces as a notification rather than silently no-opping.
+  // Issue #146: also shows a loading toast for the duration of the drop, same reasoning/pattern as
+  // Sidebar.tsx's own moveCollectionMutation.
   const moveMutation = useMutation({
-    mutationFn: ({ id, parentId }: { id: string; parentId: string | null }) => moveCollection(id, parentId),
-    onSuccess: invalidate,
-    onError: (error: unknown) => {
+    mutationFn: ({ id, parentId }: { id: string; parentId: string | null }) => {
       notifications.show({
+        id: MOVE_COLLECTION_NOTIFICATION_ID,
+        loading: true,
+        message: t("sidebar.movingCollection"),
+        autoClose: false,
+        withCloseButton: false,
+      });
+      return moveCollection(id, parentId);
+    },
+    onSuccess: () => {
+      notifications.hide(MOVE_COLLECTION_NOTIFICATION_ID);
+      invalidate();
+    },
+    onError: (error: unknown) => {
+      notifications.update({
+        id: MOVE_COLLECTION_NOTIFICATION_ID,
+        loading: false,
         color: "red",
         message: error instanceof ApiError ? error.message : t("common.error"),
+        autoClose: true,
+        withCloseButton: true,
       });
     },
   });

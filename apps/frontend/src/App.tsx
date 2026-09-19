@@ -160,6 +160,11 @@ function defaultDirectionFor(sortKey: SortKey): SortDirection {
 // constant only matters if this one is ever omitted from a request by mistake.
 const LIBRARY_PAGE_SIZE = 60;
 
+// Issue #146 - fixed id so handleDropBooksOnGroup's own loading toast (shown for the duration of
+// the drop-triggered mutation) gets replaced in place by its own result, rather than stacking a
+// second toast on top of it.
+const DRAG_DROP_NOTIFICATION_ID = "drag-drop-books-on-group";
+
 function App() {
   const { t } = useLanguage();
   const queryClient = useQueryClient();
@@ -716,6 +721,20 @@ function App() {
     bookIds: string[],
     shiftKey: boolean,
   ) => {
+    // Issue #146: a drop used to run silently in the background, with nothing shown until this
+    // whole function's final notifications.show() at the end - easy to miss entirely for a
+    // multi-book drop or a slow/cloud-backed library, since the drop target itself gives no other
+    // visual feedback that anything is happening. Kept as its own fixed id so the eventual
+    // result (below) replaces it in place rather than stacking a second toast.
+    notifications.show({
+      id: DRAG_DROP_NOTIFICATION_ID,
+      loading: true,
+      title: target.name,
+      message: t(bookIds.length === 1 ? "dragDrop.applying_one" : "dragDrop.applying_other", { count: bookIds.length }),
+      autoClose: false,
+      withCloseButton: false,
+    });
+
     const results = await Promise.allSettled(
       bookIds.map(async (bookId) => {
         const book = await getBook(bookId);
@@ -785,13 +804,17 @@ function App() {
     const failed = results.filter((r) => r.status === "rejected").length;
     const succeeded = bookIds.length - failed;
     const keys = dragDropMessageKey[kind === "authorId" && shiftKey ? "authorIdAppend" : kind];
-    notifications.show({
+    notifications.update({
+      id: DRAG_DROP_NOTIFICATION_ID,
+      loading: false,
       color: failed > 0 ? "yellow" : "green",
       title: target.name,
       message:
         failed > 0
           ? t("dragDrop.partialFailure", { done: succeeded, total: bookIds.length })
           : t(succeeded === 1 ? keys.one : keys.other, { count: succeeded, name: target.name }),
+      autoClose: true,
+      withCloseButton: true,
     });
   };
 

@@ -264,6 +264,11 @@ function sectionRowStyles(isActive: boolean, dragOver = false) {
 // a whole if they add up to more than the available height.
 const MULTI_EXPAND_MAX_HEIGHT = 260;
 
+// Issue #146 - fixed id so moveCollectionMutation's own loading toast gets replaced/cleared in
+// place rather than stacking. Exported for CollectionsView.tsx's own moveMutation, which shows the
+// exact same loading toast for its own copy of this drag-to-nest interaction.
+export const MOVE_COLLECTION_NOTIFICATION_ID = "sidebar-move-collection";
+
 function CollapsibleSection({
   title,
   icon: SectionIcon,
@@ -659,16 +664,33 @@ export function Sidebar({
 
   // Backs CollectionTreeSection's drag-to-nest interaction below - a rejected move (a cycle, or a
   // parent that no longer exists) surfaces as a notification rather than silently no-opping, same
-  // pattern App.tsx's handleDropBooksOnGroup uses for a failed book drop.
+  // pattern App.tsx's handleDropBooksOnGroup uses for a failed book drop. Issue #146: also shows a
+  // loading toast for the duration of the drop, same reasoning as handleDropBooksOnGroup's own -
+  // a drag-drop mutation otherwise runs with no feedback at all until it either succeeds silently
+  // (the tree just re-renders) or fails.
   const moveCollectionMutation = useMutation({
-    mutationFn: ({ id, parentId }: { id: string; parentId: string | null }) => moveCollection(id, parentId),
+    mutationFn: ({ id, parentId }: { id: string; parentId: string | null }) => {
+      notifications.show({
+        id: MOVE_COLLECTION_NOTIFICATION_ID,
+        loading: true,
+        message: t("sidebar.movingCollection"),
+        autoClose: false,
+        withCloseButton: false,
+      });
+      return moveCollection(id, parentId);
+    },
     onSuccess: () => {
+      notifications.hide(MOVE_COLLECTION_NOTIFICATION_ID);
       void queryClient.invalidateQueries({ queryKey: ["collections"] });
     },
     onError: (error: unknown) => {
-      notifications.show({
+      notifications.update({
+        id: MOVE_COLLECTION_NOTIFICATION_ID,
+        loading: false,
         color: "red",
         message: error instanceof ApiError ? error.message : t("common.error"),
+        autoClose: true,
+        withCloseButton: true,
       });
     },
   });
