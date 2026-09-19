@@ -32,7 +32,7 @@ public class LibraryQueryServiceFactory(MaktabaDbContext db, NawishtaSessionReso
         nawishta.TryResolve(out var n) ? new NawishtaBrowseQueryService(n.Api, n.RemoteLibraryId, n.Shadow) : new EfBrowseQueryService(db);
 
     public ICollectionQueryService Collections =>
-        nawishta.TryResolve(out var n) ? new NawishtaCollectionQueryService(n.Shadow) : new EfCollectionQueryService(db);
+        nawishta.TryResolve(out var n) ? new NawishtaCollectionQueryService(n.Api, n.RemoteLibraryId, n.Shadow) : new EfCollectionQueryService(db);
 
     public IPeriodicalQueryService Periodicals =>
         nawishta.TryResolve(out var n) ? new NawishtaPeriodicalQueryService() : new EfPeriodicalQueryService(db);

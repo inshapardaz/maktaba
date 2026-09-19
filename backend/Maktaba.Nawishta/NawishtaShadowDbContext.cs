@@ -27,6 +27,10 @@ public class NawishtaShadowDbContext(string dbPath) : DbContext
     {
         modelBuilder.Entity<NawishtaBookState>().HasKey(s => s.RemoteBookId);
         modelBuilder.Entity<NawishtaBookCollectionLink>().HasKey(l => new { l.RemoteBookId, l.CollectionId });
+        // Issue #140 - Id is Nawishta's own real bookshelf id (assigned by the server when the shelf
+        // is created there), never locally auto-generated - see NawishtaShadowCollection's own doc
+        // comment for why.
+        modelBuilder.Entity<NawishtaShadowCollection>().Property(c => c.Id).ValueGeneratedNever();
     }
 
     public static string GetDbPath(string libraryId)
@@ -67,14 +71,22 @@ public class NawishtaBookState
     public double? Position { get; set; }
 }
 
-/// <summary>A user-created collection, scoped to this one Nawishta library - same "create is
-/// user-driven, never auto-derived" semantics as Maktaba.Core.Entities.Collection (see
-/// CollectionEndpoints.cs's doc comment), just persisted in the shadow DB instead of metadata.db
-/// since a Nawishta library has no metadata.db.</summary>
+/// <summary>Issue #140: Maktaba's Collections now map onto Nawishta's own, real Bookshelves API
+/// (GET/POST/PUT/DELETE .../bookshelves - see NawishtaRawApiClient's Bookshelf methods) rather than
+/// staying purely local the way this table originally worked - a shelf's existence/name/book-count
+/// live on Nawishta's server now, fetched live (see NawishtaCollectionQueryService), not cached here.
+///
+/// What's left in this table is exactly the one thing Nawishta's BookShelfView has no field for at
+/// all: nesting (confirmed against the api repo's own BookShelfModel/migration - no parent/nesting
+/// column exists server-side). Id is Nawishta's own real bookshelf id (assigned server-side on
+/// create, never locally auto-generated - see OnModelCreating's ValueGeneratedNever), so a row here
+/// only ever exists to answer "does this real shelf have a local parent set", nothing else. A shelf
+/// created directly on Nawishta (its own web UI, another client) simply has no row here until this
+/// app is told to nest it under something, which reads as "top-level" - the same default a missing
+/// row already means for ParentCollectionId below.</summary>
 public class NawishtaShadowCollection
 {
     public int Id { get; set; }
-    public string Name { get; set; } = string.Empty;
 
     // Mirrors Maktaba.Core.Entities.Collection.ParentCollectionId (same nesting feature, same
     // "null for top-level, deleting a parent promotes its children" semantics) - no FK/nav property
@@ -84,6 +96,17 @@ public class NawishtaShadowCollection
     public int? ParentCollectionId { get; set; }
 }
 
+/// <summary>Issue #140 follow-up: book<->shelf membership itself now round-trips through Nawishta's
+/// real Bookshelves API too (NawishtaRawApiClient.AddBookToBookShelfAsync/RemoveBookFromBookShelfAsync,
+/// called from NawishtaBookMutationService.SyncCollectionsAsync) - Nawishta is the source of truth for
+/// *whether* a book is on a shelf. This table survives only because Nawishta has no reverse query
+/// ("which shelves is book X on?" - confirmed absent from the api repo's own BookShelfController/
+/// BookShelfRepository; the only book<->shelf query goes the other direction, GET books?bookShelfId=X)
+/// - without something to diff against locally, SyncCollectionsAsync would have no way to know which
+/// shelves to remove a book from on save. So this remains the mirror SyncCollectionsAsync diffs
+/// against and keeps in lockstep with every write *this app* makes; it can only drift from Nawishta's
+/// real state if membership changes through a different client (Nawishta's own web UI, another
+/// device) - a known, accepted limitation of the missing reverse-query endpoint, not a bug here.</summary>
 public class NawishtaBookCollectionLink
 {
     public int RemoteBookId { get; set; }

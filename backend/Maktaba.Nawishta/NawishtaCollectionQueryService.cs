@@ -4,24 +4,23 @@ using Microsoft.EntityFrameworkCore;
 namespace Maktaba.Nawishta;
 
 /// <summary>
-/// Nawishta-backed implementation of <see cref="ICollectionQueryService"/> (issue #110/#112).
-/// Entirely shadow-table-backed, never Nawishta's own "categories" - the design addendum on issue
-/// #69 explicitly scopes Collections as Maktaba-local, user-managed state Nawishta has no equivalent
-/// concept for (unlike categories, which are more of a public taxonomy on Nawishta's side).
+/// Nawishta-backed implementation of <see cref="ICollectionQueryService"/> (issue #110/#112,
+/// redesigned for #140). A collection's existence, name, and book count now come straight from
+/// Nawishta's own real Bookshelves API (GET .../bookshelves) rather than a local shadow table - only
+/// nesting (parent/child, which Nawishta has no concept of at all) still reads from the shadow db.
+/// Any real bookshelf with no corresponding shadow row (created directly on Nawishta, or on a
+/// different device/client) simply reads as top-level, the same default a missing row already means.
 /// </summary>
-public class NawishtaCollectionQueryService(NawishtaShadowDbContext shadow) : ICollectionQueryService
+public class NawishtaCollectionQueryService(NawishtaRawApiClient api, int remoteLibraryId, NawishtaShadowDbContext shadow) : ICollectionQueryService
 {
     public async Task<IReadOnlyList<EntityGroupCount>> ListAsync(CancellationToken ct = default)
     {
-        var collections = await shadow.Collections.ToListAsync(ct);
-        var counts = await shadow.BookCollectionLinks
-            .GroupBy(l => l.CollectionId)
-            .Select(g => new { CollectionId = g.Key, Count = g.Count() })
-            .ToListAsync(ct);
-        var countById = counts.ToDictionary(c => c.CollectionId, c => c.Count);
+        var shelves = await api.GetBookShelvesAsync(remoteLibraryId, ct);
+        var parentById = await shadow.Collections.ToDictionaryAsync(c => c.Id, c => c.ParentCollectionId, ct);
 
-        return collections
-            .Select(c => new EntityGroupCount(c.Id, c.Name, countById.GetValueOrDefault(c.Id), c.ParentCollectionId))
+        return shelves
+            .Where(s => s.Id.HasValue)
+            .Select(s => new EntityGroupCount(s.Id!.Value, s.Name, s.BookCount ?? 0, parentById.GetValueOrDefault(s.Id!.Value)))
             .OrderBy(g => g.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }

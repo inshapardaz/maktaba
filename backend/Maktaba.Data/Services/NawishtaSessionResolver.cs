@@ -69,12 +69,30 @@ public class NawishtaSessionResolver(
     {
         shadow.Database.EnsureCreated();
 
+        // Issue #140: Collections.Name was dropped (a shelf's name is now fetched live from
+        // Nawishta, not cached locally) and Id switched from a locally auto-generated value to
+        // Nawishta's own real bookshelf id. An existing shadow db from before this change still has
+        // the old NOT NULL Name column and locally-invented ids - inserting a new-shape row (no Name)
+        // would throw a constraint violation on the very next write rather than failing this up-front
+        // probe the way an *added* column normally would, and old rows' ids don't correspond to real
+        // Nawishta bookshelves at all. A plain LINQ select over the current EF model can't detect a
+        // *removed* column (nothing in it still references Name), so this checks for the stale column
+        // directly via SQLite's own table introspection.
+        var hasStaleCollectionsSchema = shadow.Database
+            .SqlQueryRaw<int>("SELECT COUNT(*) AS Value FROM pragma_table_info('Collections') WHERE name = 'Name'")
+            .AsEnumerable()
+            .FirstOrDefault() > 0;
+
         try
         {
             shadow.BookStates.Select(s => new { s.ChapterId, s.Position }).Take(1).ToList();
             shadow.Collections.Select(c => c.ParentCollectionId).Take(1).ToList();
+            if (hasStaleCollectionsSchema)
+            {
+                throw new InvalidOperationException("Stale Collections schema (pre-#140) detected.");
+            }
         }
-        catch (SqliteException)
+        catch (Exception ex) when (ex is SqliteException or InvalidOperationException)
         {
             shadow.Database.EnsureDeleted();
             shadow.Database.EnsureCreated();
