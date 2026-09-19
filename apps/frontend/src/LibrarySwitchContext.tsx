@@ -1,6 +1,19 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { ApiError, openLibraryById, reopenCloudLibrary, type LibraryEntry } from "./api";
+import {
+  ApiError,
+  getCurrentLibrary,
+  listAuthors,
+  listCollections,
+  listLanguageGroups,
+  listPeriodicals,
+  listPublisherGroups,
+  listSeries,
+  listTags,
+  openLibraryById,
+  reopenCloudLibrary,
+  type LibraryEntry,
+} from "./api";
 import { resetLibraryQueries } from "./queries";
 
 interface LibrarySwitchContextValue {
@@ -72,12 +85,37 @@ export function LibrarySwitchProvider({ children }: { children: ReactNode }) {
       }
 
       void queryClient.invalidateQueries({ queryKey: ["libraries"] });
-      void queryClient.invalidateQueries({ queryKey: ["library"] });
       // A real reset, not just an invalidate - see resetLibraryQueries's own doc comment. Every one
       // of these query keys is shared across every library, so a plain invalidate would otherwise
       // leave the *previous* library's authors/tags/etc briefly on screen (and never show issue
       // #139's loading indicators at all, since isLoading only means "never fetched", not "stale").
       resetLibraryQueries(queryClient);
+
+      // Issue #139 follow-up: isSwitching used to flip false the instant the switch call above
+      // resolved, well before any of this reset data had actually been refetched - the Sidebar
+      // (gated on !isSwitching, see App.tsx's hasLibrary) would then mount straight into its own
+      // per-section loading spinners, an extra visible "flash of loading" right after the
+      // full-page switching overlay had already disappeared. Awaiting the library's own data plus
+      // every Sidebar section's query here means the overlay stays up for the whole wait instead -
+      // one smooth transition (overlay -> fully-populated sidebar) rather than two. Deliberately
+      // NOT awaiting the main "books" list or Home view's continue-reading/recently-added feeds -
+      // those already render their own inline loading state cleanly (App.tsx/HomeView.tsx), so
+      // blocking the overlay on them too would just make an already-open library take longer to
+      // reach after every switch for no visible benefit. Promise.allSettled (not all) so one
+      // section's query failing doesn't turn a merely-slow-to-load section into a failed switch.
+      const library = await queryClient.fetchQuery({ queryKey: ["library"], queryFn: getCurrentLibrary });
+      await Promise.allSettled([
+        queryClient.fetchQuery({ queryKey: ["authors"], queryFn: listAuthors }),
+        queryClient.fetchQuery({ queryKey: ["series"], queryFn: listSeries }),
+        queryClient.fetchQuery({ queryKey: ["tags"], queryFn: listTags }),
+        queryClient.fetchQuery({ queryKey: ["collections"], queryFn: listCollections }),
+        queryClient.fetchQuery({ queryKey: ["publisherGroups"], queryFn: listPublisherGroups }),
+        queryClient.fetchQuery({ queryKey: ["languageGroups"], queryFn: listLanguageGroups }),
+        ...(library?.periodicalsEnabled ?? true
+          ? [queryClient.fetchQuery({ queryKey: ["periodicals"], queryFn: listPeriodicals })]
+          : []),
+      ]);
+
       onSuccess?.();
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
