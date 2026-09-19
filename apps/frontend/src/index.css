@@ -1,11 +1,24 @@
 /* Mantine (see main.tsx / theme.ts) owns colors, typography, and dark mode.
    This file only resets the app's root element sizing, which Mantine's
    stylesheet doesn't do for a plain Vite SPA shell. */
+/* Issue #143: no top-level element here ever intends to scroll on its own - every window (main
+   app, reader, Help, onboarding) contains its own scrollable regions internally (AppShell.Main,
+   ScrollArea usages, Sidebar's own per-section scrolling below), same reasoning a frameless
+   Electron desktop app normally has for never wanting a native document-level scrollbar at all.
+   Without this, any sub-pixel/calc() sizing slip anywhere in the layout tree (confirmed as the
+   real cause of the sidebar's own reported "outer scrollbar instead of internal" bug - Sidebar.tsx
+   already builds a correct minHeight:0/flex:1 chain down to each section's own internal
+   ScrollArea, but with nothing stopping it here, the smallest leak anywhere bubbles all the way up
+   to a native html/body scrollbar spanning the whole window) has nowhere else to go but here.
+   overflow: hidden makes that class of leak invisible/inert instead of surfacing as a scrollbar
+   that scrolls the entire window (title bar included) rather than just the one region that
+   actually overflowed. */
 html,
 body,
 #root {
   height: 100%;
   margin: 0;
+  overflow: hidden;
 }
 
 /* A unicode-range-restricted alias, listed before --urdu-font-family below, so mixed-script text

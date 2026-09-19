@@ -289,6 +289,11 @@ function CollapsibleSection({
         // of the sidebar.
         flex: expanded && fillHeight ? 1 : "0 0 auto",
         minHeight: expanded && fillHeight ? 0 : undefined,
+        // Issue #143 - a second containment guard alongside the ScrollArea's own flex:1/minHeight:0
+        // below and index.css's html/body overflow:hidden: this section's own box can never grow
+        // past whatever height the flex layout actually gives it, so an overflowing child can only
+        // ever be handled by its own internal ScrollArea, never bubble up as an outer scrollbar.
+        overflow: expanded && fillHeight ? "hidden" : undefined,
         display: expanded ? "flex" : undefined,
         flexDirection: expanded ? "column" : undefined,
       }}
