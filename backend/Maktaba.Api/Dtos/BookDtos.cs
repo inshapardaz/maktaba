@@ -253,6 +253,11 @@ public record NawishtaRefreshRequestDto(string ServerUrl, string RefreshToken);
 // asking for email/password a second time, and can search/page through the result either way.
 public record NawishtaListLibrariesRequestDto(string ServerUrl, string AccessToken, string? Query, int? PageNumber, int? PageSize);
 
+// "Log out" (LibrariesSettings.tsx) - actually destroys RefreshToken server-side (not just a local
+// forget), so both AccessToken (sent as the Bearer header the revoke endpoint requires) and
+// RefreshToken (the one actually being revoked) are needed.
+public record NawishtaRevokeRequestDto(string ServerUrl, string AccessToken, string RefreshToken);
+
 // ParentId is only ever populated for a Collection row (sqid-encoded, mirroring Id) - see
 // EntityGroupCount.ParentId's own doc comment for why every other browse group leaves it null.
 public record BrowseGroupDto(string Id, string Name, int BookCount, bool HasImage = false, string? ParentId = null);

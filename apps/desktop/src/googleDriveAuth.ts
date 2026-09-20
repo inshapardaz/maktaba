@@ -131,3 +131,22 @@ export async function connectGoogleDrive(signal?: AbortSignal): Promise<GoogleDr
     }),
   );
 }
+
+const REVOKE_ENDPOINT = "https://oauth2.googleapis.com/revoke";
+
+/** "Log out"/"Remove library" (LibrariesSettings.tsx) - actually destroys a refresh token
+ * server-side (Google's revocation also invalidates any access token issued from it), not just
+ * forgetting the locally cached copy. No client_id/secret needed here, unlike the token exchange
+ * above - Google's revoke endpoint only takes the token itself. Throws on a non-2xx response (an
+ * already-revoked or malformed token, for instance) - callers treat this as best-effort and log
+ * rather than block on it. */
+export async function revokeGoogleDriveToken(token: string): Promise<void> {
+  const response = await fetch(REVOKE_ENDPOINT, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ token }),
+  });
+  if (!response.ok) {
+    throw new Error(`Google token revocation failed (HTTP ${response.status}).`);
+  }
+}

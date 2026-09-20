@@ -227,4 +227,9 @@ contextBridge.exposeInMainWorld("maktaba", {
   // callers don't need to do anything else to "cancel" their own await.
   cancelGoogleDriveConnect: (): Promise<void> =>
     ipcRenderer.invoke("maktaba:cancel-google-drive-connect"),
+
+  // "Log out"/"Remove library" (LibrariesSettings.tsx) - actually destroys a Google Drive refresh
+  // token server-side, not just forgetting the locally cached copy - see native.ts's own handler.
+  revokeGoogleDriveToken: (refreshToken: string): Promise<void> =>
+    ipcRenderer.invoke("maktaba:revoke-google-drive-token", refreshToken),
 });

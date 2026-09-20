@@ -88,6 +88,30 @@ public static class NawishtaEndpoints
                 return Results.BadRequest(new { error = DescribeNawishtaError(ex) });
             }
         });
+
+        // "Log out" (LibrariesSettings.tsx's NawishtaConnectPanel) - actually destroys the refresh
+        // token server-side, not just forgetting the locally cached copy. Best-effort from the
+        // frontend's own point of view (it clears its local copy regardless of whether this
+        // succeeds), but still a real network call, not a no-op - see INawishtaAuthService.
+        // RevokeAsync's own doc comment for exactly what Nawishta's own handler does with it.
+        group.MapPost("/revoke", async (NawishtaRevokeRequestDto request, INawishtaAuthService auth, CancellationToken ct) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.ServerUrl) || string.IsNullOrWhiteSpace(request.AccessToken) ||
+                string.IsNullOrWhiteSpace(request.RefreshToken))
+            {
+                return Results.BadRequest(new { error = "Server URL, access token, and refresh token are all required." });
+            }
+
+            try
+            {
+                await auth.RevokeAsync(request.ServerUrl.Trim(), request.AccessToken, request.RefreshToken, ct);
+                return Results.NoContent();
+            }
+            catch (Exception ex)
+            {
+                return Results.BadRequest(new { error = DescribeNawishtaError(ex) });
+            }
+        });
     }
 
     private static NawishtaLibraryPageDto ToDto(NawishtaLibraryPage page) => new(

@@ -415,6 +415,16 @@ export function nawishtaRefresh(serverUrl: string, refreshToken: string): Promis
   });
 }
 
+// "Log out" (LibrariesSettings.tsx) - actually destroys refreshToken server-side, not just a local
+// forget. accessToken is sent along too since Nawishta's own revoke endpoint requires an
+// authenticated request (see backend INawishtaAuthService.RevokeAsync's own doc comment).
+export function nawishtaRevoke(serverUrl: string, accessToken: string, refreshToken: string): Promise<void> {
+  return request("/api/nawishta/revoke", {
+    method: "POST",
+    body: JSON.stringify({ serverUrl, accessToken, refreshToken }),
+  });
+}
+
 // Lists (a page of, optionally filtered by query) an already-authenticated account's libraries
 // again, reusing a cached access token - lets NawishtaConnectModal offer "connect another library
 // from this account" once one Nawishta library is already connected, without asking for email/

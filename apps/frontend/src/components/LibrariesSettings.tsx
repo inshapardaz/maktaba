@@ -43,6 +43,7 @@ import {
   nawishtaListLibraries,
   nawishtaLogin,
   nawishtaRefresh,
+  nawishtaRevoke,
   openLibrary,
   refreshNawishtaCovers,
   relocateLibrary,
@@ -169,12 +170,42 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
   });
 
   const removeMutation = useMutation({
-    mutationFn: (id: string) => removeLibrary(id),
-    onSuccess: (_result, id) => {
+    mutationFn: async (entry: LibraryEntry) => {
+      await removeLibrary(entry.id);
+
+      if (entry.providerType === "local") {
+        return;
+      }
+
+      // Cleans up the credential this library's connect flow saved (window.maktaba.
+      // saveCloudCredential, keyed by this library's own id) - removing a library used to leave
+      // its encrypted copy orphaned on disk forever, for every cloud provider, not just Nawishta.
+      // Google Drive's own token is also genuinely revoked server-side (a real POST to Google's
+      // token-revocation endpoint, not just a local forget) - same "Log out" reasoning as
+      // NawishtaConnectPanel's own, moved here since that's the one place today that actually
+      // disconnects a Google Drive-backed library. S3 has no token concept to revoke (a plain
+      // access key/secret) and OneDrive has none exposed by Microsoft's identity platform for this
+      // public-client app type, so both are local-cleanup-only. Best-effort throughout - a failed
+      // revoke/delete here shouldn't block the library itself from having already been removed.
+      try {
+        if (entry.providerType === "googledrive") {
+          const stored = await window.maktaba.getCloudCredential(entry.id);
+          if (stored) {
+            const { refreshToken } = JSON.parse(stored) as GoogleDriveCredential;
+            await window.maktaba.revokeGoogleDriveToken(refreshToken).catch((err: unknown) => {
+              console.warn("Couldn't revoke this library's Google Drive token:", err);
+            });
+          }
+        }
+        await window.maktaba.deleteCloudCredential(entry.id);
+      } catch (err) {
+        console.warn("Couldn't clean up this library's saved credential:", err);
+      }
+    },
+    onSuccess: (_result, entry) => {
       setConfirmingRemoveId(null);
-      const wasActive = librariesQuery.data?.find((l) => l.id === id)?.isActive ?? false;
       invalidateLibraries();
-      if (wasActive) {
+      if (entry.isActive) {
         refreshActiveLibrary();
       }
     },
@@ -461,7 +492,7 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
                 )}
                 {confirmingRemoveId === entry.id ? (
                   <Group gap={4} wrap="nowrap">
-                    <Button size="xs" color="red" loading={removeMutation.isPending} onClick={() => removeMutation.mutate(entry.id)}>
+                    <Button size="xs" color="red" loading={removeMutation.isPending} onClick={() => removeMutation.mutate(entry)}>
                       {t("common.confirm")}
                     </Button>
                     <Button size="xs" variant="subtle" onClick={() => setConfirmingRemoveId(null)}>
@@ -1066,7 +1097,19 @@ function NawishtaConnectPanel({ onConnected, existingLibraryId }: NawishtaConnec
   // stale leftover), so this is a one-time override for "the library I'm about to add right now",
   // not a persistent global sign-out.
   const logoutMutation = useMutation({
-    mutationFn: () => window.maktaba.deleteCloudCredential(NAWISHTA_PENDING_CREDENTIAL_REF),
+    mutationFn: async () => {
+      // Actually destroys the refresh token server-side (see nawishtaRevoke's own doc comment for
+      // exactly what Nawishta's own handler does with it), not just forgetting the local copy -
+      // best-effort (a revoke failure, e.g. offline, still shouldn't block the user from locally
+      // signing out and trying a different account) so this is deliberately swallowed rather than
+      // left to reach mutationFn's own onError and block the local cleanup below.
+      if (credential) {
+        await nawishtaRevoke(serverUrl, credential.accessToken, credential.refreshToken).catch((err: unknown) => {
+          console.warn("Couldn't revoke the Nawishta refresh token (logging out locally anyway):", err);
+        });
+      }
+      await window.maktaba.deleteCloudCredential(NAWISHTA_PENDING_CREDENTIAL_REF);
+    },
     onSuccess: () => {
       setCredential(null);
       setLibraryPage(null);
