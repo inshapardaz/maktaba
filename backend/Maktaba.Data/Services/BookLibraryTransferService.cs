@@ -130,7 +130,11 @@ public class BookLibraryTransferService(
                 DatePublished = book.DatePublished,
                 DateAdded = book.DateAdded,
                 Rating = book.Rating,
-                ReadingStatus = book.ReadingStatus,
+                // Deliberately not copied from the source: ReadingStatus/reading progress
+                // (ReadingProgress/Bookmarks/Notes/ReadingActivities, none of which are Included
+                // above) are per-copy reading state, not book metadata - the copy in the target
+                // library starts fresh at Unread with no progress, same as any newly added book.
+                ReadingStatus = ReadingStatus.Unread,
                 PageCount = book.PageCount,
                 PeriodicalId = targetPeriodical?.Id,
                 IssueNumber = book.IssueNumber,
