@@ -971,10 +971,13 @@ function NawishtaConnectPanel({ onConnected, existingLibraryId }: NawishtaConnec
           setSelectedLibraryId(String(result.libraries.libraries[0].id));
           setName(result.libraries.libraries[0].name);
         }
-      } catch {
-        // Couldn't reuse it (stale refresh token, revoked account, offline, ...) - silently fall
-        // back to the normal email/password form rather than surfacing an error for something the
-        // user never directly asked for.
+      } catch (err) {
+        // Couldn't reuse it (stale refresh token, revoked account, offline, ...) - falls back to
+        // the normal email/password form rather than surfacing an error for something the user
+        // never directly asked for, but still logged (not swallowed entirely) so a genuine bug here
+        // is at least visible in DevTools instead of just looking like "it always asks to log in
+        // again" with no trace of why.
+        console.warn("Couldn't reuse a cached Nawishta credential:", err);
       } finally {
         if (!cancelled) {
           setReusingCredential(false);
@@ -1005,15 +1008,23 @@ function NawishtaConnectPanel({ onConnected, existingLibraryId }: NawishtaConnec
   }, [credential, libraryQuery]);
 
   const loginMutation = useMutation({
-    mutationFn: () => nawishtaLogin(serverUrl.trim(), email.trim(), password),
+    mutationFn: async () => {
+      const result = await nawishtaLogin(serverUrl.trim(), email.trim(), password);
+      // Persisted immediately (not only once a library is actually picked and "Connect" clicked) -
+      // see NAWISHTA_PENDING_CREDENTIAL_REF's own doc comment for why: signing in should "stick"
+      // even if the wizard (or the whole app) is closed before finishing. Awaited here, inside the
+      // mutation itself rather than as a fire-and-forget side effect in onSuccess, so the picker
+      // never even renders (letting the user believe they're safely signed in and free to close
+      // things) until the write has actually landed on disk - otherwise a user who signs in and
+      // closes the app within the next moment could lose an unpersisted write to the process
+      // exiting before a background save finished.
+      await window.maktaba.saveCloudCredential(NAWISHTA_PENDING_CREDENTIAL_REF, JSON.stringify(result.credential));
+      return result;
+    },
     onSuccess: (result) => {
       setCredential(result.credential);
       setLibraryPage(result.libraries);
       setError(null);
-      // Persisted immediately (not only once a library is actually picked and "Connect" clicked) -
-      // see NAWISHTA_PENDING_CREDENTIAL_REF's own doc comment for why: signing in should "stick"
-      // even if the wizard is closed before finishing.
-      void window.maktaba.saveCloudCredential(NAWISHTA_PENDING_CREDENTIAL_REF, JSON.stringify(result.credential));
       if (result.libraries.totalCount === 1 && result.libraries.libraries.length === 1) {
         setSelectedLibraryId(String(result.libraries.libraries[0].id));
         setName(result.libraries.libraries[0].name);
