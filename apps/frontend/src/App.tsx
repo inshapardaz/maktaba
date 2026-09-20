@@ -196,7 +196,8 @@ function App() {
   }, [t]);
 
   const [mainView, setMainView] = useState<MainView>("home");
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  // Which tab Settings (now a mainView like any other browse view, not a Modal) should land on -
+  // e.g. Sidebar's "Manage Libraries" jumps straight to "libraries" instead of always "general".
   const [settingsTab, setSettingsTab] = useState<SettingsTab | undefined>(undefined);
   const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT_WIDTH);
   const [sortKey, setSortKeyState] = useState<SortKey>(getStoredSortKey);
@@ -485,32 +486,18 @@ function App() {
       });
       if (librarySwitch.needsReconnect) {
         setSettingsTab("libraries");
-        setSettingsOpen(true);
+        setMainView("settings");
       }
       librarySwitch.dismissError();
     }
   }, [librarySwitch.error, librarySwitch, t]);
 
-  // The blocking "Syncing to cloud…" page (AppShell.Main below) is normal page content, not a
-  // modal, so it renders *behind* the Settings modal (where the "Sync to cloud now" button lives)
-  // if Settings is left open - the confirmation popup itself is a Modal so it can stack above
-  // Settings via zIndex, but the page that follows it can't the same way. Closing Settings the
-  // moment syncing actually starts is what makes that page visible.
-  useEffect(() => {
-    if (librarySync.isSyncing) {
-      setSettingsOpen(false);
-    }
-  }, [librarySync.isSyncing]);
-
-  // Same reasoning as the effect above - a switch started from LibrariesSettings' own "Open"
-  // button (inside Settings) needs Settings out of the way for the "Switching library…" page to
-  // actually be seen, not just started from the sidebar's LibrarySwitcher where Settings was never
-  // open to begin with.
-  useEffect(() => {
-    if (librarySwitch.isSwitching) {
-      setSettingsOpen(false);
-    }
-  }, [librarySwitch.isSwitching]);
+  // Unlike the old Settings modal (which stacked above AppShell.Main's own content via zIndex, so
+  // closing it used to be what made the blocking "Syncing to cloud…"/"Switching library…" page
+  // underneath actually visible), Settings is now itself just page content rendered inside
+  // AppShell.Main - the isSyncing/isSwitching checks there already run *before* the mainView
+  // switch reaches "settings", so that page takes over automatically with no need to force
+  // Settings closed first.
 
   // A cloud-backed library isn't actually usable until cloudReconnectQuery above has succeeded -
   // see its comment. Also false for the whole duration of a manual cloud sync (LibrarySyncContext)
@@ -886,7 +873,6 @@ function App() {
     void queryClient.invalidateQueries({ queryKey: ["library"] });
     invalidateLibraryQueries(queryClient);
     setMainView("home");
-    setSettingsOpen(false);
     setNavHistory({
       entries: [{ mainView: "home", groupFilter: null, selectedPeriodicalId: null, selectedBookId: null, page: 1 }],
       index: 0,
@@ -898,7 +884,7 @@ function App() {
   // Settings shows its own inline resync progress (LibrariesSettings.tsx) while it's open, so this
   // bar only needs to cover the case that used to have no progress UI at all: the resync keeps
   // running (via RescanContext) after Settings is closed.
-  const showRescanBar = rescan.isRunning && !settingsOpen;
+  const showRescanBar = rescan.isRunning && mainView !== "settings";
   const extraHeaderHeight = (showImportBar ? IMPORT_STATUS_BAR_HEIGHT : 0) + (showRescanBar ? RESCAN_STATUS_BAR_HEIGHT : 0);
 
   return (
@@ -981,10 +967,10 @@ function App() {
                 activeFilter={groupFilter}
                 onSelect={handleSelectFilter}
                 onShowAllBooks={handleShowAllBooks}
-                settingsOpen={settingsOpen}
+                settingsOpen={mainView === "settings"}
                 onOpenSettings={(tab) => {
                   setSettingsTab(tab);
-                  setSettingsOpen(true);
+                  setMainView("settings");
                 }}
                 onOpenAnalytics={() => setMainView("analytics")}
                 canGoBack={canGoBack}
@@ -1032,7 +1018,7 @@ function App() {
                     onOpenLanguages={() => setMainView("languages")}
                     onOpenSettings={(tab) => {
                       setSettingsTab(tab);
-                      setSettingsOpen(true);
+                      setMainView("settings");
                     }}
                     onLibraryChanged={handleLibraryChanged}
                     onDropBooks={handleDropBooksOnGroup}
@@ -1108,6 +1094,12 @@ function App() {
               )
             ) : mainView === "analytics" ? (
               <AnalyticsView onBack={() => setMainView("library")} />
+            ) : mainView === "settings" ? (
+              <SettingsScreen
+                onBack={() => setMainView("library")}
+                onLibraryChanged={handleLibraryChanged}
+                initialTab={settingsTab}
+              />
             ) : (
               <>
                 <FilterBar
@@ -1179,13 +1171,6 @@ function App() {
               onSelectBook={setSelectedBookId}
               onSelectFilter={handleSelectFilter}
               onSearch={handleDetailedSearch}
-            />
-
-            <SettingsScreen
-              opened={settingsOpen}
-              onClose={() => setSettingsOpen(false)}
-              onLibraryChanged={handleLibraryChanged}
-              initialTab={settingsTab}
             />
 
             {selectedBookId && (

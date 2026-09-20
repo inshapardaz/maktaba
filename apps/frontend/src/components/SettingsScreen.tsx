@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Alert, Group, Modal, Select, SegmentedControl, Stack, Switch, Tabs, Text } from "@mantine/core";
+import { Alert, Box, Group, Select, SegmentedControl, Stack, Switch, Tabs, Text } from "@mantine/core";
 import { IconAlertTriangle, IconBook2, IconBooks, IconInfoCircle, IconLanguage, IconSettings } from "../icons";
 import { useLanguage } from "../i18n/LanguageContext";
 import type { ReadableFormat } from "../api";
@@ -20,6 +20,7 @@ import { getStoredExpandMode, setStoredExpandMode, type SidebarExpandMode } from
 import { useAppTheme, type AppThemeName } from "../AppThemeContext";
 import { URDU_FONT_OPTIONS, type UrduFontName } from "../urduFont";
 import { AboutSettings } from "./AboutSettings";
+import { BrowseViewHeader } from "./BrowseViewHeader";
 import { ColorSchemeToggle } from "./ColorSchemeToggle";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { LibrariesSettings } from "./LibrariesSettings";
@@ -29,13 +30,13 @@ import { ThemeColorSwatches } from "./ThemeColorSwatches";
 export type SettingsTab = "general" | "libraries" | "reading" | "dictionaries" | "about";
 
 interface SettingsScreenProps {
-  opened: boolean;
-  onClose: () => void;
+  onBack: () => void;
   onLibraryChanged: () => void;
-  // Which tab to land on when the modal opens - e.g. Sidebar's "Manage Libraries" jumps straight
-  // to "libraries" instead of always opening on General (issue #15). Defaults to "general" and is
-  // re-applied every time the modal transitions to opened, not just on first mount, since Modal
-  // stays mounted (just hidden) between opens.
+  // Which tab to land on - e.g. Sidebar's "Manage Libraries" jumps straight to "libraries" instead
+  // of always opening on General (issue #15). Defaults to "general". A plain useState initializer
+  // (not re-synced via effect) is enough now that this is a mainView-gated page - App.tsx mounts a
+  // fresh instance each time "settings" is navigated to, the same way AuthorsView/CollectionsView/
+  // etc. already do, rather than a Modal that used to stay mounted (just hidden) between opens.
   initialTab?: SettingsTab;
 }
 
@@ -47,7 +48,7 @@ function FieldLabel({ children }: { children: string }) {
   );
 }
 
-export function SettingsScreen({ opened, onClose, onLibraryChanged, initialTab }: SettingsScreenProps) {
+export function SettingsScreen({ onBack, onLibraryChanged, initialTab }: SettingsScreenProps) {
   const { t, urduFont, setUrduFont } = useLanguage();
   const { appTheme, setAppTheme, darkChrome, setDarkChrome } = useAppTheme();
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab ?? "general");
@@ -112,223 +113,225 @@ export function SettingsScreen({ opened, onClose, onLibraryChanged, initialTab }
     void queryClient.invalidateQueries({ queryKey: ["continueReading"] });
   };
 
-  // Re-applied on every open (not just first mount) - the Modal/Tabs stay mounted between opens,
-  // so without this a "Manage Libraries" open would only land on the libraries tab the first time.
-  useEffect(() => {
-    if (opened) setActiveTab(initialTab ?? "general");
-  }, [opened, initialTab]);
-
   return (
-    <Modal opened={opened} onClose={onClose} title={t("settings.title")} size="xl" centered>
-      <Tabs value={activeTab} onChange={(value) => setActiveTab((value as SettingsTab | null) ?? "general")} keepMounted={false}>
-        <Tabs.List>
-          <Tabs.Tab value="general" leftSection={<IconSettings size={14} />}>
-            {t("settings.general")}
-          </Tabs.Tab>
-          <Tabs.Tab value="libraries" leftSection={<IconBooks size={14} />}>
-            {t("settings.libraries")}
-          </Tabs.Tab>
-          <Tabs.Tab value="reading" leftSection={<IconBook2 size={14} />}>
-            {t("settings.reading")}
-          </Tabs.Tab>
-          <Tabs.Tab value="dictionaries" leftSection={<IconLanguage size={14} />}>
-            {t("settings.dictionaries")}
-          </Tabs.Tab>
-          <Tabs.Tab value="about" leftSection={<IconInfoCircle size={14} />}>
-            {t("settings.about")}
-          </Tabs.Tab>
-        </Tabs.List>
+    <Box display="flex" style={{ flexDirection: "column", height: "100%" }}>
+      <BrowseViewHeader title={t("settings.title")} onBack={onBack} />
 
-        <Tabs.Panel value="general" pt="lg">
-          <Stack gap="md">
-            <Group justify="space-between">
-              <FieldLabel>{t("settings.language")}</FieldLabel>
-              <LanguageSwitcher />
-            </Group>
-            <Group justify="space-between">
-              <FieldLabel>{t("settings.appTheme")}</FieldLabel>
-              <SegmentedControl
-                size="xs"
-                value={appTheme}
-                onChange={(value) => setAppTheme(value as AppThemeName)}
-                data={[
-                  { value: "organic", label: t("settings.appTheme.organic") },
-                  { value: "white", label: t("settings.appTheme.white") },
-                ]}
-              />
-            </Group>
-            <Group justify="space-between">
-              <FieldLabel>{t("settings.colorScheme")}</FieldLabel>
-              <ColorSchemeToggle />
-            </Group>
-            {appTheme === "white" && (
+      <Box p="xl" style={{ flex: 1, overflow: "auto" }}>
+        <Tabs
+          value={activeTab}
+          onChange={(value) => setActiveTab((value as SettingsTab | null) ?? "general")}
+          keepMounted={false}
+        >
+          <Tabs.List>
+            <Tabs.Tab value="general" leftSection={<IconSettings size={14} />}>
+              {t("settings.general")}
+            </Tabs.Tab>
+            <Tabs.Tab value="libraries" leftSection={<IconBooks size={14} />}>
+              {t("settings.libraries")}
+            </Tabs.Tab>
+            <Tabs.Tab value="reading" leftSection={<IconBook2 size={14} />}>
+              {t("settings.reading")}
+            </Tabs.Tab>
+            <Tabs.Tab value="dictionaries" leftSection={<IconLanguage size={14} />}>
+              {t("settings.dictionaries")}
+            </Tabs.Tab>
+            <Tabs.Tab value="about" leftSection={<IconInfoCircle size={14} />}>
+              {t("settings.about")}
+            </Tabs.Tab>
+          </Tabs.List>
+  
+          <Tabs.Panel value="general" pt="lg">
+            <Stack gap="md">
               <Group justify="space-between">
-                <FieldLabel>{t("settings.accentColor")}</FieldLabel>
-                <ThemeColorSwatches />
+                <FieldLabel>{t("settings.language")}</FieldLabel>
+                <LanguageSwitcher />
               </Group>
-            )}
-            {appTheme === "white" && (
               <Group justify="space-between">
-                <FieldLabel>{t("settings.darkChrome")}</FieldLabel>
-                <Switch checked={darkChrome} onChange={(e) => setDarkChrome(e.currentTarget.checked)} />
-              </Group>
-            )}
-            <Group justify="space-between">
-              <FieldLabel>{t("settings.urduFont")}</FieldLabel>
-              <Select
-                size="sm"
-                w={220}
-                data={URDU_FONT_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
-                value={urduFont}
-                onChange={(value) => value && setUrduFont(value as UrduFontName)}
-                allowDeselect={false}
-              />
-            </Group>
-            <Stack gap={2}>
-              <Group justify="space-between">
-                <FieldLabel>{t("settings.menuBar")}</FieldLabel>
-                <Switch
-                  checked={menuBarQuery.data ?? false}
-                  onChange={(e) => handleMenuBarChange(e.currentTarget.checked)}
-                />
-              </Group>
-              <Text size="xs" c="dimmed">
-                {t("settings.menuBarHint")}
-              </Text>
-            </Stack>
-            <Stack gap={2}>
-              <Group justify="space-between">
-                <FieldLabel>{t("settings.sidebarExpandMode")}</FieldLabel>
+                <FieldLabel>{t("settings.appTheme")}</FieldLabel>
                 <SegmentedControl
                   size="xs"
-                  value={expandModeQuery.data ?? "single"}
-                  onChange={handleExpandModeChange}
+                  value={appTheme}
+                  onChange={(value) => setAppTheme(value as AppThemeName)}
                   data={[
-                    { value: "single", label: t("settings.sidebarExpandModeSingle") },
-                    { value: "multiple", label: t("settings.sidebarExpandModeMultiple") },
+                    { value: "organic", label: t("settings.appTheme.organic") },
+                    { value: "white", label: t("settings.appTheme.white") },
                   ]}
                 />
               </Group>
-              <Text size="xs" c="dimmed">
-                {t("settings.sidebarExpandModeHint")}
-              </Text>
-            </Stack>
-            <Stack gap={2}>
               <Group justify="space-between">
-                <FieldLabel>{t("settings.showIssuesInGrid")}</FieldLabel>
-                <Switch
-                  checked={showIssuesInGrid}
-                  onChange={(e) => handleShowIssuesInGridChange(e.currentTarget.checked)}
+                <FieldLabel>{t("settings.colorScheme")}</FieldLabel>
+                <ColorSchemeToggle />
+              </Group>
+              {appTheme === "white" && (
+                <Group justify="space-between">
+                  <FieldLabel>{t("settings.accentColor")}</FieldLabel>
+                  <ThemeColorSwatches />
+                </Group>
+              )}
+              {appTheme === "white" && (
+                <Group justify="space-between">
+                  <FieldLabel>{t("settings.darkChrome")}</FieldLabel>
+                  <Switch checked={darkChrome} onChange={(e) => setDarkChrome(e.currentTarget.checked)} />
+                </Group>
+              )}
+              <Group justify="space-between">
+                <FieldLabel>{t("settings.urduFont")}</FieldLabel>
+                <Select
+                  size="sm"
+                  w={220}
+                  data={URDU_FONT_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
+                  value={urduFont}
+                  onChange={(value) => value && setUrduFont(value as UrduFontName)}
+                  allowDeselect={false}
                 />
               </Group>
-              <Text size="xs" c="dimmed">
-                {t("settings.showIssuesInGridHint")}
-              </Text>
+              <Stack gap={2}>
+                <Group justify="space-between">
+                  <FieldLabel>{t("settings.menuBar")}</FieldLabel>
+                  <Switch
+                    checked={menuBarQuery.data ?? false}
+                    onChange={(e) => handleMenuBarChange(e.currentTarget.checked)}
+                  />
+                </Group>
+                <Text size="xs" c="dimmed">
+                  {t("settings.menuBarHint")}
+                </Text>
+              </Stack>
+              <Stack gap={2}>
+                <Group justify="space-between">
+                  <FieldLabel>{t("settings.sidebarExpandMode")}</FieldLabel>
+                  <SegmentedControl
+                    size="xs"
+                    value={expandModeQuery.data ?? "single"}
+                    onChange={handleExpandModeChange}
+                    data={[
+                      { value: "single", label: t("settings.sidebarExpandModeSingle") },
+                      { value: "multiple", label: t("settings.sidebarExpandModeMultiple") },
+                    ]}
+                  />
+                </Group>
+                <Text size="xs" c="dimmed">
+                  {t("settings.sidebarExpandModeHint")}
+                </Text>
+              </Stack>
+              <Stack gap={2}>
+                <Group justify="space-between">
+                  <FieldLabel>{t("settings.showIssuesInGrid")}</FieldLabel>
+                  <Switch
+                    checked={showIssuesInGrid}
+                    onChange={(e) => handleShowIssuesInGridChange(e.currentTarget.checked)}
+                  />
+                </Group>
+                <Text size="xs" c="dimmed">
+                  {t("settings.showIssuesInGridHint")}
+                </Text>
+              </Stack>
             </Stack>
-          </Stack>
-        </Tabs.Panel>
-
-        <Tabs.Panel value="libraries" pt="lg">
-          {/* Resyncing a specific library (including the active one) lives per-row here now -
-              see LibrariesSettings - rather than as a separate blanket "rescan" action. */}
-          <LibrariesSettings onActiveLibraryChanged={onLibraryChanged} />
-        </Tabs.Panel>
-
-        <Tabs.Panel value="reading" pt="lg">
-          <Stack gap="md">
-            <Group justify="space-between">
-              <FieldLabel>{t("settings.readerWindow")}</FieldLabel>
-              <SegmentedControl
-                size="sm"
-                data={[
-                  { value: "window", label: t("settings.readerWindowPopout") },
-                  { value: "inline", label: t("settings.readerWindowInline") },
-                ]}
-                value={readerOpenMode}
-                onChange={handleReaderOpenModeChange}
-              />
-            </Group>
-            <Group justify="space-between">
-              <FieldLabel>{t("settings.epubReader")}</FieldLabel>
-              <SegmentedControl
-                size="sm"
-                data={[
-                  { value: "internal", label: t("settings.readerEngineInternal") },
-                  { value: "external", label: t("settings.readerEngineExternal") },
-                ]}
-                value={epubEngine}
-                onChange={(value) => handleEngineChange("Epub", value)}
-              />
-            </Group>
-            <Group justify="space-between">
-              <FieldLabel>{t("settings.pdfReader")}</FieldLabel>
-              <SegmentedControl
-                size="sm"
-                data={[
-                  { value: "internal", label: t("settings.readerEngineInternal") },
-                  { value: "external", label: t("settings.readerEngineExternal") },
-                ]}
-                value={pdfEngine}
-                onChange={(value) => handleEngineChange("Pdf", value)}
-              />
-            </Group>
-            <Group justify="space-between">
-              <FieldLabel>{t("settings.docxReader")}</FieldLabel>
-              <SegmentedControl
-                size="sm"
-                data={[
-                  { value: "internal", label: t("settings.readerEngineInternal") },
-                  { value: "external", label: t("settings.readerEngineExternal") },
-                ]}
-                value={docxEngine}
-                onChange={(value) => handleEngineChange("Docx", value)}
-              />
-            </Group>
-            <Group justify="space-between">
-              <FieldLabel>{t("settings.txtReader")}</FieldLabel>
-              <SegmentedControl
-                size="sm"
-                data={[
-                  { value: "internal", label: t("settings.readerEngineInternal") },
-                  { value: "external", label: t("settings.readerEngineExternal") },
-                ]}
-                value={txtEngine}
-                onChange={(value) => handleEngineChange("Txt", value)}
-              />
-            </Group>
-            {(epubEngine === "external" || pdfEngine === "external" || docxEngine === "external" || txtEngine === "external") && (
-              <Alert color="yellow" variant="light" icon={<IconAlertTriangle size={16} />}>
-                {t("settings.externalReaderWarning")}
-              </Alert>
-            )}
-            <Stack gap={2}>
+          </Tabs.Panel>
+  
+          <Tabs.Panel value="libraries" pt="lg">
+            {/* Resyncing a specific library (including the active one) lives per-row here now -
+                see LibrariesSettings - rather than as a separate blanket "rescan" action. */}
+            <LibrariesSettings onActiveLibraryChanged={onLibraryChanged} />
+          </Tabs.Panel>
+  
+          <Tabs.Panel value="reading" pt="lg">
+            <Stack gap="md">
               <Group justify="space-between">
-                <FieldLabel>{t("settings.autoTagStatus")}</FieldLabel>
+                <FieldLabel>{t("settings.readerWindow")}</FieldLabel>
                 <SegmentedControl
                   size="sm"
                   data={[
-                    { value: "auto", label: t("settings.autoTagAuto") },
-                    { value: "ask", label: t("settings.autoTagAsk") },
+                    { value: "window", label: t("settings.readerWindowPopout") },
+                    { value: "inline", label: t("settings.readerWindowInline") },
                   ]}
-                  value={autoTagMode}
-                  onChange={handleAutoTagModeChange}
+                  value={readerOpenMode}
+                  onChange={handleReaderOpenModeChange}
                 />
               </Group>
-              <Text size="xs" c="dimmed">
-                {t("settings.autoTagStatusHint")}
-              </Text>
+              <Group justify="space-between">
+                <FieldLabel>{t("settings.epubReader")}</FieldLabel>
+                <SegmentedControl
+                  size="sm"
+                  data={[
+                    { value: "internal", label: t("settings.readerEngineInternal") },
+                    { value: "external", label: t("settings.readerEngineExternal") },
+                  ]}
+                  value={epubEngine}
+                  onChange={(value) => handleEngineChange("Epub", value)}
+                />
+              </Group>
+              <Group justify="space-between">
+                <FieldLabel>{t("settings.pdfReader")}</FieldLabel>
+                <SegmentedControl
+                  size="sm"
+                  data={[
+                    { value: "internal", label: t("settings.readerEngineInternal") },
+                    { value: "external", label: t("settings.readerEngineExternal") },
+                  ]}
+                  value={pdfEngine}
+                  onChange={(value) => handleEngineChange("Pdf", value)}
+                />
+              </Group>
+              <Group justify="space-between">
+                <FieldLabel>{t("settings.docxReader")}</FieldLabel>
+                <SegmentedControl
+                  size="sm"
+                  data={[
+                    { value: "internal", label: t("settings.readerEngineInternal") },
+                    { value: "external", label: t("settings.readerEngineExternal") },
+                  ]}
+                  value={docxEngine}
+                  onChange={(value) => handleEngineChange("Docx", value)}
+                />
+              </Group>
+              <Group justify="space-between">
+                <FieldLabel>{t("settings.txtReader")}</FieldLabel>
+                <SegmentedControl
+                  size="sm"
+                  data={[
+                    { value: "internal", label: t("settings.readerEngineInternal") },
+                    { value: "external", label: t("settings.readerEngineExternal") },
+                  ]}
+                  value={txtEngine}
+                  onChange={(value) => handleEngineChange("Txt", value)}
+                />
+              </Group>
+              {(epubEngine === "external" || pdfEngine === "external" || docxEngine === "external" || txtEngine === "external") && (
+                <Alert color="yellow" variant="light" icon={<IconAlertTriangle size={16} />}>
+                  {t("settings.externalReaderWarning")}
+                </Alert>
+              )}
+              <Stack gap={2}>
+                <Group justify="space-between">
+                  <FieldLabel>{t("settings.autoTagStatus")}</FieldLabel>
+                  <SegmentedControl
+                    size="sm"
+                    data={[
+                      { value: "auto", label: t("settings.autoTagAuto") },
+                      { value: "ask", label: t("settings.autoTagAsk") },
+                    ]}
+                    value={autoTagMode}
+                    onChange={handleAutoTagModeChange}
+                  />
+                </Group>
+                <Text size="xs" c="dimmed">
+                  {t("settings.autoTagStatusHint")}
+                </Text>
+              </Stack>
             </Stack>
-          </Stack>
-        </Tabs.Panel>
-
-        <Tabs.Panel value="dictionaries" pt="lg">
-          <StarDictSettings />
-        </Tabs.Panel>
-
-        <Tabs.Panel value="about" pt="lg">
-          <AboutSettings />
-        </Tabs.Panel>
-      </Tabs>
-    </Modal>
+          </Tabs.Panel>
+  
+          <Tabs.Panel value="dictionaries" pt="lg">
+            <StarDictSettings />
+          </Tabs.Panel>
+  
+          <Tabs.Panel value="about" pt="lg">
+            <AboutSettings />
+          </Tabs.Panel>
+        </Tabs>
+      </Box>
+    </Box>
   );
 }

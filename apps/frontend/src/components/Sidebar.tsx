@@ -95,6 +95,7 @@ export type MainView =
   | "periodicals"
   | "publishers"
   | "languages"
+  | "settings"
   | "analytics";
 
 type BrowseSection = "collections" | "authors" | "series" | "tags" | "periodicals" | "publishers" | "languages";
