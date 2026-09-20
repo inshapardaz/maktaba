@@ -901,6 +901,10 @@ function NawishtaConnectPanel({ onConnected, existingLibraryId }: NawishtaConnec
   // the login form stays hidden during this so the user doesn't see it flash before the picker
   // (the common case) or briefly before falling back to it (the stale-credential case).
   const [reusingCredential, setReusingCredential] = useState(false);
+  // True once a cached credential was actually reused (as opposed to the user having just typed a
+  // fresh email/password) - only then does "Log out" (below) make sense to offer: there's a real
+  // saved session on disk worth clearing, not just in-memory form state from this one visit.
+  const [credentialWasReused, setCredentialWasReused] = useState(false);
 
   // Fetches one page of the now-authenticated account's libraries (initial load, a new search, or
   // prev/next) - always the single source of truth for what the picker shows, so "connect another
@@ -955,6 +959,7 @@ function NawishtaConnectPanel({ onConnected, existingLibraryId }: NawishtaConnec
         }
         setCredential(result.credential);
         setLibraryPage(result.libraries);
+        setCredentialWasReused(true);
         if (result.libraries.totalCount === 1 && result.libraries.libraries.length === 1) {
           setSelectedLibraryId(String(result.libraries.libraries[0].id));
           setName(result.libraries.libraries[0].name);
@@ -1025,6 +1030,27 @@ function NawishtaConnectPanel({ onConnected, existingLibraryId }: NawishtaConnec
     onError: (err) => setError(err instanceof Error ? err.message : String(err)),
   });
 
+  // Forgets the reused credential this panel silently picked up on mount (see the reuse effect
+  // above) - clears it from encrypted disk storage too (not just this component's own state), so a
+  // later "Add Library" doesn't just reuse it again right away. Scoped to existingLibraryId's own
+  // saved copy only: each already-connected Nawishta library keeps an independent encrypted copy of
+  // whatever credential connected it (see ICloudCredentialCache's own doc comment), even when they
+  // all came from the same account/login - this isn't a single global "session" to invalidate, so
+  // logging out here doesn't touch any other already-open Nawishta library's own ability to
+  // reconnect on its own.
+  const logoutMutation = useMutation({
+    mutationFn: () => window.maktaba.deleteCloudCredential(existingLibraryId!),
+    onSuccess: () => {
+      setCredential(null);
+      setLibraryPage(null);
+      setLibraryQuery("");
+      setSelectedLibraryId(null);
+      setName("");
+      setCredentialWasReused(false);
+      setError(null);
+    },
+  });
+
   const canLogin = email.trim().length > 0 && password.length > 0;
   const canConnect = credential !== null && selectedLibraryId !== null && name.trim().length > 0;
   // Nawishta's own GET /libraries currently ignores its "query" parameter server-side (confirmed -
@@ -1062,6 +1088,16 @@ function NawishtaConnectPanel({ onConnected, existingLibraryId }: NawishtaConnec
         </>
       ) : (
         <>
+          {credentialWasReused && (
+            <Group justify="space-between" wrap="nowrap">
+              <Text size="xs" c="dimmed">
+                {t("librariesSettings.nawishtaSignedInAs")}
+              </Text>
+              <Button size="xs" variant="subtle" color="gray" loading={logoutMutation.isPending} onClick={() => logoutMutation.mutate()}>
+                {t("librariesSettings.nawishtaLogout")}
+              </Button>
+            </Group>
+          )}
           <TextInput
             label={t("librariesSettings.nawishtaPickLibrary")}
             placeholder={t("librariesSettings.nawishtaSearchLibraries")}
