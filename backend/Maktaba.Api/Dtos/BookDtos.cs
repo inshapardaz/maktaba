@@ -231,8 +231,10 @@ public record NawishtaLoginRequestDto(string ServerUrl, string Email, string Pas
 
 // camelCase field names match GoogleDriveCredential/OneDriveCredential's own shape - what
 // window.maktaba.saveCloudCredential ultimately encrypts and persists once the user picks a
-// library from NawishtaLoginResponseDto.Libraries.
-public record NawishtaCredentialDto(string AccessToken, string RefreshToken, long ExpiresAt);
+// library from NawishtaLoginResponseDto.Libraries. Name/Email are display-only ("signed in as…" in
+// LibrariesSettings.tsx) - Nawishta's own /authenticate and /refresh-token responses return both
+// alongside the token pair, so no extra round trip is needed to show who's currently signed in.
+public record NawishtaCredentialDto(string AccessToken, string RefreshToken, long ExpiresAt, string? Name = null, string? Email = null);
 
 // Nawishta's own int-typed library id (not a Sqids-encoded id, and never decoded via IdCodec -
 // see NawishtaProviderOptions.RemoteLibraryId) - passed back as-is if the user picks this library.

@@ -30,7 +30,9 @@ public static class NawishtaEndpoints
             {
                 var result = await auth.LoginAsync(request.ServerUrl.Trim(), request.Email.Trim(), request.Password, ct);
                 var dto = new NawishtaLoginResponseDto(
-                    new NawishtaCredentialDto(result.Credential.AccessToken, result.Credential.RefreshToken, result.Credential.ExpiresAt),
+                    new NawishtaCredentialDto(
+                        result.Credential.AccessToken, result.Credential.RefreshToken, result.Credential.ExpiresAt,
+                        result.Credential.Name, result.Credential.Email),
                     ToDto(result.Libraries));
                 return Results.Ok(dto);
             }
@@ -52,7 +54,8 @@ public static class NawishtaEndpoints
             try
             {
                 var credential = await auth.RefreshAsync(request.ServerUrl.Trim(), request.RefreshToken, ct);
-                return Results.Ok(new NawishtaCredentialDto(credential.AccessToken, credential.RefreshToken, credential.ExpiresAt));
+                return Results.Ok(new NawishtaCredentialDto(
+                    credential.AccessToken, credential.RefreshToken, credential.ExpiresAt, credential.Name, credential.Email));
             }
             catch (Exception ex)
             {

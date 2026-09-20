@@ -885,6 +885,16 @@ const NAWISHTA_DEFAULT_SERVER_URL = "https://api.nawishta.co.uk";
 // long unpaged dump.
 const NAWISHTA_LIBRARY_PAGE_SIZE = 10;
 
+// window.maktaba.saveCloudCredential's CredentialRef is normally a library's own id (see
+// ICloudCredentialCache's own doc comment) - this is the one exception, a fixed key standing in for
+// "no library id exists yet". A fresh login is persisted here immediately (not only once a library
+// is actually picked and "Connect" clicked), so signing in and then closing the wizard before
+// finishing - or just backing out to reconsider which library to pick - doesn't throw the sign-in
+// away: reopening the wizard later reuses it here the same way it would reuse an already-connected
+// library's own credential. Cleared once a library is actually connected (its own id becomes the
+// real, permanent home for this same credential) or on an explicit "Log out".
+const NAWISHTA_PENDING_CREDENTIAL_REF = "nawishta-pending-login";
+
 function NawishtaConnectPanel({ onConnected, existingLibraryId }: NawishtaConnectPanelProps) {
   const { t } = useLanguage();
   const [serverUrl] = useState(NAWISHTA_DEFAULT_SERVER_URL);
@@ -901,10 +911,6 @@ function NawishtaConnectPanel({ onConnected, existingLibraryId }: NawishtaConnec
   // the login form stays hidden during this so the user doesn't see it flash before the picker
   // (the common case) or briefly before falling back to it (the stale-credential case).
   const [reusingCredential, setReusingCredential] = useState(false);
-  // True once a cached credential was actually reused (as opposed to the user having just typed a
-  // fresh email/password) - only then does "Log out" (below) make sense to offer: there's a real
-  // saved session on disk worth clearing, not just in-memory form state from this one visit.
-  const [credentialWasReused, setCredentialWasReused] = useState(false);
 
   // Fetches one page of the now-authenticated account's libraries (initial load, a new search, or
   // prev/next) - always the single source of truth for what the picker shows, so "connect another
@@ -924,21 +930,23 @@ function NawishtaConnectPanel({ onConnected, existingLibraryId }: NawishtaConnec
     }
   };
 
-  // On open, if another Nawishta library is already connected, try reusing its cached credential
-  // instead of showing the login form - reads it via window.maktaba.getCloudCredential (the same
-  // decrypt-on-demand path ReconnectModal/App.tsx's startup reconnect use), lists libraries with it,
-  // and if the access token has since gone stale (10-minute TTL), renews it first via its refresh
-  // token before falling back to asking the user to sign in again.
+  // On open, try reusing a cached credential instead of showing the login form - either an already-
+  // connected Nawishta library's own saved copy, or (when none exists yet, or that copy turns out
+  // stale) the "pending" one a not-yet-completed earlier login left behind (see
+  // NAWISHTA_PENDING_CREDENTIAL_REF's own doc comment - this is what makes "log in, then close the
+  // wizard before picking a library" not force a fresh login next time). Reads via
+  // window.maktaba.getCloudCredential (the same decrypt-on-demand path ReconnectModal/App.tsx's
+  // startup reconnect use), lists libraries with whichever one it found, and if the access token has
+  // since gone stale (10-minute TTL), renews it first via its refresh token before falling back to
+  // asking the user to sign in again.
   useEffect(() => {
-    if (existingLibraryId === null) {
-      return;
-    }
-
     let cancelled = false;
     setReusingCredential(true);
     void (async () => {
       try {
-        const stored = await window.maktaba.getCloudCredential(existingLibraryId);
+        const stored =
+          (existingLibraryId !== null ? await window.maktaba.getCloudCredential(existingLibraryId) : null) ??
+          (await window.maktaba.getCloudCredential(NAWISHTA_PENDING_CREDENTIAL_REF));
         if (!stored) {
           return;
         }
@@ -959,7 +967,6 @@ function NawishtaConnectPanel({ onConnected, existingLibraryId }: NawishtaConnec
         }
         setCredential(result.credential);
         setLibraryPage(result.libraries);
-        setCredentialWasReused(true);
         if (result.libraries.totalCount === 1 && result.libraries.libraries.length === 1) {
           setSelectedLibraryId(String(result.libraries.libraries[0].id));
           setName(result.libraries.libraries[0].name);
@@ -1003,6 +1010,10 @@ function NawishtaConnectPanel({ onConnected, existingLibraryId }: NawishtaConnec
       setCredential(result.credential);
       setLibraryPage(result.libraries);
       setError(null);
+      // Persisted immediately (not only once a library is actually picked and "Connect" clicked) -
+      // see NAWISHTA_PENDING_CREDENTIAL_REF's own doc comment for why: signing in should "stick"
+      // even if the wizard is closed before finishing.
+      void window.maktaba.saveCloudCredential(NAWISHTA_PENDING_CREDENTIAL_REF, JSON.stringify(result.credential));
       if (result.libraries.totalCount === 1 && result.libraries.libraries.length === 1) {
         setSelectedLibraryId(String(result.libraries.libraries[0].id));
         setName(result.libraries.libraries[0].name);
@@ -1024,29 +1035,33 @@ function NawishtaConnectPanel({ onConnected, existingLibraryId }: NawishtaConnec
       const providerConfig = { serverUrl: serverUrl.trim(), remoteLibraryId: selectedLibraryId };
       const entry = await connectCloudLibrary(name.trim(), "nawishta", providerConfig, credential);
       await window.maktaba.saveCloudCredential(entry.id, JSON.stringify(credential));
+      // This credential now has a permanent home under the new library's own id - the pending copy
+      // was only ever a stand-in for "no library id exists yet" (best-effort; a failure here just
+      // leaves a harmless stale copy that never gets reused ahead of a real library's own).
+      void window.maktaba.deleteCloudCredential(NAWISHTA_PENDING_CREDENTIAL_REF).catch(() => {});
       return entry;
     },
     onSuccess: onConnected,
     onError: (err) => setError(err instanceof Error ? err.message : String(err)),
   });
 
-  // Forgets the reused credential this panel silently picked up on mount (see the reuse effect
-  // above) - clears it from encrypted disk storage too (not just this component's own state), so a
-  // later "Add Library" doesn't just reuse it again right away. Scoped to existingLibraryId's own
-  // saved copy only: each already-connected Nawishta library keeps an independent encrypted copy of
-  // whatever credential connected it (see ICloudCredentialCache's own doc comment), even when they
-  // all came from the same account/login - this isn't a single global "session" to invalidate, so
-  // logging out here doesn't touch any other already-open Nawishta library's own ability to
-  // reconnect on its own.
+  // Lets the user sign in as a different account without disturbing anything already connected:
+  // only ever clears the *pending* credential (NAWISHTA_PENDING_CREDENTIAL_REF), never
+  // existingLibraryId's own saved copy - that one belongs to an already-registered library and has
+  // to keep working for that library's own future reconnects regardless of what this wizard does.
+  // Within this wizard session, clearing local state below is what actually stops the picker from
+  // showing (the login form takes over instead); reopening the wizard later would otherwise still
+  // reuse existingLibraryId's own credential again (by design - it's a real, working session, not a
+  // stale leftover), so this is a one-time override for "the library I'm about to add right now",
+  // not a persistent global sign-out.
   const logoutMutation = useMutation({
-    mutationFn: () => window.maktaba.deleteCloudCredential(existingLibraryId!),
+    mutationFn: () => window.maktaba.deleteCloudCredential(NAWISHTA_PENDING_CREDENTIAL_REF),
     onSuccess: () => {
       setCredential(null);
       setLibraryPage(null);
       setLibraryQuery("");
       setSelectedLibraryId(null);
       setName("");
-      setCredentialWasReused(false);
       setError(null);
     },
   });
@@ -1088,16 +1103,21 @@ function NawishtaConnectPanel({ onConnected, existingLibraryId }: NawishtaConnec
         </>
       ) : (
         <>
-          {credentialWasReused && (
-            <Group justify="space-between" wrap="nowrap">
-              <Text size="xs" c="dimmed">
-                {t("librariesSettings.nawishtaSignedInAs")}
-              </Text>
-              <Button size="xs" variant="subtle" color="gray" loading={logoutMutation.isPending} onClick={() => logoutMutation.mutate()}>
-                {t("librariesSettings.nawishtaLogout")}
-              </Button>
-            </Group>
-          )}
+          <Group justify="space-between" wrap="nowrap">
+            <Text size="xs" c="dimmed" truncate="end">
+              {t("librariesSettings.nawishtaSignedInAs", { who: credential.name || credential.email || t("librariesSettings.connectNawishta") })}
+            </Text>
+            <Button
+              size="xs"
+              variant="subtle"
+              color="gray"
+              loading={logoutMutation.isPending}
+              onClick={() => logoutMutation.mutate()}
+              style={{ flexShrink: 0 }}
+            >
+              {t("librariesSettings.nawishtaLogout")}
+            </Button>
+          </Group>
           <TextInput
             label={t("librariesSettings.nawishtaPickLibrary")}
             placeholder={t("librariesSettings.nawishtaSearchLibraries")}

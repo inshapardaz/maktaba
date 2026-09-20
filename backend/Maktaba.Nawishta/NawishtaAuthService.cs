@@ -59,7 +59,7 @@ public class NawishtaAuthService(HttpClient httpClient) : INawishtaAuthService
         var accountsClient = new AccountsClient(baseUrl, httpClient);
 
         var auth = await accountsClient.AuthenticateAsync(new AuthenticateRequest { Email = email, Password = password }, ct);
-        var credential = ToCredential(auth.AccessToken, auth.RefreshToken, auth.AccessTokenExpiry);
+        var credential = ToCredential(auth.AccessToken, auth.RefreshToken, auth.AccessTokenExpiry, auth.Name, auth.Email);
 
         // The generated clients don't know about auth - PrepareRequest is per-instance/per-class,
         // so setting it on the shared HttpClient's DefaultRequestHeaders is the simplest way to get
@@ -117,10 +117,11 @@ public class NawishtaAuthService(HttpClient httpClient) : INawishtaAuthService
         var baseUrl = serverUrl.TrimEnd('/');
         var accountsClient = new AccountsClient(baseUrl, httpClient);
         var response = await accountsClient.RefreshTokenAsync(new RefreshTokenRequest { RefreshToken = refreshToken }, ct);
-        return ToCredential(response.AccessToken, response.RefreshToken, response.AccessTokenExpiry);
+        return ToCredential(response.AccessToken, response.RefreshToken, response.AccessTokenExpiry, response.Name, response.Email);
     }
 
-    private static NawishtaCredential ToCredential(string? accessToken, string? refreshToken, DateTimeOffset? expiresAt)
+    private static NawishtaCredential ToCredential(
+        string? accessToken, string? refreshToken, DateTimeOffset? expiresAt, string? name, string? email)
     {
         if (string.IsNullOrWhiteSpace(accessToken) || string.IsNullOrWhiteSpace(refreshToken))
         {
@@ -132,6 +133,6 @@ public class NawishtaAuthService(HttpClient httpClient) : INawishtaAuthService
         // that trusts this value renews a bit early rather than risks trusting an already-expired
         // token for the next 10 minutes.
         var expiry = expiresAt ?? DateTimeOffset.UtcNow.AddMinutes(5);
-        return new NawishtaCredential(accessToken, refreshToken, expiry.ToUnixTimeMilliseconds());
+        return new NawishtaCredential(accessToken, refreshToken, expiry.ToUnixTimeMilliseconds(), name, email);
     }
 }

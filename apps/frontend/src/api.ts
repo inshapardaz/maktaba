@@ -369,6 +369,11 @@ export interface NawishtaCredential {
   accessToken: string;
   refreshToken: string;
   expiresAt: number;
+  // Display-only ("signed in as…" in LibrariesSettings.tsx) - Nawishta's own /authenticate and
+  // /refresh-token responses return both alongside the token pair. Undefined for a credential saved
+  // before this field existed (an older cached JSON blob just parses without them).
+  name?: string | null;
+  email?: string | null;
 }
 
 export interface NawishtaLibrarySummary {
