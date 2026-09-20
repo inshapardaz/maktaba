@@ -1066,6 +1066,19 @@ function NawishtaConnectPanel({ onConnected, existingLibraryId }: NawishtaConnec
     },
   });
 
+  // Same local-state reset as logoutMutation's own onSuccess, minus deleting the pending credential
+  // - this isn't the user asking to sign out, it's a session that's already stopped working on its
+  // own (see the error Alert's own comment below), so there's nothing on disk worth clearing yet;
+  // whatever the user signs in with next just overwrites the (already-useless) pending copy.
+  const handleReLogin = () => {
+    setCredential(null);
+    setLibraryPage(null);
+    setLibraryQuery("");
+    setSelectedLibraryId(null);
+    setName("");
+    setError(null);
+  };
+
   const canLogin = email.trim().length > 0 && password.length > 0;
   const canConnect = credential !== null && selectedLibraryId !== null && name.trim().length > 0;
   // Nawishta's own GET /libraries currently ignores its "query" parameter server-side (confirmed -
@@ -1184,7 +1197,21 @@ function NawishtaConnectPanel({ onConnected, existingLibraryId }: NawishtaConnec
 
       {error && (
         <Alert color="red" icon={<IconAlertCircle size={18} />}>
-          {error}
+          <Stack gap="xs">
+            <Text size="sm">{error}</Text>
+            {/* Shown whenever an error happens *past* the login step (credential !== null) -
+                a token that's since gone stale/been revoked server-side (signed out from another
+                device, an access token that outlived even its refresh token, ...) surfaces here as
+                a plain fetch failure with no built-in recovery, unlike the initial reuse-on-mount
+                attempt above (which already tries a refresh before giving up). Rather than trying
+                to guess whether refreshing would fix it, this just drops back to the plain
+                email/password form so the user can re-authenticate directly. */}
+            {credential !== null && (
+              <Button size="xs" variant="light" onClick={handleReLogin} style={{ alignSelf: "flex-start" }}>
+                {t("librariesSettings.nawishtaSignInAgain")}
+              </Button>
+            )}
+          </Stack>
         </Alert>
       )}
 
