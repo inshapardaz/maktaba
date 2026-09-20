@@ -64,5 +64,9 @@ public record NawishtaProviderOptions(
 
 /// <summary>The JSON shape passed transiently to the backend after #108's login/refresh flow -
 /// see the frontend's future Nawishta connect form, and ICloudCredentialCache (Cloud: Phase 1) for
-/// why only this backend ever sees it decrypted, and only for the lifetime of one request.</summary>
-public record NawishtaCredential(string AccessToken, string RefreshToken, long ExpiresAt);
+/// why only this backend ever sees it decrypted, and only for the lifetime of one request.
+/// Name/Email (added alongside the "show who's signed in" UI - Nawishta's own /authenticate and
+/// /refresh-token responses already return both) are display-only, never read by FromConfig - a
+/// credential saved before this field existed just parses with them null, same as any other missing
+/// optional JSON property.</summary>
+public record NawishtaCredential(string AccessToken, string RefreshToken, long ExpiresAt, string? Name = null, string? Email = null);

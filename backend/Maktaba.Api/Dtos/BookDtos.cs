@@ -231,8 +231,10 @@ public record NawishtaLoginRequestDto(string ServerUrl, string Email, string Pas
 
 // camelCase field names match GoogleDriveCredential/OneDriveCredential's own shape - what
 // window.maktaba.saveCloudCredential ultimately encrypts and persists once the user picks a
-// library from NawishtaLoginResponseDto.Libraries.
-public record NawishtaCredentialDto(string AccessToken, string RefreshToken, long ExpiresAt);
+// library from NawishtaLoginResponseDto.Libraries. Name/Email are display-only ("signed in as…" in
+// LibrariesSettings.tsx) - Nawishta's own /authenticate and /refresh-token responses return both
+// alongside the token pair, so no extra round trip is needed to show who's currently signed in.
+public record NawishtaCredentialDto(string AccessToken, string RefreshToken, long ExpiresAt, string? Name = null, string? Email = null);
 
 // Nawishta's own int-typed library id (not a Sqids-encoded id, and never decoded via IdCodec -
 // see NawishtaProviderOptions.RemoteLibraryId) - passed back as-is if the user picks this library.
@@ -250,6 +252,11 @@ public record NawishtaRefreshRequestDto(string ServerUrl, string RefreshToken);
 // again (reusing a cached access token) so the frontend can offer "connect another library" without
 // asking for email/password a second time, and can search/page through the result either way.
 public record NawishtaListLibrariesRequestDto(string ServerUrl, string AccessToken, string? Query, int? PageNumber, int? PageSize);
+
+// "Log out" (LibrariesSettings.tsx) - actually destroys RefreshToken server-side (not just a local
+// forget), so both AccessToken (sent as the Bearer header the revoke endpoint requires) and
+// RefreshToken (the one actually being revoked) are needed.
+public record NawishtaRevokeRequestDto(string ServerUrl, string AccessToken, string RefreshToken);
 
 // ParentId is only ever populated for a Collection row (sqid-encoded, mirroring Id) - see
 // EntityGroupCount.ParentId's own doc comment for why every other browse group leaves it null.

@@ -34,6 +34,15 @@ public interface INawishtaAuthService
 
     Task<NawishtaCredential> RefreshAsync(string serverUrl, string refreshToken, CancellationToken ct = default);
 
+    /// <summary>Actually destroys a refresh token server-side (POST /Accounts/revoke-token,
+    /// confirmed against the api repo's own RevokeTokenCommandHandler - looks the token up, checks
+    /// the caller owns it, then calls IAccountRepository.RevokeRefreshToken; its own comment notes
+    /// this is meant to invalidate the account's access tokens too, not just the one refresh token).
+    /// Requires an authenticated request (the handler no-ops entirely if userHelper.IsAuthenticated
+    /// is false), so this passes accessToken as a Bearer header the same way LoginAsync/
+    /// ListLibrariesAsync do - unlike RefreshAsync, which is deliberately unauthenticated.</summary>
+    Task RevokeAsync(string serverUrl, string accessToken, string refreshToken, CancellationToken ct = default);
+
     /// <summary>Lists (a page of, optionally filtered by <paramref name="query"/>) the account's
     /// libraries using an already-issued access token, without a fresh email/password login - lets
     /// the frontend offer "add another library from this account" once one Nawishta library is
@@ -59,7 +68,7 @@ public class NawishtaAuthService(HttpClient httpClient) : INawishtaAuthService
         var accountsClient = new AccountsClient(baseUrl, httpClient);
 
         var auth = await accountsClient.AuthenticateAsync(new AuthenticateRequest { Email = email, Password = password }, ct);
-        var credential = ToCredential(auth.AccessToken, auth.RefreshToken, auth.AccessTokenExpiry);
+        var credential = ToCredential(auth.AccessToken, auth.RefreshToken, auth.AccessTokenExpiry, auth.Name, auth.Email);
 
         // The generated clients don't know about auth - PrepareRequest is per-instance/per-class,
         // so setting it on the shared HttpClient's DefaultRequestHeaders is the simplest way to get
@@ -117,10 +126,30 @@ public class NawishtaAuthService(HttpClient httpClient) : INawishtaAuthService
         var baseUrl = serverUrl.TrimEnd('/');
         var accountsClient = new AccountsClient(baseUrl, httpClient);
         var response = await accountsClient.RefreshTokenAsync(new RefreshTokenRequest { RefreshToken = refreshToken }, ct);
-        return ToCredential(response.AccessToken, response.RefreshToken, response.AccessTokenExpiry);
+        return ToCredential(response.AccessToken, response.RefreshToken, response.AccessTokenExpiry, response.Name, response.Email);
     }
 
-    private static NawishtaCredential ToCredential(string? accessToken, string? refreshToken, DateTimeOffset? expiresAt)
+    public async Task RevokeAsync(string serverUrl, string accessToken, string refreshToken, CancellationToken ct = default)
+    {
+        var baseUrl = serverUrl.TrimEnd('/');
+        var accountsClient = new AccountsClient(baseUrl, httpClient);
+
+        // Same DefaultRequestHeaders dance as LoginAsync/ListLibrariesAsync - this call owns
+        // httpClient for its own duration, so a stale Authorization header can't leak into a
+        // concurrent request.
+        httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        try
+        {
+            await accountsClient.RevokeTokenAsync(new RevokeTokenRequest { Token = refreshToken }, ct);
+        }
+        finally
+        {
+            httpClient.DefaultRequestHeaders.Authorization = null;
+        }
+    }
+
+    private static NawishtaCredential ToCredential(
+        string? accessToken, string? refreshToken, DateTimeOffset? expiresAt, string? name, string? email)
     {
         if (string.IsNullOrWhiteSpace(accessToken) || string.IsNullOrWhiteSpace(refreshToken))
         {
@@ -132,6 +161,6 @@ public class NawishtaAuthService(HttpClient httpClient) : INawishtaAuthService
         // that trusts this value renews a bit early rather than risks trusting an already-expired
         // token for the next 10 minutes.
         var expiry = expiresAt ?? DateTimeOffset.UtcNow.AddMinutes(5);
-        return new NawishtaCredential(accessToken, refreshToken, expiry.ToUnixTimeMilliseconds());
+        return new NawishtaCredential(accessToken, refreshToken, expiry.ToUnixTimeMilliseconds(), name, email);
     }
 }

@@ -5,7 +5,7 @@ import { pathToFileURL } from "url";
 import { gunzipSync } from "zlib";
 import JSZip from "jszip";
 import { connectOneDrive } from "./oneDriveAuth";
-import { connectGoogleDrive } from "./googleDriveAuth";
+import { connectGoogleDrive, revokeGoogleDriveToken } from "./googleDriveAuth";
 
 const EBOOK_EXTENSIONS = new Set([".epub", ".pdf", ".docx", ".txt"]);
 
@@ -431,4 +431,8 @@ export function registerNativeHandlers(getWindow: () => BrowserWindow | null): v
   ipcMain.handle("maktaba:cancel-google-drive-connect", () => {
     googleDriveConnectAbort?.abort();
   });
+
+  // "Log out"/"Remove library" (LibrariesSettings.tsx) - see revokeGoogleDriveToken's own doc
+  // comment for what this actually destroys server-side.
+  ipcMain.handle("maktaba:revoke-google-drive-token", (_event, refreshToken: string) => revokeGoogleDriveToken(refreshToken));
 }

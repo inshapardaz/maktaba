@@ -71,6 +71,9 @@ declare global {
       cancelOneDriveConnect: () => Promise<void>;
       connectGoogleDrive: () => Promise<{ accessToken: string; refreshToken: string; expiresAt: number }>;
       cancelGoogleDriveConnect: () => Promise<void>;
+      // "Log out"/"Remove library" (LibrariesSettings.tsx) - actually destroys a Google Drive
+      // refresh token server-side, not just forgetting the locally cached copy.
+      revokeGoogleDriveToken: (refreshToken: string) => Promise<void>;
     };
   }
 }

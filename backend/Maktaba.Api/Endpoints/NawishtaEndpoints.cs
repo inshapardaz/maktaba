@@ -30,7 +30,9 @@ public static class NawishtaEndpoints
             {
                 var result = await auth.LoginAsync(request.ServerUrl.Trim(), request.Email.Trim(), request.Password, ct);
                 var dto = new NawishtaLoginResponseDto(
-                    new NawishtaCredentialDto(result.Credential.AccessToken, result.Credential.RefreshToken, result.Credential.ExpiresAt),
+                    new NawishtaCredentialDto(
+                        result.Credential.AccessToken, result.Credential.RefreshToken, result.Credential.ExpiresAt,
+                        result.Credential.Name, result.Credential.Email),
                     ToDto(result.Libraries));
                 return Results.Ok(dto);
             }
@@ -52,7 +54,8 @@ public static class NawishtaEndpoints
             try
             {
                 var credential = await auth.RefreshAsync(request.ServerUrl.Trim(), request.RefreshToken, ct);
-                return Results.Ok(new NawishtaCredentialDto(credential.AccessToken, credential.RefreshToken, credential.ExpiresAt));
+                return Results.Ok(new NawishtaCredentialDto(
+                    credential.AccessToken, credential.RefreshToken, credential.ExpiresAt, credential.Name, credential.Email));
             }
             catch (Exception ex)
             {
@@ -79,6 +82,30 @@ public static class NawishtaEndpoints
                     string.IsNullOrWhiteSpace(request.Query) ? null : request.Query.Trim(),
                     request.PageNumber ?? 1, request.PageSize ?? 20, ct);
                 return Results.Ok(ToDto(page));
+            }
+            catch (Exception ex)
+            {
+                return Results.BadRequest(new { error = DescribeNawishtaError(ex) });
+            }
+        });
+
+        // "Log out" (LibrariesSettings.tsx's NawishtaConnectPanel) - actually destroys the refresh
+        // token server-side, not just forgetting the locally cached copy. Best-effort from the
+        // frontend's own point of view (it clears its local copy regardless of whether this
+        // succeeds), but still a real network call, not a no-op - see INawishtaAuthService.
+        // RevokeAsync's own doc comment for exactly what Nawishta's own handler does with it.
+        group.MapPost("/revoke", async (NawishtaRevokeRequestDto request, INawishtaAuthService auth, CancellationToken ct) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.ServerUrl) || string.IsNullOrWhiteSpace(request.AccessToken) ||
+                string.IsNullOrWhiteSpace(request.RefreshToken))
+            {
+                return Results.BadRequest(new { error = "Server URL, access token, and refresh token are all required." });
+            }
+
+            try
+            {
+                await auth.RevokeAsync(request.ServerUrl.Trim(), request.AccessToken, request.RefreshToken, ct);
+                return Results.NoContent();
             }
             catch (Exception ex)
             {

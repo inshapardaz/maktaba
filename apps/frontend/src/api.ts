@@ -369,6 +369,11 @@ export interface NawishtaCredential {
   accessToken: string;
   refreshToken: string;
   expiresAt: number;
+  // Display-only ("signed in as…" in LibrariesSettings.tsx) - Nawishta's own /authenticate and
+  // /refresh-token responses return both alongside the token pair. Undefined for a credential saved
+  // before this field existed (an older cached JSON blob just parses without them).
+  name?: string | null;
+  email?: string | null;
 }
 
 export interface NawishtaLibrarySummary {
@@ -407,6 +412,16 @@ export function nawishtaRefresh(serverUrl: string, refreshToken: string): Promis
   return request("/api/nawishta/refresh", {
     method: "POST",
     body: JSON.stringify({ serverUrl, refreshToken }),
+  });
+}
+
+// "Log out" (LibrariesSettings.tsx) - actually destroys refreshToken server-side, not just a local
+// forget. accessToken is sent along too since Nawishta's own revoke endpoint requires an
+// authenticated request (see backend INawishtaAuthService.RevokeAsync's own doc comment).
+export function nawishtaRevoke(serverUrl: string, accessToken: string, refreshToken: string): Promise<void> {
+  return request("/api/nawishta/revoke", {
+    method: "POST",
+    body: JSON.stringify({ serverUrl, accessToken, refreshToken }),
   });
 }
 
