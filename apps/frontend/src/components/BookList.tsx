@@ -22,7 +22,9 @@ import { useCoverAvailability } from "../coverAvailability";
 import { invalidateLibraryQueries } from "../queries";
 import { useReaderLauncher } from "../ReaderLauncherContext";
 import { READING_STATUS_COLOR, READING_STATUS_LABEL_KEY } from "../readingStatus";
+import { BookContextMenu, type BookContextMenuPosition } from "./BookContextMenu";
 import { BookEditForm } from "./BookEditForm";
+import { CopyMoveBookDialog, type TransferMode } from "./CopyMoveBookDialog";
 import { DeleteBooksConfirmDialog } from "./DeleteBooksConfirmDialog";
 import { MergeConfirmDialog } from "./MergeConfirmDialog";
 import { SpineCover } from "./SpineCover";
@@ -56,10 +58,11 @@ export interface BookRowProps {
   // Issue #49: dropping a book (or the active multi-selection) onto this row offers to merge the
   // dropped book(s) into this one - see BookGrid.tsx's BookCard for the same behavior in grid view.
   onMergeRequest: (targetId: string, sourceIds: string[]) => void;
-  // Issue #68: triggered by the row's own delete icon, by right-clicking a row that's part of the
-  // active selection, and by long-pressing one (touch equivalent of right-click) - always the whole
+  // Issue #68: triggered by the row's own delete icon, from the right-click context menu, and by
+  // long-pressing an already-selected row (touch equivalent of right-click) - always the whole
   // multi-selection when this row is part of it, otherwise just this one book.
   onDeleteRequest: (ids: string[]) => void;
+  onTransferRequest: (book: { id: string; title: string }, mode: TransferMode) => void;
 }
 
 // A row's own component (rather than inlining the .map body) so its Read action can hold its own
@@ -68,12 +71,13 @@ export interface BookRowProps {
 // Exported for reuse by HomeView's "Recently Added" shelf (issue #52) so it shows the same rating/
 // status/format/series/tags/collection details as the main library list view instead of a
 // stripped-down cover+title+author row.
-export function BookRow({ book, index, selected, selectedIds, onSelect, onEdit, onMergeRequest, onDeleteRequest }: BookRowProps) {
+export function BookRow({ book, index, selected, selectedIds, onSelect, onEdit, onMergeRequest, onDeleteRequest, onTransferRequest }: BookRowProps) {
   const { t } = useLanguage();
   const launchReader = useReaderLauncher();
   const queryClient = useQueryClient();
   const [loadingRead, setLoadingRead] = useState(false);
   const [hovered, setHovered] = useState(false);
+  const [contextMenuPos, setContextMenuPos] = useState<BookContextMenuPosition | null>(null);
   // Issue #68: touch equivalent of right-click - only armed while this row is already part of the
   // active selection (see the onContextMenu handler below for the same "selected rows only" rule).
   const longPressTimer = useRef<number | null>(null);
@@ -183,6 +187,7 @@ export function BookRow({ book, index, selected, selectedIds, onSelect, onEdit, 
   };
 
   return (
+    <>
     <Box
       data-book-id={book.id}
       draggable
@@ -194,13 +199,9 @@ export function BookRow({ book, index, selected, selectedIds, onSelect, onEdit, 
       onClick={(event) => onSelect(book.id, index, event)}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      // Issue #68: right-click on an already-selected row deletes the whole selection (or just this
-      // book if it's the only one selected) - same "selected rows only" scoping long-press below
-      // uses. An unselected row's right-click falls through to the OS/Electron default context menu.
       onContextMenu={(event) => {
-        if (!selected) return;
         event.preventDefault();
-        onDeleteRequest(deleteTargetIds());
+        setContextMenuPos({ x: event.clientX, y: event.clientY });
       }}
       onTouchStart={handleTouchStart}
       onTouchEnd={clearLongPress}
@@ -469,6 +470,38 @@ export function BookRow({ book, index, selected, selectedIds, onSelect, onEdit, 
         </Group>
       </Stack>
     </Box>
+    {contextMenuPos && (
+      <BookContextMenu
+        position={contextMenuPos}
+        canRead={readableFormats.length > 0}
+        onClose={() => setContextMenuPos(null)}
+        onRead={() => {
+          setContextMenuPos(null);
+          void handleRead();
+        }}
+        onProperties={() => {
+          setContextMenuPos(null);
+          onSelect(book.id, index, { shiftKey: false, ctrlKey: false, metaKey: false } as React.MouseEvent);
+        }}
+        onEdit={() => {
+          setContextMenuPos(null);
+          onEdit(book.id);
+        }}
+        onCopyToLibrary={() => {
+          setContextMenuPos(null);
+          onTransferRequest({ id: book.id, title: displayTitle(book, t) }, "copy");
+        }}
+        onMoveToLibrary={() => {
+          setContextMenuPos(null);
+          onTransferRequest({ id: book.id, title: displayTitle(book, t) }, "move");
+        }}
+        onDelete={() => {
+          setContextMenuPos(null);
+          onDeleteRequest(deleteTargetIds());
+        }}
+      />
+    )}
+    </>
   );
 }
 
@@ -480,6 +513,7 @@ export function BookList({ books, selectedIds, onSelect, onDragSelect, onDeleted
   const [mergeRequest, setMergeRequest] = useState<{ targetId: string; sourceIds: string[] } | null>(null);
   // Issue #68: ids only, same "resolve titles at render time" reasoning as mergeRequest above.
   const [deleteRequestIds, setDeleteRequestIds] = useState<string[] | null>(null);
+  const [transferRequest, setTransferRequest] = useState<{ book: { id: string; title: string }; mode: TransferMode } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const { marqueeRect, onMouseDown } = useDragSelect({ containerRef, onSelect: onDragSelect });
 
@@ -497,6 +531,7 @@ export function BookList({ books, selectedIds, onSelect, onDragSelect, onDeleted
             onEdit={setEditingBookId}
             onMergeRequest={(targetId, sourceIds) => setMergeRequest({ targetId, sourceIds })}
             onDeleteRequest={setDeleteRequestIds}
+            onTransferRequest={(book, mode) => setTransferRequest({ book, mode })}
           />
         ))}
       </Stack>
@@ -550,6 +585,15 @@ export function BookList({ books, selectedIds, onSelect, onDragSelect, onDeleted
           })}
           onClose={() => setDeleteRequestIds(null)}
           onDeleted={onDeleted}
+        />
+      )}
+
+      {transferRequest && (
+        <CopyMoveBookDialog
+          book={transferRequest.book}
+          initialMode={transferRequest.mode}
+          onClose={() => setTransferRequest(null)}
+          onMoved={(id) => onDeleted([id])}
         />
       )}
     </Box>

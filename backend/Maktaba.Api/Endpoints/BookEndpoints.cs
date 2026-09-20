@@ -711,6 +711,39 @@ public static class BookEndpoints
             }
         });
 
+        // Copies or moves a book (id, in this library) into a different registered library - see
+        // IBookLibraryTransferService's own doc comment. deleteFromSource:true is "move": once the
+        // copy into the target succeeds, the source book is removed the same way DELETE /{id}
+        // already does, and the same RequiresLocalTrash/ParentFolderPath fields are echoed back so
+        // the frontend can trash the source's folder exactly the way a plain delete does.
+        group.MapPost("/{id}/transfer", async (
+            string id, TransferBookRequestDto request, IBookLibraryTransferService transferService, CancellationToken ct) =>
+        {
+            if (!IdCodec.TryDecode(id, out var bookId))
+            {
+                return Results.NotFound();
+            }
+
+            var result = await transferService.TransferAsync(bookId, request.TargetLibraryId, request.DeleteFromSource, ct);
+
+            return result.Outcome switch
+            {
+                BookTransferOutcome.Success => Results.Ok(new TransferBookResultDto(
+                    true,
+                    IdCodec.Encode(result.NewBookId!.Value),
+                    null,
+                    result.SourceRemoval?.AbsoluteFolderPath,
+                    result.SourceRemoval?.RequiresLocalTrash ?? false,
+                    result.SourceRemoval?.ParentFolderPath)),
+                BookTransferOutcome.SourceBookNotFound => Results.NotFound(),
+                BookTransferOutcome.TargetLibraryNotFound => Results.NotFound(),
+                BookTransferOutcome.SameLibrary => Results.BadRequest(new { error = result.ErrorMessage }),
+                BookTransferOutcome.UnsupportedProvider => Results.BadRequest(new { error = result.ErrorMessage }),
+                BookTransferOutcome.CredentialMissing => Results.Conflict(new { error = result.ErrorMessage }),
+                _ => Results.Problem(result.ErrorMessage),
+            };
+        });
+
         group.MapPost("/import", async (
             ImportBookRequest request, IImportService importService, ILibraryService libraryService,
             ILogger<Program> logger, CancellationToken ct) =>

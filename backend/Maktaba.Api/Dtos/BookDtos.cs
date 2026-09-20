@@ -110,6 +110,13 @@ public record DownloadProgressDto(long BytesDownloaded, long? TotalBytes);
 // the other book being merged into it.
 public record MergeBooksRequestDto(string SourceBookId);
 
+// TargetLibraryId is a plain LibraryRegistryEntry.Id (a GUID), not IdCodec-encoded - library ids
+// never go through that encoder (see LibraryEntryDto).
+public record TransferBookRequestDto(string TargetLibraryId, bool DeleteFromSource);
+
+public record TransferBookResultDto(
+    bool Success, string? NewBookId, string? Error, string? FolderPath, bool RequiresLocalTrash, string? ParentFolderPath);
+
 public record BookCollectionDto(string Id, string Name);
 
 public record BookDetailDto(

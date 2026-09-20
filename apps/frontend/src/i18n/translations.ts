@@ -224,6 +224,19 @@ const en = {
   "bookMerge.confirm": "Merge",
   "bookMerge.mergeFailed": "Couldn't merge into \"{title}\"",
 
+  "bookContextMenu.properties": "Properties",
+  "bookContextMenu.copyToLibrary": "Copy to library…",
+  "bookContextMenu.moveToLibrary": "Move to library…",
+
+  "bookTransfer.copyTitle": "Copy to library",
+  "bookTransfer.moveTitle": "Move to library",
+  "bookTransfer.description": "Copy or move \"{title}\" to another library. Any author, series, tag, collection, or periodical it needs will be created there if it doesn't already exist.",
+  "bookTransfer.targetLibrary": "Target library",
+  "bookTransfer.targetLibraryPlaceholder": "Choose a library…",
+  "bookTransfer.removeFromSource": "Remove from source library",
+  "bookTransfer.copy": "Copy",
+  "bookTransfer.move": "Move",
+
   "bookDetail.edit": "Edit",
   "bookDetail.remove": "Remove",
   "bookDetail.confirmRemove": "Send files to trash?",
@@ -802,6 +815,19 @@ const ur: TranslationDict = {
   "bookMerge.confirmMany": "{count} کتابوں کو \"{target}\" میں ضم کریں؟ ان کے وہ فارمیٹس جو \"{target}\" کے پاس نہیں ہیں اس میں شامل کر دیے جائیں گے، جو اپنا عنوان، مصنفین، اور دیگر تفصیلات برقرار رکھے گی۔ باقی {count} کتابیں اس کے بعد ہٹا دی جائیں گی۔",
   "bookMerge.confirm": "ضم کریں",
   "bookMerge.mergeFailed": "\"{title}\" میں ضم نہیں کیا جا سکا",
+
+  "bookContextMenu.properties": "خصوصیات",
+  "bookContextMenu.copyToLibrary": "لائبریری میں کاپی کریں…",
+  "bookContextMenu.moveToLibrary": "لائبریری میں منتقل کریں…",
+
+  "bookTransfer.copyTitle": "لائبریری میں کاپی کریں",
+  "bookTransfer.moveTitle": "لائبریری میں منتقل کریں",
+  "bookTransfer.description": "\"{title}\" کو دوسری لائبریری میں کاپی یا منتقل کریں۔ اگر ضرورت ہو تو مصنف، سلسلہ، ٹیگ، مجموعہ، یا جریدہ وہاں خودکار طور پر بنایا جائے گا۔",
+  "bookTransfer.targetLibrary": "ہدف لائبریری",
+  "bookTransfer.targetLibraryPlaceholder": "ایک لائبریری منتخب کریں…",
+  "bookTransfer.removeFromSource": "ماخذ لائبریری سے ہٹا دیں",
+  "bookTransfer.copy": "کاپی کریں",
+  "bookTransfer.move": "منتقل کریں",
 
   "bookDetail.edit": "ترمیم کریں",
   "bookDetail.remove": "ہٹا دیں",

@@ -17,8 +17,10 @@ import { useLanguage } from "../i18n/LanguageContext";
 import { getStoredShowIssuesInGrid } from "../periodicalSettings";
 import { useReaderLauncher } from "../ReaderLauncherContext";
 import { invalidateLibraryQueries } from "../queries";
+import { BookContextMenu, type BookContextMenuPosition } from "./BookContextMenu";
 import { BookEditForm } from "./BookEditForm";
 import { BookRow } from "./BookList";
+import { CopyMoveBookDialog, type TransferMode } from "./CopyMoveBookDialog";
 import { DeleteBooksConfirmDialog } from "./DeleteBooksConfirmDialog";
 import { displayTitle } from "../issueDisplay";
 import type { GroupFilter } from "./Sidebar";
@@ -105,11 +107,16 @@ export function HomeView({ onSelectBook, onSelectFilter }: HomeViewProps) {
   // Issue: the Recently Added shelf's per-row delete (hover trash icon) used to be wired to a
   // no-op, same "resolve titles at render time" shape as BookList.tsx's own deleteRequestIds.
   const [deleteRequestIds, setDeleteRequestIds] = useState<string[] | null>(null);
+  const [transferRequest, setTransferRequest] = useState<{ book: { id: string; title: string }; mode: TransferMode } | null>(null);
   // Issue #119: the shelf's per-row Edit (pencil) icon was wired to onSelectBook - the same handler
   // as clicking the row itself - so it opened the read-only detail popup instead of the actual edit
   // form. BookList.tsx's own onEdit wires to a real BookEditForm the same way; this shelf just never
   // had the equivalent local state for it.
   const [editingBookId, setEditingBookId] = useState<string | null>(null);
+  // The Continue Reading hero and Currently Reading list are custom-rendered rows (not BookRow),
+  // so they need their own right-click context menu wiring - a single shared slot since only one
+  // can be open at a time.
+  const [contextMenuFor, setContextMenuFor] = useState<{ book: ContinueReadingBook; position: BookContextMenuPosition } | null>(null);
 
   const resumeBook = (book: ContinueReadingBook) => {
     launchReader({
@@ -184,6 +191,10 @@ export function HomeView({ onSelectBook, onSelectFilter }: HomeViewProps) {
                 draggable
                 onDragStart={(event) => setBookDragData(event, [lastRead.id])}
                 onClick={() => onSelectBook(lastRead.id)}
+                onContextMenu={(event) => {
+                  event.preventDefault();
+                  setContextMenuFor({ book: lastRead, position: { x: event.clientX, y: event.clientY } });
+                }}
                 style={{ flexShrink: 0 }}
               >
                 {lastReadCover.available ? (
@@ -280,6 +291,10 @@ export function HomeView({ onSelectBook, onSelectFilter }: HomeViewProps) {
                   justify="space-between"
                   wrap="nowrap"
                   p="xs"
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    setContextMenuFor({ book, position: { x: event.clientX, y: event.clientY } });
+                  }}
                   style={{
                     border: "1px solid var(--mantine-color-default-border)",
                     borderRadius: "var(--mantine-radius-sm)",
@@ -354,6 +369,7 @@ export function HomeView({ onSelectBook, onSelectFilter }: HomeViewProps) {
                   onEdit={setEditingBookId}
                   onMergeRequest={noopMergeRequest}
                   onDeleteRequest={setDeleteRequestIds}
+                  onTransferRequest={(book, mode) => setTransferRequest({ book, mode })}
                 />
               ))}
             </Stack>
@@ -373,10 +389,59 @@ export function HomeView({ onSelectBook, onSelectFilter }: HomeViewProps) {
         <DeleteBooksConfirmDialog
           books={deleteRequestIds.map((id) => {
             const book = recentBooks.find((b) => b.id === id);
-            return { id, title: book ? displayTitle(book, t) : id };
+            if (book) return { id, title: displayTitle(book, t) };
+            const inProgressBook = items.find((b) => b.id === id);
+            return { id, title: inProgressBook?.title ?? id };
           })}
           onClose={() => setDeleteRequestIds(null)}
           onDeleted={() => setDeleteRequestIds(null)}
+        />
+      )}
+
+      {contextMenuFor && (
+        <BookContextMenu
+          position={contextMenuFor.position}
+          canRead
+          onClose={() => setContextMenuFor(null)}
+          onRead={() => {
+            const book = contextMenuFor.book;
+            setContextMenuFor(null);
+            resumeBook(book);
+          }}
+          onProperties={() => {
+            const bookId = contextMenuFor.book.id;
+            setContextMenuFor(null);
+            onSelectBook(bookId);
+          }}
+          onEdit={() => {
+            const bookId = contextMenuFor.book.id;
+            setContextMenuFor(null);
+            setEditingBookId(bookId);
+          }}
+          onCopyToLibrary={() => {
+            const book = contextMenuFor.book;
+            setContextMenuFor(null);
+            setTransferRequest({ book: { id: book.id, title: book.title }, mode: "copy" });
+          }}
+          onMoveToLibrary={() => {
+            const book = contextMenuFor.book;
+            setContextMenuFor(null);
+            setTransferRequest({ book: { id: book.id, title: book.title }, mode: "move" });
+          }}
+          onDelete={() => {
+            const bookId = contextMenuFor.book.id;
+            setContextMenuFor(null);
+            setDeleteRequestIds([bookId]);
+          }}
+        />
+      )}
+
+      {transferRequest && (
+        <CopyMoveBookDialog
+          book={transferRequest.book}
+          initialMode={transferRequest.mode}
+          onClose={() => setTransferRequest(null)}
+          onMoved={() => setTransferRequest(null)}
         />
       )}
     </Box>
