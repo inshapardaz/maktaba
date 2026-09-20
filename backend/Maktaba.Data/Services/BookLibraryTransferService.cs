@@ -71,7 +71,13 @@ public class BookLibraryTransferService(
         IStorageProvider targetProvider;
         if (targetEntry.ProviderType == "local")
         {
-            targetProvider = storageFactory.CreateForProvider(targetEntry.Id, "local", new Dictionary<string, string>(), "");
+            // Deliberately not storageFactory.CreateForProvider here - "local" always resolves to
+            // the one shared LocalFileSystemProvider singleton, which is bound to whichever library
+            // is currently *active* (see AdHocLocalStorageProvider's own doc comment). Using it for
+            // a non-active local target would silently read/write the active library's own files
+            // and metadata.db instead of the target's - exactly the "copy landed in the same
+            // library" bug this class exists to avoid.
+            targetProvider = new AdHocLocalStorageProvider(targetEntry.Path);
         }
         else
         {
