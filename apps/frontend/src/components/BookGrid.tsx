@@ -10,7 +10,10 @@ import { displaySubtitle, displayTitle } from "../issueDisplay";
 import { useReaderLauncher } from "../ReaderLauncherContext";
 import { READING_STATUS_COLOR, READING_STATUS_LABEL_KEY } from "../readingStatus";
 import { useCoverAvailability } from "../coverAvailability";
+import { BookContextMenu, type BookContextMenuPosition } from "./BookContextMenu";
 import { BookEditForm } from "./BookEditForm";
+import { CopyMoveBookDialog, type TransferMode } from "./CopyMoveBookDialog";
+import { DeleteBooksConfirmDialog } from "./DeleteBooksConfirmDialog";
 import { MergeConfirmDialog } from "./MergeConfirmDialog";
 import { SpineCover } from "./SpineCover";
 
@@ -21,6 +24,8 @@ interface BookGridProps {
   // Issue #46: replaces the selection with whatever the marquee drag (or a plain click on empty
   // space, which reports an empty array) covers - see dragSelect.ts's useDragSelect.
   onDragSelect: (ids: string[]) => void;
+  // Same "whichever ids actually got deleted/moved" contract as BookList.tsx's onDeleted.
+  onDeleted: (ids: string[]) => void;
 }
 
 const CARD_WIDTH = 160;
@@ -45,20 +50,27 @@ interface BookCardProps {
   // Issue #49: dropping a book (or the active multi-selection) onto this card offers to merge the
   // dropped book(s) into this one - see App.tsx-level MergeConfirmDialog rendered by BookGrid below.
   onMergeRequest: (targetId: string, sourceIds: string[]) => void;
+  onDeleteRequest: (ids: string[]) => void;
+  onTransferRequest: (book: { id: string; title: string }, mode: TransferMode) => void;
 }
 
-function BookCard({ book, index, selected, selectedIds, onSelect, onEdit, onMergeRequest }: BookCardProps) {
+function BookCard({ book, index, selected, selectedIds, onSelect, onEdit, onMergeRequest, onDeleteRequest, onTransferRequest }: BookCardProps) {
   const { t } = useLanguage();
   const launchReader = useReaderLauncher();
   const [hovered, setHovered] = useState(false);
   const [loadingRead, setLoadingRead] = useState(false);
   const [mergeDragOver, setMergeDragOver] = useState(false);
+  const [contextMenuPos, setContextMenuPos] = useState<BookContextMenuPosition | null>(null);
   // Issue #61: the dragged card(s) turn translucent for the duration of the drag - without this,
   // a card being dragged onto a sidebar row/another card looks fully opaque and can visually
   // obscure whatever's underneath the cursor at the drop target.
   const [isDragging, setIsDragging] = useState(false);
   const readableFormats = book.formats.filter(isReadableFormat);
   const cover = useCoverAvailability(book.id, book.coverVersion, book.hasCover);
+
+  // Same "whole selection if this card is part of one, otherwise just this book" rule
+  // BookList.tsx's BookRow uses for its own drag/delete targets.
+  const deleteTargetIds = () => (selected && selectedIds.size > 1 ? Array.from(selectedIds) : [book.id]);
 
   const handleRead = async (format?: ReadableFormat) => {
     if (loadingRead) return;
@@ -84,6 +96,7 @@ function BookCard({ book, index, selected, selectedIds, onSelect, onEdit, onMerg
   };
 
   return (
+    <>
     <UnstyledButton
       data-book-id={book.id}
       w={CARD_WIDTH}
@@ -95,6 +108,10 @@ function BookCard({ book, index, selected, selectedIds, onSelect, onEdit, onMerg
       }}
       onDragEnd={() => setIsDragging(false)}
       onClick={(event) => onSelect(book.id, index, event)}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        setContextMenuPos({ x: event.clientX, y: event.clientY });
+      }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       // Issue #49: dropping a book (or the active multi-selection) onto this card offers to merge
@@ -267,10 +284,42 @@ function BookCard({ book, index, selected, selectedIds, onSelect, onEdit, onMerg
         {displaySubtitle(book, t)}
       </Text>
     </UnstyledButton>
+    {contextMenuPos && (
+      <BookContextMenu
+        position={contextMenuPos}
+        canRead={readableFormats.length > 0}
+        onClose={() => setContextMenuPos(null)}
+        onRead={() => {
+          setContextMenuPos(null);
+          void handleRead();
+        }}
+        onProperties={() => {
+          setContextMenuPos(null);
+          onSelect(book.id, index, { shiftKey: false, ctrlKey: false, metaKey: false } as React.MouseEvent);
+        }}
+        onEdit={() => {
+          setContextMenuPos(null);
+          onEdit(book.id);
+        }}
+        onCopyToLibrary={() => {
+          setContextMenuPos(null);
+          onTransferRequest({ id: book.id, title: displayTitle(book, t) }, "copy");
+        }}
+        onMoveToLibrary={() => {
+          setContextMenuPos(null);
+          onTransferRequest({ id: book.id, title: displayTitle(book, t) }, "move");
+        }}
+        onDelete={() => {
+          setContextMenuPos(null);
+          onDeleteRequest(deleteTargetIds());
+        }}
+      />
+    )}
+    </>
   );
 }
 
-export function BookGrid({ books, selectedIds, onSelect, onDragSelect }: BookGridProps) {
+export function BookGrid({ books, selectedIds, onSelect, onDragSelect, onDeleted }: BookGridProps) {
   const { t } = useLanguage();
   const parentRef = useRef<HTMLDivElement>(null);
   const [columnCount, setColumnCount] = useState(1);
@@ -278,6 +327,9 @@ export function BookGrid({ books, selectedIds, onSelect, onDragSelect }: BookGri
   // Issue #49: target/source ids only - resolved to titles at render time from `books` below, so
   // the dialog always reflects the current title even if it changed since the drop.
   const [mergeRequest, setMergeRequest] = useState<{ targetId: string; sourceIds: string[] } | null>(null);
+  // Ids only, same "resolve titles at render time" reasoning as mergeRequest above.
+  const [deleteRequestIds, setDeleteRequestIds] = useState<string[] | null>(null);
+  const [transferRequest, setTransferRequest] = useState<{ book: { id: string; title: string }; mode: TransferMode } | null>(null);
   const { marqueeRect, onMouseDown } = useDragSelect({ containerRef: parentRef, onSelect: onDragSelect });
 
   useEffect(() => {
@@ -335,6 +387,8 @@ export function BookGrid({ books, selectedIds, onSelect, onDragSelect }: BookGri
                   onSelect={onSelect}
                   onEdit={setEditingBookId}
                   onMergeRequest={(targetId, sourceIds) => setMergeRequest({ targetId, sourceIds })}
+                  onDeleteRequest={setDeleteRequestIds}
+                  onTransferRequest={(book, mode) => setTransferRequest({ book, mode })}
                 />
               ))}
             </Box>
@@ -382,6 +436,26 @@ export function BookGrid({ books, selectedIds, onSelect, onDragSelect }: BookGri
             />
           );
         })()}
+
+      {deleteRequestIds && (
+        <DeleteBooksConfirmDialog
+          books={deleteRequestIds.map((id) => {
+            const book = books.find((b) => b.id === id);
+            return { id, title: book ? displayTitle(book, t) : id };
+          })}
+          onClose={() => setDeleteRequestIds(null)}
+          onDeleted={onDeleted}
+        />
+      )}
+
+      {transferRequest && (
+        <CopyMoveBookDialog
+          book={transferRequest.book}
+          initialMode={transferRequest.mode}
+          onClose={() => setTransferRequest(null)}
+          onMoved={(id) => onDeleted([id])}
+        />
+      )}
     </Box>
   );
 }

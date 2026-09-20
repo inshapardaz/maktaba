@@ -693,6 +693,40 @@ export function mergeBooks(targetId: string, sourceBookId: string): Promise<void
   });
 }
 
+// Copies (deleteFromSource: false) or moves (true) this book into a different registered library -
+// creating any missing Author/Tag/Collection/Series/Periodical there by name. Mirrors deleteBook's
+// own contract for the source-removal fields: when this was a move, requiresLocalTrash/
+// folderPath/parentFolderPath describe the *source* book's now-removed folder (only meaningful when
+// requiresLocalTrash is true - the same two-step trashPath/trashPathIfEmpty deleteBook's own callers
+// already do), and are all null for a plain copy (nothing removed from the source).
+export function transferBook(
+  id: string,
+  targetLibraryId: string,
+  deleteFromSource: boolean,
+): Promise<{
+  newBookId: string;
+  folderPath: string | null;
+  requiresLocalTrash: boolean;
+  parentFolderPath: string | null;
+}> {
+  return request<{
+    success: boolean;
+    newBookId: string;
+    error: string | null;
+    folderPath: string | null;
+    requiresLocalTrash: boolean;
+    parentFolderPath: string | null;
+  }>(`/api/books/${id}/transfer`, {
+    method: "POST",
+    body: JSON.stringify({ targetLibraryId, deleteFromSource }),
+  }).then((r) => ({
+    newBookId: r.newBookId,
+    folderPath: r.folderPath,
+    requiresLocalTrash: r.requiresLocalTrash,
+    parentFolderPath: r.parentFolderPath,
+  }));
+}
+
 // Issue #66: re-extracts the cover image embedded in one of the book's own attached files and sets
 // it as the book's cover (overwriting whatever cover is there now). Throws ApiError(409) if that
 // file has no embedded cover.

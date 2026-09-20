@@ -53,6 +53,7 @@ builder.Services.AddScoped<IImportService, ImportService>();
 builder.Services.AddScoped<IBookEditService, BookEditService>();
 builder.Services.AddScoped<IAuthorRenameService, AuthorRenameService>();
 builder.Services.AddScoped<IBookRemovalService, BookRemovalService>();
+builder.Services.AddScoped<IBookLibraryTransferService, BookLibraryTransferService>();
 builder.Services.AddScoped<ILibraryRescanService, LibraryRescanService>();
 builder.Services.AddSingleton<IRescanProgressTracker, RescanProgressTracker>();
 builder.Services.AddSingleton<ICalibreConverter, CalibreConverter>();

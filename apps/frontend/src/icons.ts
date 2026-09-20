@@ -7,6 +7,7 @@
 import {
   ArrowLeft,
   ArrowRight,
+  ArrowRightLeft,
   ArrowUpDown,
   Ban,
   Book,
@@ -88,6 +89,7 @@ export const IconAlertTriangle = withStrokeWidth(TriangleAlert);
 export const IconArrowLeft = withStrokeWidth(ArrowLeft);
 export const IconArrowRight = withStrokeWidth(ArrowRight);
 export const IconArrowsSort = withStrokeWidth(ArrowUpDown);
+export const IconArrowsExchange = withStrokeWidth(ArrowRightLeft);
 export const IconBan = withStrokeWidth(Ban);
 export const IconBook = withStrokeWidth(Book);
 export const IconBook2 = withStrokeWidth(BookOpen);

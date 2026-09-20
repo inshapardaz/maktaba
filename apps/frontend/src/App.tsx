@@ -1140,6 +1140,7 @@ function App() {
                       selectedIds={selectedBookIds}
                       onSelect={handleBookClick}
                       onDragSelect={handleDragSelect}
+                      onDeleted={handleBooksDeleted}
                     />
                   ) : (
                     <BookList

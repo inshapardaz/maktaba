@@ -19,6 +19,7 @@ import { useReaderLauncher } from "../ReaderLauncherContext";
 import { invalidateLibraryQueries } from "../queries";
 import { BookEditForm } from "./BookEditForm";
 import { BookRow } from "./BookList";
+import { CopyMoveBookDialog, type TransferMode } from "./CopyMoveBookDialog";
 import { DeleteBooksConfirmDialog } from "./DeleteBooksConfirmDialog";
 import { displayTitle } from "../issueDisplay";
 import type { GroupFilter } from "./Sidebar";
@@ -105,6 +106,7 @@ export function HomeView({ onSelectBook, onSelectFilter }: HomeViewProps) {
   // Issue: the Recently Added shelf's per-row delete (hover trash icon) used to be wired to a
   // no-op, same "resolve titles at render time" shape as BookList.tsx's own deleteRequestIds.
   const [deleteRequestIds, setDeleteRequestIds] = useState<string[] | null>(null);
+  const [transferRequest, setTransferRequest] = useState<{ book: { id: string; title: string }; mode: TransferMode } | null>(null);
   // Issue #119: the shelf's per-row Edit (pencil) icon was wired to onSelectBook - the same handler
   // as clicking the row itself - so it opened the read-only detail popup instead of the actual edit
   // form. BookList.tsx's own onEdit wires to a real BookEditForm the same way; this shelf just never
@@ -354,6 +356,7 @@ export function HomeView({ onSelectBook, onSelectFilter }: HomeViewProps) {
                   onEdit={setEditingBookId}
                   onMergeRequest={noopMergeRequest}
                   onDeleteRequest={setDeleteRequestIds}
+                  onTransferRequest={(book, mode) => setTransferRequest({ book, mode })}
                 />
               ))}
             </Stack>
@@ -377,6 +380,15 @@ export function HomeView({ onSelectBook, onSelectFilter }: HomeViewProps) {
           })}
           onClose={() => setDeleteRequestIds(null)}
           onDeleted={() => setDeleteRequestIds(null)}
+        />
+      )}
+
+      {transferRequest && (
+        <CopyMoveBookDialog
+          book={transferRequest.book}
+          initialMode={transferRequest.mode}
+          onClose={() => setTransferRequest(null)}
+          onMoved={() => setTransferRequest(null)}
         />
       )}
     </Box>
