@@ -293,6 +293,9 @@ export function BookDetailPanel({ bookId, onClose, onRemoved, onSelectFilter }: 
     }
   };
 
+  const cover = useCoverAvailability(book?.id ?? "", book?.coverVersion, book?.hasCover ?? false);
+  const providerType = useLibraryProviderType();
+
   if (isEditing) {
     return (
       <BookEditForm bookId={bookId} onClose={() => setEditing(false)} onSaved={() => setEditing(false)} />
@@ -356,9 +359,6 @@ export function BookDetailPanel({ bookId, onClose, onRemoved, onSelectFilter }: 
       .filter(Boolean)
       .join(" · ")
     : "";
-
-  const cover = useCoverAvailability(book?.id ?? "", book?.coverVersion, book?.hasCover ?? false);
-  const providerType = useLibraryProviderType();
 
   return (
     <Modal opened onClose={onClose} centered size={560} padding="lg">
