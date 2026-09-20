@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ActionIcon,
@@ -15,10 +15,12 @@ import {
   Text,
   TextInput,
   Tooltip,
+  UnstyledButton,
 } from "@mantine/core";
 import {
   IconAlertCircle,
   IconAlertTriangle,
+  IconArrowLeft,
   IconBooks,
   IconCheck,
   IconCloud,
@@ -33,6 +35,7 @@ import {
   IconTrash,
   IconX,
 } from "../icons";
+import type { Icon } from "../icons";
 import {
   connectCloudLibrary,
   getSyncStatus,
@@ -217,33 +220,12 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
     renameMutation.mutate({ id, name: trimmed });
   };
 
-  const [s3ModalOpen, setS3ModalOpen] = useState(false);
-  const [googleModalOpen, setGoogleModalOpen] = useState(false);
-  const [oneDriveModalOpen, setOneDriveModalOpen] = useState(false);
-  const [nawishtaModalOpen, setNawishtaModalOpen] = useState(false);
+  const [addWizardOpen, setAddWizardOpen] = useState(false);
   const [migratingLibraryId, setMigratingLibraryId] = useState<string | null>(null);
   const [reconnectingEntry, setReconnectingEntry] = useState<LibraryEntry | null>(null);
 
-  const handleS3Connected = () => {
-    setS3ModalOpen(false);
-    invalidateLibraries();
-    refreshActiveLibrary();
-  };
-
-  const handleGoogleDriveConnected = () => {
-    setGoogleModalOpen(false);
-    invalidateLibraries();
-    refreshActiveLibrary();
-  };
-
-  const handleOneDriveConnected = () => {
-    setOneDriveModalOpen(false);
-    invalidateLibraries();
-    refreshActiveLibrary();
-  };
-
-  const handleNawishtaConnected = () => {
-    setNawishtaModalOpen(false);
+  const handleConnected = () => {
+    setAddWizardOpen(false);
     invalidateLibraries();
     refreshActiveLibrary();
   };
@@ -254,48 +236,20 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
         <Text size="sm" c="dimmed">
           {t("librariesSettings.description")}
         </Text>
-        <Group gap="xs">
-          <Button size="sm" variant="default" leftSection={<PROVIDER_ICONS.s3 size={14} />} onClick={() => setS3ModalOpen(true)}>
-            {t("librariesSettings.connectS3")}
-          </Button>
-          <Button
-            size="sm"
-            variant="default"
-            leftSection={<PROVIDER_ICONS.googledrive size={14} />}
-            onClick={() => setGoogleModalOpen(true)}
-          >
-            {t("librariesSettings.connectGoogleDrive")}
-          </Button>
-          <Button
-            size="sm"
-            variant="default"
-            leftSection={<PROVIDER_ICONS.onedrive size={14} />}
-            onClick={() => setOneDriveModalOpen(true)}
-          >
-            {t("librariesSettings.connectOneDrive")}
-          </Button>
-          <Button
-            size="sm"
-            variant="default"
-            leftSection={<PROVIDER_ICONS.nawishta size={14} />}
-            onClick={() => setNawishtaModalOpen(true)}
-          >
-            {t("librariesSettings.connectNawishta")}
-          </Button>
-          <Button size="sm" leftSection={<IconPlus size={14} />} onClick={() => void handleAdd()} loading={addBusy}>
-            {t("librariesSettings.addLibrary")}
-          </Button>
-        </Group>
+        <Button size="sm" leftSection={<IconPlus size={14} />} onClick={() => setAddWizardOpen(true)} loading={addBusy}>
+          {t("librariesSettings.addLibrary")}
+        </Button>
       </Group>
 
-      <S3ConnectModal opened={s3ModalOpen} onClose={() => setS3ModalOpen(false)} onConnected={handleS3Connected} />
-      <GoogleDriveConnectModal opened={googleModalOpen} onClose={() => setGoogleModalOpen(false)} onConnected={handleGoogleDriveConnected} />
-      <OneDriveConnectModal opened={oneDriveModalOpen} onClose={() => setOneDriveModalOpen(false)} onConnected={handleOneDriveConnected} />
-      <NawishtaConnectModal
-        opened={nawishtaModalOpen}
-        onClose={() => setNawishtaModalOpen(false)}
-        onConnected={handleNawishtaConnected}
-        existingLibraryId={librariesQuery.data?.find((entry) => entry.providerType === "nawishta")?.id ?? null}
+      <AddLibraryWizard
+        opened={addWizardOpen}
+        onClose={() => setAddWizardOpen(false)}
+        onConnected={handleConnected}
+        onAddLocal={() => {
+          setAddWizardOpen(false);
+          void handleAdd();
+        }}
+        existingNawishtaLibraryId={librariesQuery.data?.find((entry) => entry.providerType === "nawishta")?.id ?? null}
       />
       <MigrationWizard
         opened={migratingLibraryId !== null}
@@ -578,9 +532,7 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
   );
 }
 
-interface S3ConnectModalProps {
-  opened: boolean;
-  onClose: () => void;
+interface ConnectPanelProps {
   onConnected: () => void;
 }
 
@@ -589,7 +541,14 @@ interface S3ConnectModalProps {
 // saved encrypted (window.maktaba.saveCloudCredential, keyed by the new library's own id - see
 // LibraryService.OpenCloudLibraryAsync's CredentialRef) so a later app launch can re-supply it
 // without asking the user to retype it every time.
-function S3ConnectModal({ opened, onClose, onConnected }: S3ConnectModalProps) {
+//
+// A plain content component (no Modal/opened/onClose of its own) - AddLibraryWizard below is the
+// one place that owns the actual Modal, mounting whichever provider's panel is active as its
+// content. No explicit reset() is needed either: this only ever exists while the wizard's own step
+// is "s3" (unmounted the moment the user goes back or the wizard closes), so a fresh mount already
+// starts from blank state next time, the same way every mainView page in this app resets by
+// remounting rather than manually clearing its own fields.
+function S3ConnectPanel({ onConnected }: ConnectPanelProps) {
   const { t } = useLanguage();
   const [name, setName] = useState("");
   const [fields, setFields] = useState<S3FieldsValue>(EMPTY_S3_FIELDS);
@@ -623,79 +582,55 @@ function S3ConnectModal({ opened, onClose, onConnected }: S3ConnectModalProps) {
       await window.maktaba.saveCloudCredential(entry.id, JSON.stringify(credential));
       return entry;
     },
-    onSuccess: () => {
-      reset();
-      onConnected();
-    },
+    onSuccess: onConnected,
     onError: (err) => setError(err instanceof Error ? err.message : String(err)),
   });
 
-  const reset = () => {
-    setName("");
-    setFields(EMPTY_S3_FIELDS);
-    setTestResult(null);
-    setError(null);
-  };
-
   return (
-    <Modal
-      opened={opened}
-      onClose={() => {
-        reset();
-        onClose();
-      }}
-      title={t("librariesSettings.connectS3")}
-    >
-      <Stack gap="sm">
-        <TextInput
-          label={t("librariesSettings.s3Name")}
-          value={name}
-          onChange={(e) => setName(e.currentTarget.value)}
-        />
-        <S3CredentialFields value={fields} onChange={(patch) => setFields((prev) => ({ ...prev, ...patch }))} />
+    <Stack gap="sm">
+      <TextInput
+        label={t("librariesSettings.s3Name")}
+        value={name}
+        onChange={(e) => setName(e.currentTarget.value)}
+      />
+      <S3CredentialFields value={fields} onChange={(patch) => setFields((prev) => ({ ...prev, ...patch }))} />
 
-        {error && (
-          <Alert color="red" icon={<IconAlertCircle size={18} />}>
-            {error}
-          </Alert>
-        )}
-        {testResult === "success" && (
-          <Alert color="green" icon={<IconCheck size={18} />}>
-            {t("librariesSettings.s3TestSuccess")}
-          </Alert>
-        )}
+      {error && (
+        <Alert color="red" icon={<IconAlertCircle size={18} />}>
+          {error}
+        </Alert>
+      )}
+      {testResult === "success" && (
+        <Alert color="green" icon={<IconCheck size={18} />}>
+          {t("librariesSettings.s3TestSuccess")}
+        </Alert>
+      )}
 
-        <Group justify="flex-end">
-          <Button
-            variant="default"
-            disabled={!canSubmit}
-            loading={testMutation.isPending}
-            onClick={() => testMutation.mutate()}
-          >
-            {t("librariesSettings.s3TestConnection")}
-          </Button>
-          <Button disabled={!canSubmit} loading={connectMutation.isPending} onClick={() => connectMutation.mutate()}>
-            {t("librariesSettings.s3Connect")}
-          </Button>
-        </Group>
-      </Stack>
-    </Modal>
+      <Group justify="flex-end">
+        <Button
+          variant="default"
+          disabled={!canSubmit}
+          loading={testMutation.isPending}
+          onClick={() => testMutation.mutate()}
+        >
+          {t("librariesSettings.s3TestConnection")}
+        </Button>
+        <Button disabled={!canSubmit} loading={connectMutation.isPending} onClick={() => connectMutation.mutate()}>
+          {t("librariesSettings.s3Connect")}
+        </Button>
+      </Group>
+    </Stack>
   );
-}
-
-interface GoogleDriveConnectModalProps {
-  opened: boolean;
-  onClose: () => void;
-  onConnected: () => void;
 }
 
 // Google Drive connect form (Cloud: Phase 5) - unlike S3's typed-in access key/secret, the
 // credential here only ever comes from window.maktaba.connectGoogleDrive()'s interactive sign-in
 // (opens the system browser, waits for the OAuth redirect - see oauthLoopback.ts/googleDriveAuth.ts),
-// so this form has nothing to "test" ahead of time the way S3ConnectModal's Test Connection does -
+// so this form has nothing to "test" ahead of time the way S3ConnectPanel's Test Connection does -
 // a successful sign-in already proves the credential works. Folder is optional (root of My Drive
-// otherwise), matching S3's optional subfolder-within-bucket field.
-function GoogleDriveConnectModal({ opened, onClose, onConnected }: GoogleDriveConnectModalProps) {
+// otherwise), matching S3's optional subfolder-within-bucket field. Same plain-content-panel shape
+// as S3ConnectPanel above - see its own doc comment for why no opened/onClose/reset() here.
+function GoogleDriveConnectPanel({ onConnected }: ConnectPanelProps) {
   const { t } = useLanguage();
   const [name, setName] = useState("");
   const [folder, setFolder] = useState("");
@@ -731,102 +666,88 @@ function GoogleDriveConnectModal({ opened, onClose, onConnected }: GoogleDriveCo
       await window.maktaba.saveCloudCredential(entry.id, JSON.stringify(tokens));
       return entry;
     },
-    onSuccess: () => {
-      reset();
-      onConnected();
-    },
+    onSuccess: onConnected,
     onError: (err) => setError(err instanceof Error ? err.message : String(err)),
   });
 
-  const reset = () => {
-    setName("");
-    setFolder("");
-    setTokens(null);
-    setError(null);
-  };
-
   // Stops a still-pending sign-in (native.ts's loopback listener otherwise just sits waiting for
-  // up to 3 minutes on its own) so closing the dialog - or a failed attempt the user wants to
-  // retry - doesn't leave the button stuck in a loading state with no way out.
+  // up to 3 minutes on its own) so retrying after a failed attempt - or navigating away from this
+  // step - doesn't leave the button stuck in a loading state with no way out. The unmount cleanup
+  // below covers "navigating away" (back to step 1, or closing the wizard entirely) - unlike the
+  // old Modal's onClose override, a plain effect cleanup can't read a later render's state, only
+  // whatever this ref was last set to, so it's kept in sync on every render instead.
   const cancelPendingSignIn = () => {
     if (signInMutation.isPending) {
       void window.maktaba.cancelGoogleDriveConnect();
     }
   };
+  const isPendingRef = useRef(false);
+  isPendingRef.current = signInMutation.isPending;
+  useEffect(() => {
+    return () => {
+      if (isPendingRef.current) {
+        void window.maktaba.cancelGoogleDriveConnect();
+      }
+    };
+  }, []);
 
   return (
-    <Modal
-      opened={opened}
-      onClose={() => {
-        cancelPendingSignIn();
-        reset();
-        onClose();
-      }}
-      title={t("librariesSettings.connectGoogleDrive")}
-    >
-      <Stack gap="sm">
-        <TextInput
-          label={t("librariesSettings.googleDriveName")}
-          value={name}
-          onChange={(e) => setName(e.currentTarget.value)}
-        />
-        <TextInput
-          label={t("librariesSettings.googleDriveFolder")}
-          placeholder={t("librariesSettings.googleDriveFolderPlaceholder")}
-          value={folder}
-          onChange={(e) => setFolder(e.currentTarget.value)}
-        />
+    <Stack gap="sm">
+      <TextInput
+        label={t("librariesSettings.googleDriveName")}
+        value={name}
+        onChange={(e) => setName(e.currentTarget.value)}
+      />
+      <TextInput
+        label={t("librariesSettings.googleDriveFolder")}
+        placeholder={t("librariesSettings.googleDriveFolderPlaceholder")}
+        value={folder}
+        onChange={(e) => setFolder(e.currentTarget.value)}
+      />
 
-        {tokens ? (
-          <Alert color="green" icon={<IconCheck size={18} />}>
-            {t("librariesSettings.googleDriveSignedIn")}
-          </Alert>
-        ) : signInMutation.isPending ? (
-          <Group gap="xs">
-            <Button variant="default" leftSection={<IconExternalLink size={14} />} loading style={{ flex: 1 }}>
-              {t("librariesSettings.googleDriveSignIn")}
-            </Button>
-            <Button variant="subtle" color="red" onClick={cancelPendingSignIn}>
-              {t("common.cancel")}
-            </Button>
-          </Group>
-        ) : (
-          <Button
-            variant="default"
-            leftSection={<IconExternalLink size={14} />}
-            onClick={() => signInMutation.mutate()}
-          >
+      {tokens ? (
+        <Alert color="green" icon={<IconCheck size={18} />}>
+          {t("librariesSettings.googleDriveSignedIn")}
+        </Alert>
+      ) : signInMutation.isPending ? (
+        <Group gap="xs">
+          <Button variant="default" leftSection={<IconExternalLink size={14} />} loading style={{ flex: 1 }}>
             {t("librariesSettings.googleDriveSignIn")}
           </Button>
-        )}
-
-        {error && (
-          <Alert color="red" icon={<IconAlertCircle size={18} />}>
-            {error}
-          </Alert>
-        )}
-
-        <Group justify="flex-end">
-          <Button disabled={!canSubmit} loading={connectMutation.isPending} onClick={() => connectMutation.mutate()}>
-            {t("librariesSettings.s3Connect")}
+          <Button variant="subtle" color="red" onClick={cancelPendingSignIn}>
+            {t("common.cancel")}
           </Button>
         </Group>
-      </Stack>
-    </Modal>
+      ) : (
+        <Button
+          variant="default"
+          leftSection={<IconExternalLink size={14} />}
+          onClick={() => signInMutation.mutate()}
+        >
+          {t("librariesSettings.googleDriveSignIn")}
+        </Button>
+      )}
+
+      {error && (
+        <Alert color="red" icon={<IconAlertCircle size={18} />}>
+          {error}
+        </Alert>
+      )}
+
+      <Group justify="flex-end">
+        <Button disabled={!canSubmit} loading={connectMutation.isPending} onClick={() => connectMutation.mutate()}>
+          {t("librariesSettings.s3Connect")}
+        </Button>
+      </Group>
+    </Stack>
   );
 }
 
-interface OneDriveConnectModalProps {
-  opened: boolean;
-  onClose: () => void;
-  onConnected: () => void;
-}
-
-// OneDrive connect form (Cloud: Phase 4) - same shape as GoogleDriveConnectModal above (an
+// OneDrive connect form (Cloud: Phase 4) - same shape as GoogleDriveConnectPanel above (an
 // interactive sign-in rather than typed credentials, so nothing to "test" ahead of time), just
 // against window.maktaba.connectOneDrive()/cancelOneDriveConnect() instead. Folder is relative to
 // the signed-in account's OneDrive root, optional (root itself otherwise).
-function OneDriveConnectModal({ opened, onClose, onConnected }: OneDriveConnectModalProps) {
+function OneDriveConnectPanel({ onConnected }: ConnectPanelProps) {
   const { t } = useLanguage();
   const [name, setName] = useState("");
   const [folder, setFolder] = useState("");
@@ -862,93 +783,79 @@ function OneDriveConnectModal({ opened, onClose, onConnected }: OneDriveConnectM
       await window.maktaba.saveCloudCredential(entry.id, JSON.stringify(tokens));
       return entry;
     },
-    onSuccess: () => {
-      reset();
-      onConnected();
-    },
+    onSuccess: onConnected,
     onError: (err) => setError(err instanceof Error ? err.message : String(err)),
   });
-
-  const reset = () => {
-    setName("");
-    setFolder("");
-    setTokens(null);
-    setError(null);
-  };
 
   const cancelPendingSignIn = () => {
     if (signInMutation.isPending) {
       void window.maktaba.cancelOneDriveConnect();
     }
   };
+  const isPendingRef = useRef(false);
+  isPendingRef.current = signInMutation.isPending;
+  useEffect(() => {
+    return () => {
+      if (isPendingRef.current) {
+        void window.maktaba.cancelOneDriveConnect();
+      }
+    };
+  }, []);
 
   return (
-    <Modal
-      opened={opened}
-      onClose={() => {
-        cancelPendingSignIn();
-        reset();
-        onClose();
-      }}
-      title={t("librariesSettings.connectOneDrive")}
-    >
-      <Stack gap="sm">
-        <TextInput
-          label={t("librariesSettings.oneDriveName")}
-          value={name}
-          onChange={(e) => setName(e.currentTarget.value)}
-        />
-        <TextInput
-          label={t("librariesSettings.oneDriveFolder")}
-          placeholder={t("librariesSettings.oneDriveFolderPlaceholder")}
-          value={folder}
-          onChange={(e) => setFolder(e.currentTarget.value)}
-        />
+    <Stack gap="sm">
+      <TextInput
+        label={t("librariesSettings.oneDriveName")}
+        value={name}
+        onChange={(e) => setName(e.currentTarget.value)}
+      />
+      <TextInput
+        label={t("librariesSettings.oneDriveFolder")}
+        placeholder={t("librariesSettings.oneDriveFolderPlaceholder")}
+        value={folder}
+        onChange={(e) => setFolder(e.currentTarget.value)}
+      />
 
-        {tokens ? (
-          <Alert color="green" icon={<IconCheck size={18} />}>
-            {t("librariesSettings.oneDriveSignedIn")}
-          </Alert>
-        ) : signInMutation.isPending ? (
-          <Group gap="xs">
-            <Button variant="default" leftSection={<IconExternalLink size={14} />} loading style={{ flex: 1 }}>
-              {t("librariesSettings.oneDriveSignIn")}
-            </Button>
-            <Button variant="subtle" color="red" onClick={cancelPendingSignIn}>
-              {t("common.cancel")}
-            </Button>
-          </Group>
-        ) : (
-          <Button
-            variant="default"
-            leftSection={<IconExternalLink size={14} />}
-            onClick={() => signInMutation.mutate()}
-          >
+      {tokens ? (
+        <Alert color="green" icon={<IconCheck size={18} />}>
+          {t("librariesSettings.oneDriveSignedIn")}
+        </Alert>
+      ) : signInMutation.isPending ? (
+        <Group gap="xs">
+          <Button variant="default" leftSection={<IconExternalLink size={14} />} loading style={{ flex: 1 }}>
             {t("librariesSettings.oneDriveSignIn")}
           </Button>
-        )}
-
-        {error && (
-          <Alert color="red" icon={<IconAlertCircle size={18} />}>
-            {error}
-          </Alert>
-        )}
-
-        <Group justify="flex-end">
-          <Button disabled={!canSubmit} loading={connectMutation.isPending} onClick={() => connectMutation.mutate()}>
-            {t("librariesSettings.s3Connect")}
+          <Button variant="subtle" color="red" onClick={cancelPendingSignIn}>
+            {t("common.cancel")}
           </Button>
         </Group>
-      </Stack>
-    </Modal>
+      ) : (
+        <Button
+          variant="default"
+          leftSection={<IconExternalLink size={14} />}
+          onClick={() => signInMutation.mutate()}
+        >
+          {t("librariesSettings.oneDriveSignIn")}
+        </Button>
+      )}
+
+      {error && (
+        <Alert color="red" icon={<IconAlertCircle size={18} />}>
+          {error}
+        </Alert>
+      )}
+
+      <Group justify="flex-end">
+        <Button disabled={!canSubmit} loading={connectMutation.isPending} onClick={() => connectMutation.mutate()}>
+          {t("librariesSettings.s3Connect")}
+        </Button>
+      </Group>
+    </Stack>
   );
 }
 
-interface NawishtaConnectModalProps {
-  opened: boolean;
-  onClose: () => void;
-  onConnected: () => void;
-  // The id of an already-registered Nawishta library, if one exists - lets this modal skip the
+interface NawishtaConnectPanelProps extends ConnectPanelProps {
+  // The id of an already-registered Nawishta library, if one exists - lets this panel skip the
   // email/password step entirely and reuse that library's cached credential (see the "reuse" effect
   // below), since one Nawishta account can own several libraries (design addendum on issue #69) and
   // re-typing the password for every one of them would be pointless.
@@ -978,7 +885,7 @@ const NAWISHTA_DEFAULT_SERVER_URL = "https://api.nawishta.co.uk";
 // long unpaged dump.
 const NAWISHTA_LIBRARY_PAGE_SIZE = 10;
 
-function NawishtaConnectModal({ opened, onClose, onConnected, existingLibraryId }: NawishtaConnectModalProps) {
+function NawishtaConnectPanel({ onConnected, existingLibraryId }: NawishtaConnectPanelProps) {
   const { t } = useLanguage();
   const [serverUrl] = useState(NAWISHTA_DEFAULT_SERVER_URL);
   const [email, setEmail] = useState("");
@@ -1019,7 +926,7 @@ function NawishtaConnectModal({ opened, onClose, onConnected, existingLibraryId 
   // and if the access token has since gone stale (10-minute TTL), renews it first via its refresh
   // token before falling back to asking the user to sign in again.
   useEffect(() => {
-    if (!opened || existingLibraryId === null) {
+    if (existingLibraryId === null) {
       return;
     }
 
@@ -1066,7 +973,8 @@ function NawishtaConnectModal({ opened, onClose, onConnected, existingLibraryId 
     return () => {
       cancelled = true;
     };
-  }, [opened, existingLibraryId, serverUrl]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- serverUrl is fixed (NAWISHTA_DEFAULT_SERVER_URL); runs once per mount (this panel only exists while the wizard's step is "nawishta"), not on every existingLibraryId identity change
+  }, []);
 
   // Debounced search-as-you-type - re-fetches page 1 under the new query whenever it (or the
   // credential doing the fetching) changes. Also re-runs once right as `credential` first arrives
@@ -1113,24 +1021,9 @@ function NawishtaConnectModal({ opened, onClose, onConnected, existingLibraryId 
       await window.maktaba.saveCloudCredential(entry.id, JSON.stringify(credential));
       return entry;
     },
-    onSuccess: () => {
-      reset();
-      onConnected();
-    },
+    onSuccess: onConnected,
     onError: (err) => setError(err instanceof Error ? err.message : String(err)),
   });
-
-  const reset = () => {
-    setEmail("");
-    setPassword("");
-    setCredential(null);
-    setLibraryPage(null);
-    setLibraryQuery("");
-    setSelectedLibraryId(null);
-    setName("");
-    setError(null);
-    setReusingCredential(false);
-  };
 
   const canLogin = email.trim().length > 0 && password.length > 0;
   const canConnect = credential !== null && selectedLibraryId !== null && name.trim().length > 0;
@@ -1146,119 +1039,236 @@ function NawishtaConnectModal({ opened, onClose, onConnected, existingLibraryId 
   );
 
   return (
-    <Modal
-      opened={opened}
-      onClose={() => {
-        reset();
-        onClose();
-      }}
-      title={t("librariesSettings.connectNawishta")}
-    >
-      <Stack gap="sm">
-        {reusingCredential ? (
-          <Text size="sm" c="dimmed">
-            {t("librariesSettings.nawishtaReusingCredential")}
+    <Stack gap="sm">
+      {reusingCredential ? (
+        <Text size="sm" c="dimmed">
+          {t("librariesSettings.nawishtaReusingCredential")}
+        </Text>
+      ) : credential === null ? (
+        <>
+          <TextInput
+            label={t("librariesSettings.nawishtaEmail")}
+            value={email}
+            onChange={(e) => setEmail(e.currentTarget.value)}
+          />
+          <PasswordInput
+            label={t("librariesSettings.nawishtaPassword")}
+            value={password}
+            onChange={(e) => setPassword(e.currentTarget.value)}
+          />
+          <Text size="xs" c="dimmed">
+            {t("librariesSettings.nawishtaPrivacyNote")}
           </Text>
-        ) : credential === null ? (
-          <>
-            <TextInput
-              label={t("librariesSettings.nawishtaEmail")}
-              value={email}
-              onChange={(e) => setEmail(e.currentTarget.value)}
-            />
-            <PasswordInput
-              label={t("librariesSettings.nawishtaPassword")}
-              value={password}
-              onChange={(e) => setPassword(e.currentTarget.value)}
-            />
-            <Text size="xs" c="dimmed">
-              {t("librariesSettings.nawishtaPrivacyNote")}
+        </>
+      ) : (
+        <>
+          <TextInput
+            label={t("librariesSettings.nawishtaPickLibrary")}
+            placeholder={t("librariesSettings.nawishtaSearchLibraries")}
+            leftSection={<IconSearch size={14} />}
+            value={libraryQuery}
+            onChange={(e) => setLibraryQuery(e.currentTarget.value)}
+          />
+          {librariesLoading ? (
+            <Text size="sm" c="dimmed">
+              {t("librariesSettings.nawishtaLoadingLibraries")}
             </Text>
-          </>
-        ) : (
-          <>
-            <TextInput
-              label={t("librariesSettings.nawishtaPickLibrary")}
-              placeholder={t("librariesSettings.nawishtaSearchLibraries")}
-              leftSection={<IconSearch size={14} />}
-              value={libraryQuery}
-              onChange={(e) => setLibraryQuery(e.currentTarget.value)}
-            />
-            {librariesLoading ? (
-              <Text size="sm" c="dimmed">
-                {t("librariesSettings.nawishtaLoadingLibraries")}
-              </Text>
-            ) : libraries.length === 0 ? (
-              <Text size="sm" c="dimmed">
-                {t("librariesSettings.nawishtaNoLibrariesFound")}
-              </Text>
-            ) : (
-              <Radio.Group
-                value={selectedLibraryId}
-                onChange={(value) => {
-                  setSelectedLibraryId(value);
-                  const picked = libraries.find((l) => String(l.id) === value);
-                  if (picked) {
-                    setName(picked.name);
-                  }
-                }}
-              >
-                <Stack gap="xs">
-                  {libraries.map((library) => (
-                    <Radio key={library.id} value={String(library.id)} label={library.name} />
-                  ))}
-                </Stack>
-              </Radio.Group>
-            )}
-            {libraryPage && libraryPage.pageCount > 1 && (
-              <Group justify="space-between">
-                <Button
-                  size="xs"
-                  variant="subtle"
-                  disabled={librariesLoading || libraryPage.pageNumber <= 1}
-                  onClick={() => credential && void loadLibraries(credential, libraryQuery, libraryPage.pageNumber - 1)}
-                >
-                  {t("librariesSettings.nawishtaPrevPage")}
-                </Button>
-                <Text size="xs" c="dimmed">
-                  {t("librariesSettings.nawishtaPageOf", { page: String(libraryPage.pageNumber), pageCount: String(libraryPage.pageCount) })}
-                </Text>
-                <Button
-                  size="xs"
-                  variant="subtle"
-                  disabled={librariesLoading || libraryPage.pageNumber >= libraryPage.pageCount}
-                  onClick={() => credential && void loadLibraries(credential, libraryQuery, libraryPage.pageNumber + 1)}
-                >
-                  {t("librariesSettings.nawishtaNextPage")}
-                </Button>
-              </Group>
-            )}
-            <TextInput
-              label={t("librariesSettings.nawishtaName")}
-              value={name}
-              onChange={(e) => setName(e.currentTarget.value)}
-            />
-          </>
-        )}
-
-        {error && (
-          <Alert color="red" icon={<IconAlertCircle size={18} />}>
-            {error}
-          </Alert>
-        )}
-
-        <Group justify="flex-end">
-          {reusingCredential ? null : credential === null ? (
-            <Button disabled={!canLogin} loading={loginMutation.isPending} onClick={() => loginMutation.mutate()}>
-              {t("librariesSettings.nawishtaSignIn")}
-            </Button>
+          ) : libraries.length === 0 ? (
+            <Text size="sm" c="dimmed">
+              {t("librariesSettings.nawishtaNoLibrariesFound")}
+            </Text>
           ) : (
-            <Button disabled={!canConnect} loading={connectMutation.isPending} onClick={() => connectMutation.mutate()}>
-              {t("librariesSettings.s3Connect")}
-            </Button>
+            <Radio.Group
+              value={selectedLibraryId}
+              onChange={(value) => {
+                setSelectedLibraryId(value);
+                const picked = libraries.find((l) => String(l.id) === value);
+                if (picked) {
+                  setName(picked.name);
+                }
+              }}
+            >
+              <Stack gap="xs">
+                {libraries.map((library) => (
+                  <Radio key={library.id} value={String(library.id)} label={library.name} />
+                ))}
+              </Stack>
+            </Radio.Group>
           )}
-        </Group>
-      </Stack>
+          {libraryPage && libraryPage.pageCount > 1 && (
+            <Group justify="space-between">
+              <Button
+                size="xs"
+                variant="subtle"
+                disabled={librariesLoading || libraryPage.pageNumber <= 1}
+                onClick={() => credential && void loadLibraries(credential, libraryQuery, libraryPage.pageNumber - 1)}
+              >
+                {t("librariesSettings.nawishtaPrevPage")}
+              </Button>
+              <Text size="xs" c="dimmed">
+                {t("librariesSettings.nawishtaPageOf", { page: String(libraryPage.pageNumber), pageCount: String(libraryPage.pageCount) })}
+              </Text>
+              <Button
+                size="xs"
+                variant="subtle"
+                disabled={librariesLoading || libraryPage.pageNumber >= libraryPage.pageCount}
+                onClick={() => credential && void loadLibraries(credential, libraryQuery, libraryPage.pageNumber + 1)}
+              >
+                {t("librariesSettings.nawishtaNextPage")}
+              </Button>
+            </Group>
+          )}
+          <TextInput
+            label={t("librariesSettings.nawishtaName")}
+            value={name}
+            onChange={(e) => setName(e.currentTarget.value)}
+          />
+        </>
+      )}
+
+      {error && (
+        <Alert color="red" icon={<IconAlertCircle size={18} />}>
+          {error}
+        </Alert>
+      )}
+
+      <Group justify="flex-end">
+        {reusingCredential ? null : credential === null ? (
+          <Button disabled={!canLogin} loading={loginMutation.isPending} onClick={() => loginMutation.mutate()}>
+            {t("librariesSettings.nawishtaSignIn")}
+          </Button>
+        ) : (
+          <Button disabled={!canConnect} loading={connectMutation.isPending} onClick={() => connectMutation.mutate()}>
+            {t("librariesSettings.s3Connect")}
+          </Button>
+        )}
+      </Group>
+    </Stack>
+  );
+}
+
+type AddLibraryType = "s3" | "googledrive" | "onedrive" | "nawishta";
+
+interface AddLibraryWizardProps {
+  opened: boolean;
+  onClose: () => void;
+  onConnected: () => void;
+  // "Local" has no form of its own (just window.maktaba.pickLibraryFolder(), already wired up by
+  // the caller's existing handleAdd) - picking it in step 1 closes this wizard immediately and
+  // hands off to the native folder picker, the same as before this wizard existed.
+  onAddLocal: () => void;
+  existingNawishtaLibraryId: string | null;
+}
+
+interface TypeOptionProps {
+  icon: Icon;
+  title: string;
+  description: string;
+  onClick: () => void;
+}
+
+function TypeOption({ icon: IconComponent, title, description, onClick }: TypeOptionProps) {
+  return (
+    <UnstyledButton
+      onClick={onClick}
+      p="sm"
+      style={{ border: "1px solid var(--mantine-color-default-border)", borderRadius: "var(--mantine-radius-sm)" }}
+    >
+      <Group gap="sm" wrap="nowrap">
+        <IconComponent size={22} />
+        <Stack gap={0} style={{ flex: 1 }}>
+          <Text size="sm" fw={600}>
+            {title}
+          </Text>
+          <Text size="xs" c="dimmed">
+            {description}
+          </Text>
+        </Stack>
+      </Group>
+    </UnstyledButton>
+  );
+}
+
+// "Add Library" used to be five separate buttons, each opening its own standalone connect modal
+// directly - now a single two-step wizard instead: step 1 picks the library type (a plain
+// list of cards, not a form), step 2 shows that type's own connect panel (S3ConnectPanel/
+// GoogleDriveConnectPanel/OneDriveConnectPanel/NawishtaConnectPanel - the same forms as before,
+// just no longer each wrapped in their own Modal). One shared Modal here owns the actual dialog
+// chrome; its title doubles as the back button once a type is picked, the same "back arrow + title"
+// shape BrowseViewHeader uses for full-page views elsewhere in this app.
+function AddLibraryWizard({ opened, onClose, onConnected, onAddLocal, existingNawishtaLibraryId }: AddLibraryWizardProps) {
+  const { t } = useLanguage();
+  const [type, setType] = useState<AddLibraryType | null>(null);
+
+  const handleClose = () => {
+    setType(null);
+    onClose();
+  };
+
+  const title =
+    type === null ? (
+      t("librariesSettings.addLibraryWizardTitle")
+    ) : (
+      <Group gap={6} wrap="nowrap">
+        <ActionIcon variant="subtle" color="gray" onClick={() => setType(null)} aria-label={t("common.back")}>
+          <IconArrowLeft size={16} />
+        </ActionIcon>
+        <Text fw={600}>
+          {type === "s3" && t("librariesSettings.connectS3")}
+          {type === "googledrive" && t("librariesSettings.connectGoogleDrive")}
+          {type === "onedrive" && t("librariesSettings.connectOneDrive")}
+          {type === "nawishta" && t("librariesSettings.connectNawishta")}
+        </Text>
+      </Group>
+    );
+
+  return (
+    <Modal opened={opened} onClose={handleClose} title={title}>
+      {type === null ? (
+        <Stack gap="xs">
+          <TypeOption
+            icon={IconFolderOpen}
+            title={t("librariesSettings.typeLocal")}
+            description={t("librariesSettings.typeLocalDescription")}
+            onClick={() => {
+              handleClose();
+              onAddLocal();
+            }}
+          />
+          <TypeOption
+            icon={PROVIDER_ICONS.s3}
+            title={PROVIDER_LABELS.s3}
+            description={t("librariesSettings.typeS3Description")}
+            onClick={() => setType("s3")}
+          />
+          <TypeOption
+            icon={PROVIDER_ICONS.googledrive}
+            title={PROVIDER_LABELS.googledrive}
+            description={t("librariesSettings.typeGoogleDriveDescription")}
+            onClick={() => setType("googledrive")}
+          />
+          <TypeOption
+            icon={PROVIDER_ICONS.onedrive}
+            title={PROVIDER_LABELS.onedrive}
+            description={t("librariesSettings.typeOneDriveDescription")}
+            onClick={() => setType("onedrive")}
+          />
+          <TypeOption
+            icon={PROVIDER_ICONS.nawishta}
+            title={PROVIDER_LABELS.nawishta}
+            description={t("librariesSettings.typeNawishtaDescription")}
+            onClick={() => setType("nawishta")}
+          />
+        </Stack>
+      ) : type === "s3" ? (
+        <S3ConnectPanel onConnected={onConnected} />
+      ) : type === "googledrive" ? (
+        <GoogleDriveConnectPanel onConnected={onConnected} />
+      ) : type === "onedrive" ? (
+        <OneDriveConnectPanel onConnected={onConnected} />
+      ) : (
+        <NawishtaConnectPanel onConnected={onConnected} existingLibraryId={existingNawishtaLibraryId} />
+      )}
     </Modal>
   );
 }
