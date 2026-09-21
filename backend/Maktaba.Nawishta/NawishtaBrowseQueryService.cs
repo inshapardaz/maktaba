@@ -7,14 +7,19 @@ namespace Maktaba.Nawishta;
 /// <summary>
 /// Nawishta-backed implementation of <see cref="IBrowseQueryService"/> (issue #110). Authors/Series
 /// come straight from Nawishta's own GET /authors and /series (already return a bookCount per
-/// entry, so no separate aggregation is needed). Tags have <b>no dedicated list endpoint on
-/// Nawishta</b> - they only ever appear embedded per-book - so ListTagsAsync fetches one page of
-/// books (up to 500) and aggregates tag counts from that; a library with more books than that will
-/// under-count. Publishers/languages/reading-status counts have no Nawishta-side aggregation either
-/// and use the same page-and-aggregate approach. <b>Known limitation</b>, flagged rather than hidden:
-/// none of these are cheap or exact the way EfBrowseQueryService's SQL GROUP BY is - acceptable for
-/// now given Nawishta libraries are expected to be modest in size, revisit if that's not true in
-/// practice.
+/// entry, so no separate aggregation is needed). ListTagsAsync is backed by Nawishta's own
+/// GET /libraries/{id}/categories (via <see cref="NawishtaRawApiClient.GetCategoriesAsync"/>), same
+/// as authors/series - <b>not</b> BookView's own "tags" field, which Nawishta's API never actually
+/// populates (confirmed live: empty on every book, both from the list endpoint and the single-book
+/// detail endpoint) despite the schema declaring it - Category is the taxonomy concept Nawishta
+/// actually maintains real data for (its own reference editor and CategoryClient's full CRUD
+/// support back this up), so <see cref="NawishtaEntityMapper.ToBook"/> maps a book's
+/// <c>BookTags</c> from <c>view.Categories</c> to match. Publishers/languages/reading-status counts
+/// still have no Nawishta-side aggregation and use a page-and-aggregate approach over one page of
+/// books (up to 500) - a library with more books than that will under-count for those three.
+/// <b>Known limitation</b>, flagged rather than hidden: none of these three are cheap or exact the
+/// way EfBrowseQueryService's SQL GROUP BY is - acceptable for now given Nawishta libraries are
+/// expected to be modest in size, revisit if that's not true in practice.
 /// </summary>
 public class NawishtaBrowseQueryService(NawishtaRawApiClient api, int remoteLibraryId, NawishtaShadowDbContext shadow) : IBrowseQueryService
 {
@@ -49,12 +54,10 @@ public class NawishtaBrowseQueryService(NawishtaRawApiClient api, int remoteLibr
 
     public async Task<IReadOnlyList<EntityGroupCount>> ListTagsAsync(CancellationToken ct = default)
     {
-        var books = await FetchBooksForAggregationAsync(ct);
-        return books
-            .SelectMany(b => b.Tags ?? [])
-            .Where(t => t.Id is not null)
-            .GroupBy(t => (Id: t.Id!.Value, t.Name))
-            .Select(g => new EntityGroupCount(g.Key.Id, g.Key.Name ?? "", g.Count()))
+        var page = await api.GetCategoriesAsync(remoteLibraryId, ct);
+        return (page.Data ?? [])
+            .Where(c => c.Id is not null && (c.BookCount ?? 0) > 0)
+            .Select(c => new EntityGroupCount(c.Id!.Value, c.Name ?? "", c.BookCount ?? 0))
             .OrderBy(g => g.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }

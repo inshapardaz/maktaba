@@ -106,6 +106,15 @@ public class CloudCacheManager(IDownloadProgressTracker progressTracker) : IClou
         }
     }
 
+    public void Clear(string libraryId)
+    {
+        var root = GetCacheRoot(libraryId);
+        if (Directory.Exists(root))
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     public void Move(string libraryId, string fromRelativePath, string toRelativePath)
     {
         var from = GetLocalPath(libraryId, fromRelativePath);

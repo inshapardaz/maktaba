@@ -228,6 +228,30 @@ public static class LibraryEndpoints
             return Results.NoContent();
         });
 
+        // Issue: "tags aren't loading" debugging turned up covers/content going stale in the local
+        // cache mirror with no way to force a clean re-fetch short of deleting AppData by hand - this
+        // wipes the active Nawishta library's whole cache (every cached cover and downloaded book
+        // file, via ICloudCacheManager.Clear), not just covers like /refresh-covers above. Everything
+        // re-populates lazily/eagerly on the next request the same way a brand-new cache does, so
+        // there's nothing else to "refetch" as a separate step. Nawishta-only for now (see this
+        // endpoint's own frontend button, LibrariesSettings.tsx) - S3/Google Drive/OneDrive have
+        // their own staleness handling already (ETag/change-token checks in each provider).
+        group.MapPost("/clear-cache", (ILibraryService libraryService, NawishtaSessionResolver nawishtaResolver) =>
+        {
+            if (!BookEndpoints.IsNawishtaLibrary(libraryService))
+            {
+                return Results.BadRequest(new { error = "Not supported for this library." });
+            }
+
+            if (!nawishtaResolver.TryResolve(out var n))
+            {
+                return Results.NotFound();
+            }
+
+            n.CacheManager.Clear(n.LibraryId);
+            return Results.NoContent();
+        });
+
         // Migration wizard (Cloud: Phase 3) - copies the active library to a new provider in the
         // background; the frontend polls /migrate/status the same way it polls /rescan/progress.
         // /migrate/preview backs the wizard's "Review" step - a plain listing, no downloads.

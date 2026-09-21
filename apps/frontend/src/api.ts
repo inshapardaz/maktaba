@@ -476,6 +476,13 @@ export function refreshNawishtaCovers(): Promise<void> {
   return request<void>("/api/libraries/refresh-covers", { method: "POST" });
 }
 
+// Wipes the active Nawishta library's whole local cache mirror (every cached cover and downloaded
+// book file) - a stronger reset than refreshNawishtaCovers (covers only). Everything re-downloads
+// lazily/eagerly from Nawishta's server on the next request, same as a brand-new cache.
+export function clearNawishtaCache(): Promise<void> {
+  return request<void>("/api/libraries/clear-cache", { method: "POST" });
+}
+
 export interface LibraryConnectionStatus {
   connected: boolean;
   // Only populated when connected is false - "unreachable" (network problem) vs "auth" (the

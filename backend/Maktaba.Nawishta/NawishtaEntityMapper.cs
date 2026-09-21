@@ -56,9 +56,12 @@ public static class NawishtaEntityMapper
             });
         }
 
-        foreach (var t in view.Tags ?? [])
+        // Maktaba's "Tags" maps onto Nawishta's Category, not BookView's own "tags" field - see
+        // NawishtaBrowseQueryService.ListTagsAsync's doc comment for why (the "tags" field is never
+        // actually populated by Nawishta's API despite being in the schema).
+        foreach (var c in view.Categories ?? [])
         {
-            if (t.Id is not { } tagId)
+            if (c.Id is not { } categoryId)
             {
                 continue;
             }
@@ -67,8 +70,8 @@ public static class NawishtaEntityMapper
             {
                 Book = book,
                 BookId = book.Id,
-                TagId = tagId,
-                Tag = new Tag { Id = tagId, Name = t.Name ?? "" },
+                TagId = categoryId,
+                Tag = new Tag { Id = categoryId, Name = c.Name ?? "" },
             });
         }
 

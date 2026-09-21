@@ -24,6 +24,7 @@ import {
   IconBooks,
   IconCheck,
   IconCloud,
+  IconCloudOff,
   IconCloudUpload,
   IconExternalLink,
   IconFolderOpen,
@@ -37,6 +38,7 @@ import {
 } from "../icons";
 import type { Icon } from "../icons";
 import {
+  clearNawishtaCache,
   connectCloudLibrary,
   getSyncStatus,
   listLibraries,
@@ -218,6 +220,17 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
   // /refresh-covers doc comment). No confirmation popup needed either, for the same reason.
   const refreshCoversMutation = useMutation({
     mutationFn: refreshNawishtaCovers,
+    onSuccess: refreshActiveLibrary,
+    onError: (err) => setActionError(err instanceof Error ? err.message : String(err)),
+  });
+
+  // Stronger reset than refreshCoversMutation above - wipes the whole local cache mirror (covers
+  // *and* downloaded book files), not just covers. refreshActiveLibrary's query invalidation is
+  // what actually triggers the "refetch from server" half: the next books/authors/etc. request
+  // re-populates covers eagerly (NawishtaBookQueryService.EnsureCoverCachedAsync) and content
+  // re-downloads lazily on first open, same as a brand-new, never-cached library.
+  const clearCacheMutation = useMutation({
+    mutationFn: clearNawishtaCache,
     onSuccess: refreshActiveLibrary,
     onError: (err) => setActionError(err instanceof Error ? err.message : String(err)),
   });
@@ -475,6 +488,22 @@ export function LibrariesSettings({ onActiveLibraryChanged }: LibrariesSettingsP
                       aria-label={t("librariesSettings.refreshCovers")}
                     >
                       <IconCloudUpload size={14} />
+                    </ActionIcon>
+                  </Tooltip>
+                )}
+                {entry.isActive && entry.providerType === "nawishta" && (
+                  // "Remove all cache and refetch from server" - a stronger reset than the
+                  // refresh-covers button just above (covers only): wipes every cached cover and
+                  // downloaded book file for this library, see clearCacheMutation's own comment.
+                  <Tooltip label={t("librariesSettings.clearCache")}>
+                    <ActionIcon
+                      variant="subtle"
+                      color="gray"
+                      loading={clearCacheMutation.isPending}
+                      onClick={() => clearCacheMutation.mutate()}
+                      aria-label={t("librariesSettings.clearCache")}
+                    >
+                      <IconCloudOff size={14} />
                     </ActionIcon>
                   </Tooltip>
                 )}
