@@ -349,7 +349,10 @@ export function PeriodicalDetailView({ periodicalId, onBack, onSelectBook }: Per
     queryFn: async () => (await listBooks({ periodicalId })).items,
   });
   const publishersQuery = useQuery({ queryKey: ["publishers"], queryFn: listPublishers });
-  const tagsQuery = useQuery({ queryKey: ["tags"], queryFn: () => listTags() });
+  // Includes zero-count tags (unlike the sidebar's ["tags"] query) - see api.ts's listTags doc
+  // comment - so this edit form's suggestions don't lose a tag the moment its last book/issue is
+  // untagged.
+  const tagsQuery = useQuery({ queryKey: ["tags", "all"], queryFn: () => listTags(true) });
   const tagOptions = buildCreatableData((tagsQuery.data ?? []).map((tag) => tag.name), form.tags, tagSearch, t);
 
   const invalidate = () => {

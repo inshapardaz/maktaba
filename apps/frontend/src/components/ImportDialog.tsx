@@ -128,7 +128,9 @@ export function ImportDialog() {
   const authorsQuery = useQuery({ queryKey: ["authors"], queryFn: listAuthors });
   const publishersQuery = useQuery({ queryKey: ["publishers"], queryFn: listPublishers });
   const seriesQuery = useQuery({ queryKey: ["series"], queryFn: listSeries });
-  const tagsQuery = useQuery({ queryKey: ["tags"], queryFn: () => listTags() });
+  // Includes zero-count tags (unlike the sidebar's ["tags"] query) - see api.ts's listTags doc
+  // comment - so this bulk-edit picker offers every tag that exists, not just ones already on a book.
+  const tagsQuery = useQuery({ queryKey: ["tags", "all"], queryFn: () => listTags(true) });
   const collectionsQuery = useQuery({ queryKey: ["collections"], queryFn: listCollections });
 
   const bulkAuthorOptions = buildCreatableData((authorsQuery.data ?? []).map((a) => a.name), bulkMetadata.authors, bulkAuthorSearch, t);
