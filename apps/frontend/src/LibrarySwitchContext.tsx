@@ -107,7 +107,7 @@ export function LibrarySwitchProvider({ children }: { children: ReactNode }) {
       await Promise.allSettled([
         queryClient.fetchQuery({ queryKey: ["authors"], queryFn: listAuthors }),
         queryClient.fetchQuery({ queryKey: ["series"], queryFn: listSeries }),
-        queryClient.fetchQuery({ queryKey: ["tags"], queryFn: listTags }),
+        queryClient.fetchQuery({ queryKey: ["tags"], queryFn: () => listTags() }),
         queryClient.fetchQuery({ queryKey: ["collections"], queryFn: listCollections }),
         queryClient.fetchQuery({ queryKey: ["publisherGroups"], queryFn: listPublisherGroups }),
         queryClient.fetchQuery({ queryKey: ["languageGroups"], queryFn: listLanguageGroups }),

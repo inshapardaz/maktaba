@@ -62,6 +62,16 @@ public class NawishtaBrowseQueryService(NawishtaRawApiClient api, int remoteLibr
             .ToList();
     }
 
+    public async Task<IReadOnlyList<EntityGroupCount>> ListAllTagsAsync(CancellationToken ct = default)
+    {
+        var page = await api.GetCategoriesAsync(remoteLibraryId, ct);
+        return (page.Data ?? [])
+            .Where(c => c.Id is not null)
+            .Select(c => new EntityGroupCount(c.Id!.Value, c.Name ?? "", c.BookCount ?? 0))
+            .OrderBy(g => g.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
     public async Task<IReadOnlyList<string>> ListPublishersAsync(CancellationToken ct = default)
     {
         var books = await FetchBooksForAggregationAsync(ct);

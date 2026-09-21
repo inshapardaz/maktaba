@@ -42,6 +42,12 @@ public class EfBrowseQueryService(MaktabaDbContext db) : IBrowseQueryService
             .Select(t => new EntityGroupCount(t.Id, t.Name, t.BookTags.Count, null))
             .ToListAsync(ct);
 
+    public async Task<IReadOnlyList<EntityGroupCount>> ListAllTagsAsync(CancellationToken ct = default) =>
+        await db.Tags
+            .OrderBy(t => t.Name)
+            .Select(t => new EntityGroupCount(t.Id, t.Name, t.BookTags.Count, null))
+            .ToListAsync(ct);
+
     public async Task<IReadOnlyList<string>> ListPublishersAsync(CancellationToken ct = default) =>
         await db.Books
             .Where(b => b.Publisher != null && b.Publisher != "")

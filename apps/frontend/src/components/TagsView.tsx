@@ -19,7 +19,7 @@ export function TagsView({ onSelect, onBack }: TagsViewProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
   const [renameError, setRenameError] = useState<string | null>(null);
-  const tagsQuery = useQuery({ queryKey: ["tags"], queryFn: listTags });
+  const tagsQuery = useQuery({ queryKey: ["tags"], queryFn: () => listTags() });
 
   const renameMutation = useMutation({
     mutationFn: ({ id, name }: { id: string; name: string }) => renameTag(id, name),

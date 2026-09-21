@@ -32,6 +32,13 @@ public interface IBrowseQueryService
 
     Task<IReadOnlyList<EntityGroupCount>> ListTagsAsync(CancellationToken ct = default);
 
+    /// <summary>Same as <see cref="ListTagsAsync"/> but includes a tag with zero books currently
+    /// attached - <see cref="ListTagsAsync"/> exists to back the browse sidebar (where a zero-count
+    /// tag is dead weight, nothing to click through to), while this backs the book-edit form's tag
+    /// picker, where a tag that once existed but isn't on any book *right now* should still be
+    /// offered as a suggestion rather than disappearing the moment its last book is untagged.</summary>
+    Task<IReadOnlyList<EntityGroupCount>> ListAllTagsAsync(CancellationToken ct = default);
+
     Task<IReadOnlyList<string>> ListPublishersAsync(CancellationToken ct = default);
 
     Task<IReadOnlyList<NamedGroupCount>> ListPublishersGroupedAsync(CancellationToken ct = default);

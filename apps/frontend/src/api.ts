@@ -825,8 +825,12 @@ export function renameSeries(id: string, name: string): Promise<BrowseGroup> {
   });
 }
 
-export function listTags(): Promise<BrowseGroup[]> {
-  return request<BrowseGroup[]>("/api/tags");
+// `all: true` (used by BookEditForm.tsx's tag picker) also includes a tag with zero books
+// currently attached, so a tag that was just untagged from its last book is still offered as a
+// suggestion instead of disappearing - unlike the sidebar's own default listing, which only shows
+// tags that currently have at least one book (see BrowseEndpoints.cs's own doc comment).
+export function listTags(all?: boolean): Promise<BrowseGroup[]> {
+  return request<BrowseGroup[]>(`/api/tags${all ? "?all=true" : ""}`);
 }
 
 // Cascades to every book with this tag automatically. Same 409-on-collision behavior as renameAuthor.

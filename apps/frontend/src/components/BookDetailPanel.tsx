@@ -126,7 +126,7 @@ export function BookDetailPanel({ bookId, onClose, onRemoved, onSelectFilter }: 
   // sidebar's already-cached ["tags"] list (BrowseGroup rows do have ids) by name instead of adding
   // a backend field just for this. A tag renamed/removed since that list was last fetched simply
   // won't be clickable (handleTagClick below no-ops), rather than risk sending a stale id.
-  const tagsQuery = useQuery({ queryKey: ["tags"], queryFn: listTags });
+  const tagsQuery = useQuery({ queryKey: ["tags"], queryFn: () => listTags() });
 
   const handleSelectFilter = (filter: GroupFilter) => {
     onClose();

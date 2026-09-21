@@ -272,7 +272,10 @@ export function BookEditForm({ bookId, onClose, onSaved }: BookEditFormProps) {
 
   const authorsQuery = useQuery({ queryKey: ["authors"], queryFn: listAuthors });
   const seriesQuery = useQuery({ queryKey: ["series"], queryFn: listSeries });
-  const tagsQuery = useQuery({ queryKey: ["tags"], queryFn: listTags });
+  // Includes a tag with zero books currently attached (unlike the sidebar's ["tags"] query) - see
+  // listTags's own doc comment - so untagging a tag's last book doesn't make it vanish from this
+  // picker's suggestions.
+  const tagsQuery = useQuery({ queryKey: ["tags", "all"], queryFn: () => listTags(true) });
   const publishersQuery = useQuery({ queryKey: ["publishers"], queryFn: listPublishers });
   const collectionsQuery = useQuery({ queryKey: ["collections"], queryFn: listCollections });
   // Per-library preference (Settings -> Libraries) - shares the ["library"] query App.tsx already

@@ -349,7 +349,7 @@ export function PeriodicalDetailView({ periodicalId, onBack, onSelectBook }: Per
     queryFn: async () => (await listBooks({ periodicalId })).items,
   });
   const publishersQuery = useQuery({ queryKey: ["publishers"], queryFn: listPublishers });
-  const tagsQuery = useQuery({ queryKey: ["tags"], queryFn: listTags });
+  const tagsQuery = useQuery({ queryKey: ["tags"], queryFn: () => listTags() });
   const tagOptions = buildCreatableData((tagsQuery.data ?? []).map((tag) => tag.name), form.tags, tagSearch, t);
 
   const invalidate = () => {

@@ -128,7 +128,7 @@ export function ImportDialog() {
   const authorsQuery = useQuery({ queryKey: ["authors"], queryFn: listAuthors });
   const publishersQuery = useQuery({ queryKey: ["publishers"], queryFn: listPublishers });
   const seriesQuery = useQuery({ queryKey: ["series"], queryFn: listSeries });
-  const tagsQuery = useQuery({ queryKey: ["tags"], queryFn: listTags });
+  const tagsQuery = useQuery({ queryKey: ["tags"], queryFn: () => listTags() });
   const collectionsQuery = useQuery({ queryKey: ["collections"], queryFn: listCollections });
 
   const bulkAuthorOptions = buildCreatableData((authorsQuery.data ?? []).map((a) => a.name), bulkMetadata.authors, bulkAuthorSearch, t);
