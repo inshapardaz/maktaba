@@ -45,6 +45,20 @@ public class NawishtaRawApiClient(HttpClient httpClient, string serverUrl)
         PropertyNameCaseInsensitive = true,
     };
 
+    // Used only for serializing a brand-new BookView's *request* body (CreateBookAsync) - its Id is
+    // always unset (int?, null) since the server assigns one, but the plain JsonOptions above
+    // serializes that as an explicit "id": null, which Nawishta's create-book request model
+    // (a non-nullable int Id) rejects with "The JSON value could not be converted to System.Int32" -
+    // confirmed live. Omitting every null property sidesteps that without needing a hand-maintained
+    // "create" DTO shape for the generated BookView - safe here specifically because this is only
+    // ever used for the one-shot create call, never for UpdateBookAsync's full-representation PUT,
+    // where an omitted (vs. explicit null) field could mean "leave unchanged" instead of "clear this"
+    // on Nawishta's side.
+    private static readonly JsonSerializerOptions CreateBookJsonOptions = new(JsonOptions)
+    {
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    };
+
     // How long before the token's own reported expiry EnsureFreshTokenAsync treats it as already
     // stale - renewing a little early absorbs request latency/clock skew between this process and
     // Nawishta's own server, rather than racing a request against the exact expiry instant.
@@ -233,7 +247,7 @@ public class NawishtaRawApiClient(HttpClient httpClient, string serverUrl)
         PostJsonAsync<CategoryView>($"{_baseUrl}/libraries/{libraryId}/categories", new { name }, ct);
 
     public Task<BookView?> CreateBookAsync(int libraryId, BookView body, CancellationToken ct) =>
-        PostJsonAsync<BookView>($"{_baseUrl}/libraries/{libraryId}/books", body, ct);
+        PostJsonAsync<BookView>($"{_baseUrl}/libraries/{libraryId}/books", body, CreateBookJsonOptions, ct);
 
     public Task<BookView?> UpdateBookAsync(int libraryId, int bookId, BookView body, CancellationToken ct) =>
         PutJsonAsync<BookView>($"{_baseUrl}/libraries/{libraryId}/books/{bookId}", body, ct);
@@ -473,10 +487,16 @@ public class NawishtaRawApiClient(HttpClient httpClient, string serverUrl)
         return await response.Content.ReadFromJsonAsync<T>(JsonOptions, ct);
     }
 
-    private async Task<T?> PostJsonAsync<T>(string url, object body, CancellationToken ct)
+    private Task<T?> PostJsonAsync<T>(string url, object body, CancellationToken ct) =>
+        PostJsonAsync<T>(url, body, JsonOptions, ct);
+
+    // requestOptions governs only how `body` is serialized - the response is always deserialized
+    // with the regular JsonOptions (PropertyNameCaseInsensitive, no null-omitting), since that's
+    // about reading Nawishta's response shape, not writing our own request.
+    private async Task<T?> PostJsonAsync<T>(string url, object body, JsonSerializerOptions requestOptions, CancellationToken ct)
     {
         await EnsureFreshTokenAsync(ct);
-        using var response = await httpClient.PostAsJsonAsync(url, body, JsonOptions, ct);
+        using var response = await httpClient.PostAsJsonAsync(url, body, requestOptions, ct);
         await ThrowIfErrorAsync(response, ct);
         var text = await response.Content.ReadAsStringAsync(ct);
         return string.IsNullOrWhiteSpace(text) ? default : JsonSerializer.Deserialize<T>(text, JsonOptions);

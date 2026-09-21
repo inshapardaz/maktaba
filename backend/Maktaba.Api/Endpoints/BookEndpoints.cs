@@ -153,6 +153,21 @@ public static class BookEndpoints
             foreach (var entry in entries)
             {
                 var book = entry.Book;
+
+                // Same "degrade rather than fail the whole response" treatment GET /{id}'s own file
+                // list already gives a per-file download failure (e.g. a Nawishta library whose
+                // download link 404s for this file - inshapardaz/api#50) - one book's broken file
+                // shouldn't take down the entire Continue Reading feed.
+                string absolutePath;
+                try
+                {
+                    absolutePath = entry.File is not null ? await storage.GetLocalPathAsync(entry.File.FilePath, ct) : "";
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    absolutePath = "";
+                }
+
                 dtos.Add(new ContinueReadingBookDto(
                     IdCodec.Encode(book.Id),
                     book.Title,
@@ -162,7 +177,7 @@ public static class BookEndpoints
                     CoverLocator.GetVersion(root, book.FolderPath),
                     book.ReadingStatus.ToString(),
                     (entry.File?.Format ?? BookFormat.Epub).ToString(),
-                    entry.File is not null ? await storage.GetLocalPathAsync(entry.File.FilePath, ct) : "",
+                    absolutePath,
                     entry.Percentage,
                     entry.UpdatedAt));
             }
