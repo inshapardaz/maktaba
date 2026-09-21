@@ -208,6 +208,12 @@ public class NawishtaRawApiClient(HttpClient httpClient, string serverUrl)
     public Task<SeriesView?> CreateSeriesAsync(int libraryId, string name, CancellationToken ct) =>
         PostJsonAsync<SeriesView>($"{_baseUrl}/libraries/{libraryId}/series", new { name }, ct);
 
+    // Same find-or-create pattern/payload shape as CreateAuthorAsync/CreateSeriesAsync above -
+    // Maktaba's "Tags" maps onto Nawishta's Category (see NawishtaBrowseQueryService's doc comment
+    // on why, and NawishtaBookMutationService.ResolveCategoriesAsync, the write-side counterpart).
+    public Task<CategoryView?> CreateCategoryAsync(int libraryId, string name, CancellationToken ct) =>
+        PostJsonAsync<CategoryView>($"{_baseUrl}/libraries/{libraryId}/categories", new { name }, ct);
+
     public Task<BookView?> CreateBookAsync(int libraryId, BookView body, CancellationToken ct) =>
         PostJsonAsync<BookView>($"{_baseUrl}/libraries/{libraryId}/books", body, ct);
 

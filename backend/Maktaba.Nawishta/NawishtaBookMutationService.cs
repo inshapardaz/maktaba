@@ -37,11 +37,14 @@ public class NawishtaBookMutationService(NawishtaRawApiClient api, int remoteLib
             ? (await ResolveSeriesAsync(seriesName, ct))?.Id
             : null;
         existing.SeriesIndex = request.SeriesIndex is { } idx ? (int)idx : null;
-        // Tags and Categories are deliberately left as fetched, not overwritten: Nawishta's own
-        // reference editor (library-editor) never edits Book.Tags at all (it's read-only/system
-        // output as far as that app is concerned - confirmed by its complete absence from
-        // bookForm.jsx's fields), and Categories is a separate, distinct concept from Collections
-        // (which map onto Nawishta's own Bookshelves as of issue #140 - see SyncCollectionsAsync).
+        // Maktaba's "Tags" maps onto Nawishta's Category, not BookView's own "tags" field (see
+        // NawishtaBrowseQueryService's doc comment) - written back here the same find-or-create way
+        // Authors/Series already are. Distinct from Collections (which map onto Nawishta's own
+        // Bookshelves as of issue #140 - see SyncCollectionsAsync), and from BookView.Tags itself,
+        // which stays untouched (Nawishta's own reference editor never edits it either - confirmed
+        // by its complete absence from bookForm.jsx's fields - and it's never populated by the API
+        // regardless, so there'd be nothing meaningful to preserve or overwrite).
+        existing.Categories = await ResolveCategoriesAsync(request.Tags, ct);
 
         var updated = await api.UpdateBookAsync(remoteLibraryId, bookId, existing, ct) ?? existing;
 
@@ -162,5 +165,42 @@ public class NawishtaBookMutationService(NawishtaRawApiClient api, int remoteLib
         var existingSeries = (await api.GetSeriesAsync(remoteLibraryId, ct)).Data ?? [];
         var match = existingSeries.FirstOrDefault(s => string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase));
         return match ?? await api.CreateSeriesAsync(remoteLibraryId, name, ct);
+    }
+
+    // Same find-or-create shape as ResolveAuthorsAsync above (multiple names, case-insensitive
+    // match against every category that already exists in this library, created if not) - the
+    // write-side counterpart of NawishtaBrowseQueryService.ListTagsAsync/NawishtaEntityMapper's own
+    // Category-as-Tags mapping.
+    private async Task<List<CategoryView>> ResolveCategoriesAsync(IReadOnlyList<string> names, CancellationToken ct)
+    {
+        var existingCategories = ((await api.GetCategoriesAsync(remoteLibraryId, ct)).Data ?? []).ToList();
+        var result = new List<CategoryView>();
+        foreach (var name in names)
+        {
+            var trimmed = name.Trim();
+            if (trimmed.Length == 0)
+            {
+                continue;
+            }
+
+            var match = existingCategories.FirstOrDefault(c => string.Equals(c.Name, trimmed, StringComparison.OrdinalIgnoreCase));
+            if (match is not null)
+            {
+                result.Add(match);
+                continue;
+            }
+
+            var created = await api.CreateCategoryAsync(remoteLibraryId, trimmed, ct);
+            if (created is null)
+            {
+                continue;
+            }
+
+            result.Add(created);
+            // Avoids creating a duplicate category if the same new name appears twice in one request.
+            existingCategories.Add(created);
+        }
+
+        return result;
     }
 }
