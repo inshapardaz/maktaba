@@ -12,6 +12,7 @@ import {
   listTags,
   openLibraryById,
   reopenCloudLibrary,
+  verifyLibraryConnection,
   type LibraryEntry,
 } from "./api";
 import { resetLibraryQueries } from "./queries";
@@ -82,6 +83,26 @@ export function LibrarySwitchProvider({ children }: { children: ReactNode }) {
         await reopenCloudLibrary(id, JSON.parse(credentialJson) as unknown);
       } else {
         await openLibraryById(id);
+      }
+
+      // A Nawishta library's own open/reopen is a pure no-op with no network call at all (there's
+      // no metadata.db to pull/validate - see LibraryService.ActivateAsync's own doc comment), so a
+      // stale/rotated refresh token (2-day TTL - see NawishtaCredentialRefresher) would otherwise go
+      // unnoticed here and only surface later as whatever the first real request happens to throw,
+      // with none of App.tsx's cloudReconnectQuery-style messaging - same reasoning that query
+      // already has for doing this same check. Reusing its exact "credentials haven't been
+      // supplied" message on failure routes this through the same needsReconnect handling below
+      // (App.tsx jumps to Settings -> Libraries' Reconnect action) rather than a dead-end error.
+      if (target?.providerType === "nawishta") {
+        const status = await verifyLibraryConnection();
+        if (!status.connected) {
+          throw new Error(
+            "This library's credentials haven't been supplied for this session yet - reopen it with its credential.",
+          );
+        }
+        if (status.refreshedCredential) {
+          await window.maktaba.saveCloudCredential(id, status.refreshedCredential).catch(() => {});
+        }
       }
 
       void queryClient.invalidateQueries({ queryKey: ["libraries"] });

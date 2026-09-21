@@ -36,7 +36,8 @@ public static class LibraryEndpoints
         // the connection works) that separates "the server can't be reached at all" from "the
         // credential itself no longer works" - two cases the frontend needs to word, and let the
         // user act on, differently (a plain retry fixes neither the same way).
-        group.MapGet("/verify-connection", async (ILibraryService libraryService, NawishtaSessionResolver nawishtaResolver, CancellationToken ct) =>
+        group.MapGet("/verify-connection", async (
+            ILibraryService libraryService, NawishtaSessionResolver nawishtaResolver, ICloudCredentialCache credentials, CancellationToken ct) =>
         {
             if (!BookEndpoints.IsNawishtaLibrary(libraryService))
             {
@@ -60,10 +61,19 @@ public static class LibraryEndpoints
                 return Results.Ok(new LibraryConnectionStatusDto(false, "auth"));
             }
 
+            var credentialBefore = credentials.TryGet(n.LibraryId, out var before) ? before : null;
+
             try
             {
                 await n.Api.GetAuthorsAsync(n.RemoteLibraryId, ct);
-                return Results.Ok(new LibraryConnectionStatusDto(true, null));
+
+                // A live call above may have proactively (or reactively, on a 401) renewed the access
+                // token via NawishtaCredentialRefresher - only that call actually knows whether it
+                // fired, so this just diffs the cache before/after rather than threading a flag
+                // through. See LibraryConnectionStatusDto.RefreshedCredential's own doc comment for
+                // why this needs to reach the frontend at all.
+                var refreshed = credentials.TryGet(n.LibraryId, out var after) && after != credentialBefore ? after : null;
+                return Results.Ok(new LibraryConnectionStatusDto(true, null, refreshed));
             }
             catch (NawishtaApiException ex) when (ex.StatusCode is 401 or 403)
             {
@@ -72,6 +82,18 @@ public static class LibraryEndpoints
             catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Net.Sockets.SocketException)
             {
                 return Results.Ok(new LibraryConnectionStatusDto(false, "unreachable"));
+            }
+            // Anything else (a stale/rotated refresh token Nawishta rejects with some other status,
+            // a malformed response, ...) used to escape this endpoint entirely - propagating past the
+            // "library must be open" middleware (which only catches LibraryNotOpenException/
+            // LibraryLockConflictException) as a raw, uncaught exception. Caught here too now,
+            // reported the same way an outright 401/403 already is - the reconnect-needed cases are
+            // functionally the same from the user's side (this credential doesn't work anymore, sign
+            // in again), and a clean, worded message beats whatever an unhandled exception happens to
+            // surface as.
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                return Results.Ok(new LibraryConnectionStatusDto(false, "auth"));
             }
         });
 

@@ -491,6 +491,11 @@ export interface LibraryConnectionStatus {
   // Always {connected: true} for a non-Nawishta library, which already validates its credential
   // synchronously during reopenCloudLibrary above.
   reason?: "unreachable" | "auth";
+  // Set when this check itself renewed the Nawishta access/refresh token pair (the renewal only
+  // updates the backend's in-memory credential cache, lost on the next restart) - callers should
+  // re-persist it via window.maktaba.saveCloudCredential(id, refreshedCredential) so a later
+  // session doesn't reopen with a refresh token Nawishta has already rotated away.
+  refreshedCredential?: string;
 }
 
 export function verifyLibraryConnection(): Promise<LibraryConnectionStatus> {

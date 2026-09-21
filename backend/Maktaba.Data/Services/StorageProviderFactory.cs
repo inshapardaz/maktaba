@@ -34,20 +34,34 @@ public class StorageProviderFactory(
         get
         {
             var entry = libraryService.Libraries.FirstOrDefault(l => l.Id == libraryService.CurrentLibraryId);
-            var providerType = entry?.ProviderType ?? "local";
 
-            if (providerType == "local")
+            // Deliberately NOT "entry?.ProviderType ?? local" - that silently treated "no matching
+            // registry entry" the same as "this library is local", which handed back the shared
+            // LocalFileSystemProvider singleton (bound to whatever ILibraryPathProvider.LibraryRootPath
+            // currently is) even when the active library is actually cloud-backed - for a Nawishta
+            // library, LibraryRootPath is the synthetic "nawishta://{name}" display string (see
+            // LibraryService.ActivateAsync's own doc comment), which Path.Combine/File.Exists then
+            // rejects as an invalid path once resolved against this process's working directory -
+            // exactly the "filename, directory name, or volume label syntax is incorrect" class of
+            // error a live user hit. If CurrentLibraryId genuinely doesn't resolve to a registry entry,
+            // that's a real "no library is open" condition, not "assume local".
+            if (entry is null)
+            {
+                throw new InvalidOperationException("No library is currently open.");
+            }
+
+            if (entry.ProviderType == "local")
             {
                 return local;
             }
 
-            if (!credentials.TryGet(entry!.Id, out var credential))
+            if (!credentials.TryGet(entry.Id, out var credential))
             {
                 throw new InvalidOperationException(
                     "This library's credentials haven't been supplied for this session yet - reopen it with its credential.");
             }
 
-            return GetOrCreateCloudProvider(entry.Id, providerType, entry.ProviderConfig ?? new Dictionary<string, string>(), credential);
+            return GetOrCreateCloudProvider(entry.Id, entry.ProviderType, entry.ProviderConfig ?? new Dictionary<string, string>(), credential);
         }
     }
 
