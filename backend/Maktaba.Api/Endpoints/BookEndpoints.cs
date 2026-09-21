@@ -597,6 +597,8 @@ public static class BookEndpoints
             AddBookFileRequest request,
             IImportService importService,
             IStorageProviderFactory storageFactory,
+            ILibraryService libraryService,
+            NawishtaSessionResolver nawishtaResolver,
             CancellationToken ct) =>
         {
             if (!IdCodec.TryDecode(id, out var bookId))
@@ -610,6 +612,28 @@ public static class BookEndpoints
             if (string.IsNullOrWhiteSpace(request.FilePath) || !File.Exists(request.FilePath))
             {
                 return Results.BadRequest(new { error = "File not found." });
+            }
+
+            if (IsNawishtaLibrary(libraryService))
+            {
+                nawishtaResolver.TryResolve(out var n);
+                try
+                {
+                    var nawishtaBook = await new NawishtaBookMutationService(n.Api, n.RemoteLibraryId, n.Shadow).AddFileAsync(bookId, request.FilePath, ct);
+                    if (nawishtaBook is null)
+                    {
+                        return Results.NotFound();
+                    }
+
+                    var addedNawishtaFile = nawishtaBook.Files[^1];
+                    return Results.Ok(new BookFileDto(
+                        IdCodec.Encode(addedNawishtaFile.Id), addedNawishtaFile.Format.ToString(), addedNawishtaFile.FileSizeBytes,
+                        await storageFactory.Current.GetLocalPathAsync(addedNawishtaFile.FilePath, ct), addedNawishtaFile.ContentHash));
+                }
+                catch (NotSupportedException ex)
+                {
+                    return Results.BadRequest(new { error = ex.Message });
+                }
             }
 
             try
@@ -759,25 +783,37 @@ public static class BookEndpoints
 
         group.MapPost("/import", async (
             ImportBookRequest request, IImportService importService, ILibraryService libraryService,
+            NawishtaSessionResolver nawishtaResolver, IEnumerable<IBookMetadataExtractor> metadataExtractors,
             ILogger<Program> logger, CancellationToken ct) =>
         {
-            // Nawishta's content model (chapters/pages/OCR/bind/publish) doesn't map onto "attach an
-            // EPUB/PDF file" the way local/S3/Google Drive/OneDrive import does, and needs live
-            // verification before it's safe to build (see NawishtaBookMutationService's own doc
-            // comment) - a clear, friendly rejection here rather than letting ImportService proceed
-            // and fail confusingly partway through against NawishtaStorageProvider's file-write
-            // methods, which do throw NotSupportedException but with a less specific message.
-            if (IsNawishtaLibrary(libraryService))
-            {
-                return Results.BadRequest(new
-                {
-                    error = "Importing files isn't supported yet for a Nawishta-backed library - add books directly on the Nawishta server for now.",
-                });
-            }
-
             if (string.IsNullOrWhiteSpace(request.FilePath) || !File.Exists(request.FilePath))
             {
                 return Results.BadRequest(new { error = "File not found." });
+            }
+
+            // Issue #150 - creates the book on Nawishta itself and uploads the file as its first
+            // content (NawishtaBookMutationService.ImportAsync); no duplicate detection (see that
+            // method's own doc comment - there's no local content-hash index or cheap Nawishta-side
+            // check to run one against, unlike ImportService's own below).
+            if (IsNawishtaLibrary(libraryService))
+            {
+                nawishtaResolver.TryResolve(out var n);
+                try
+                {
+                    var nawishtaBook = await new NawishtaBookMutationService(n.Api, n.RemoteLibraryId, n.Shadow, metadataExtractors)
+                        .ImportAsync(request.FilePath, ct);
+                    var nawishtaSqid = IdCodec.Encode(nawishtaBook.Id);
+                    return Results.Created($"/api/books/{nawishtaSqid}", new { id = nawishtaSqid, title = nawishtaBook.Title });
+                }
+                catch (NotSupportedException ex)
+                {
+                    return Results.BadRequest(new { error = ex.Message });
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Failed to import {FilePath} to Nawishta", request.FilePath);
+                    return Results.BadRequest(new { error = $"Could not import this file: {ex.Message}" });
+                }
             }
 
             var resolution = request.DuplicateAction switch

@@ -185,6 +185,24 @@ public class NawishtaRawApiClient(HttpClient httpClient, string serverUrl)
         await ThrowIfErrorAsync(response, ct);
     }
 
+    /// <summary>PUT .../books/{bookId}/image - same [FromForm] IFormFile "file" convention as
+    /// UpdateAuthorImageAsync above (the generated client's own UpdateBookImageAsync guesses a
+    /// different, unverified multipart shape - see that method's own doc comment for the same class
+    /// of gap). Used best-effort by NawishtaBookMutationService.ImportAsync to set a newly-imported
+    /// book's cover from its extracted metadata - a failure here doesn't fail the import itself.</summary>
+    public async Task UpdateBookImageAsync(int libraryId, int bookId, string fileName, string mimeType, Stream content, CancellationToken ct)
+    {
+        await EnsureFreshTokenAsync(ct);
+        using var form = new MultipartFormDataContent();
+        using var fileContent = new StreamContent(content);
+        fileContent.Headers.ContentType = MediaTypeHeaderValue.Parse(mimeType);
+        form.Add(fileContent, "file", fileName);
+
+        using var request = new HttpRequestMessage(HttpMethod.Put, $"{_baseUrl}/libraries/{libraryId}/books/{bookId}/image") { Content = form };
+        using var response = await httpClient.SendAsync(request, ct);
+        await ThrowIfErrorAsync(response, ct);
+    }
+
     public async Task<NawishtaPageView<SeriesView>> GetSeriesAsync(int libraryId, CancellationToken ct) =>
         await GetJsonAsync<NawishtaPageView<SeriesView>>($"{_baseUrl}/libraries/{libraryId}/series?pageSize=1000", ct) ?? new();
 
