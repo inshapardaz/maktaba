@@ -188,6 +188,38 @@ public class NawishtaBookMutationService(
         return NawishtaEntityMapper.ToBook(updated, state);
     }
 
+    // The Nawishta counterpart of BookEditService.DeleteFileAsync - same null/refuse/true-on-success
+    // contract (null = book or file not found, throws InvalidOperationException = refused because
+    // it's the book's only file, true = deleted) so BookEndpoints.cs's DELETE /{id}/files/{fileId}
+    // handler needs no Nawishta-specific response mapping. contentId is parsed back out of
+    // BookFile.FilePath ("{bookId}/{contentId}{extension}" - see NawishtaEntityMapper.ToBook) rather
+    // than trusted from fileId itself, since BookFile.Id is fileId truncated to int (Nawishta's own
+    // content ids are longs) - FilePath always carries the untruncated value.
+    public async Task<bool?> DeleteFileAsync(int bookId, int fileId, CancellationToken ct = default)
+    {
+        var book = await api.GetBookByIdAsync(remoteLibraryId, bookId, ct);
+        if (book is null)
+        {
+            return null;
+        }
+
+        var mapped = NawishtaEntityMapper.ToBook(book, null);
+        var file = mapped.Files.FirstOrDefault(f => f.Id == fileId);
+        if (file is null)
+        {
+            return null;
+        }
+
+        if (mapped.Files.Count <= 1)
+        {
+            throw new InvalidOperationException("Cannot delete a book's only file.");
+        }
+
+        var contentId = long.Parse(Path.ChangeExtension(file.FilePath.Split('/', 2)[1], null));
+        await api.DeleteContentAsync(remoteLibraryId, bookId, contentId, ct);
+        return true;
+    }
+
     // Issue #140: book<->shelf membership now round-trips through Nawishta's real Bookshelves API
     // (AddBookToBookShelfAsync/RemoveBookFromBookShelfAsync - confirmed additive/independent server-
     // side, a book can sit on any number of shelves at once). The shadow BookCollectionLinks rows are

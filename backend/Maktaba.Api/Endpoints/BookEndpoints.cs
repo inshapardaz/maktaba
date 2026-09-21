@@ -705,7 +705,8 @@ public static class BookEndpoints
         });
 
         group.MapDelete("/{id}/files/{fileId}", async (
-            string id, string fileId, IBookEditService editService, CancellationToken ct) =>
+            string id, string fileId, IBookEditService editService,
+            ILibraryService libraryService, NawishtaSessionResolver nawishtaResolver, CancellationToken ct) =>
         {
             if (!IdCodec.TryDecode(id, out var bookId) || !IdCodec.TryDecode(fileId, out var bookFileId))
             {
@@ -714,6 +715,13 @@ public static class BookEndpoints
 
             try
             {
+                if (IsNawishtaLibrary(libraryService))
+                {
+                    nawishtaResolver.TryResolve(out var n);
+                    var nawishtaResult = await new NawishtaBookMutationService(n.Api, n.RemoteLibraryId, n.Shadow).DeleteFileAsync(bookId, bookFileId, ct);
+                    return nawishtaResult is null ? Results.NotFound() : Results.NoContent();
+                }
+
                 var result = await editService.DeleteFileAsync(bookId, bookFileId, ct);
                 return result is null ? Results.NotFound() : Results.NoContent();
             }

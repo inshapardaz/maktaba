@@ -245,6 +245,18 @@ public class NawishtaRawApiClient(HttpClient httpClient, string serverUrl)
         await ThrowIfErrorAsync(response, ct);
     }
 
+    /// <summary>DELETE .../books/{bookId}/contents/{contentId} - removes one of a book's attached
+    /// contents (BookFile equivalent). Unlike the GET/POST content endpoints, this one needs no
+    /// response-schema workaround (a DELETE returns no body), so it's a plain wrapper rather than
+    /// going through the generated client purely for the same EnsureFreshTokenAsync/ThrowIfErrorAsync
+    /// consistency every other write here has.</summary>
+    public async Task DeleteContentAsync(int libraryId, int bookId, long contentId, CancellationToken ct)
+    {
+        await EnsureFreshTokenAsync(ct);
+        using var response = await httpClient.DeleteAsync($"{_baseUrl}/libraries/{libraryId}/books/{bookId}/contents/{contentId}", ct);
+        await ThrowIfErrorAsync(response, ct);
+    }
+
     /// <summary>Resolves one of a book's content files (BookView.Contents[i].Id) to its actual
     /// download response - see NawishtaBookQueryService's doc comment for why a "content" maps 1:1
     /// to a Maktaba BookFile.
