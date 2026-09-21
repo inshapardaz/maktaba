@@ -324,10 +324,23 @@ public static class BookEndpoints
                 return Results.NotFound();
             }
 
-            var cover = await CoverLocator.FindAsync(storageFactory.Current, book.FolderPath, ct);
-            return cover is { } found
-                ? Results.File(found.FilePath, found.ContentType)
-                : Results.NotFound();
+            // A cover can genuinely fail to download even after ExistsAsync said it was there - a
+            // Nawishta library with a misconfigured fileStoreSource 404s the actual download link
+            // (inshapardaz/api#50 - confirmed scoped to specific libraries, not universal). That's a
+            // "no cover to show" outcome from this endpoint's own perspective, not a 500 - same
+            // "degrade rather than fail the whole response" treatment GET /{id} already gives a
+            // per-file download failure.
+            try
+            {
+                var cover = await CoverLocator.FindAsync(storageFactory.Current, book.FolderPath, ct);
+                return cover is { } found
+                    ? Results.File(found.FilePath, found.ContentType)
+                    : Results.NotFound();
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                return Results.NotFound();
+            }
         });
 
         group.MapGet("/{id}/file", async (string id, string? format, ILibraryQueryServiceFactory queryServices, IStorageProviderFactory storageFactory, CancellationToken ct) =>
