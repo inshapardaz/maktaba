@@ -34,6 +34,8 @@ declare global {
       trashPath: (filePath: string) => Promise<void>;
       trashPathIfEmpty: (folderPath: string) => Promise<void>;
       openReaderWindow: (bookId: string, format: "Epub" | "Pdf" | "Docx" | "Txt", title?: string) => Promise<void>;
+      // Epic #162, Phase 1 - singleton per book, same pattern as openReaderWindow.
+      openDigitizationWindow: (bookId: string, title?: string) => Promise<void>;
       getPathForFile: (file: File) => string;
       getSidecarStatus: () => Promise<SidecarStatus>;
       onSidecarStatus: (callback: (status: SidecarStatus) => void) => () => void;

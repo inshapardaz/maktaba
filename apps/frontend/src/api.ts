@@ -714,6 +714,36 @@ export function startDigitization(id: string, isRightToLeft: boolean): Promise<D
   });
 }
 
+// Null means "never started" (backend returns 404) rather than an error - see IDigitizationService.GetStateAsync.
+export async function getDigitizationState(id: string): Promise<DigitizationStateDto | null> {
+  try {
+    return await request<DigitizationStateDto>(`/api/books/${id}/digitize`);
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) return null;
+    throw err;
+  }
+}
+
+// Phase 1 - kicks off PdfToImageConversionService in the background; poll getConversionProgress
+// for status. 409 (Conflict) means a conversion is already running somewhere in this process.
+export function startDigitizationConversion(id: string): Promise<void> {
+  return request<void>(`/api/books/${id}/digitize/convert`, { method: "POST" });
+}
+
+export interface ConversionProgress {
+  isRunning: boolean;
+  processed: number;
+  total: number;
+  bookId: string | null;
+  error: string | null;
+}
+
+// Not book-scoped - this process only ever runs one conversion at a time (see
+// PdfToImageConversionService.Start), same reasoning as getRescanProgress.
+export function getConversionProgress(): Promise<ConversionProgress> {
+  return request<ConversionProgress>("/api/digitize/convert/progress");
+}
+
 // Issue #49: merges sourceBookId's files into targetId (skipping any the target already has, by
 // content) - targetId's own metadata is left untouched. Leaves the now-emptied source book behind
 // for the caller to remove separately (deleteBook + window.maktaba.trashPath, same as removing any

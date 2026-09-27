@@ -854,7 +854,10 @@ export function BookDetailPanel({ bookId, onClose, onRemoved, onSelectFilter }: 
         language={book.language}
         hasEpub={book.files.some((f) => f.format === "Epub")}
         onClose={() => setDigitizeDialogOpen(false)}
-        onStarted={() => invalidateLibraryQueries(queryClient)}
+        onStarted={() => {
+          invalidateLibraryQueries(queryClient);
+          void window.maktaba.openDigitizationWindow(bookId, book.title);
+        }}
       />
     )}
     </>
