@@ -36,6 +36,7 @@ import {
   FileType2,
   FileUp,
   Folder,
+  GitMerge,
   FolderOpen,
   Globe,
   HardDrive,
@@ -124,6 +125,7 @@ export const IconFileUpload = withStrokeWidth(FileUp);
 export const IconFilter = withStrokeWidth(ListFilter);
 export const IconFolder = withStrokeWidth(Folder);
 export const IconFolderOpen = withStrokeWidth(FolderOpen);
+export const IconGitMerge = withStrokeWidth(GitMerge);
 export const IconHash = withStrokeWidth(Hash);
 export const IconHelpCircle = withStrokeWidth(CircleQuestionMark);
 export const IconHardDrive = withStrokeWidth(HardDrive);

@@ -67,6 +67,7 @@ builder.Services.AddSingleton<IDigitizationJsonStore, DigitizationJsonStore>();
 builder.Services.AddScoped<IDigitizationRescanService, DigitizationRescanService>();
 builder.Services.AddScoped<IDigitizationService, DigitizationService>();
 builder.Services.AddScoped<IChapterService, ChapterService>();
+builder.Services.AddScoped<IChapterMergeService, ChapterMergeService>();
 
 // Phase 1 - runs as a detached background task (like ILibraryMigrationService), so registered
 // singleton like that service rather than scoped; it builds its own MaktabaDbContext per run via

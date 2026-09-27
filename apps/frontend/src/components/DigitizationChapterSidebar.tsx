@@ -1,13 +1,13 @@
 import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { notifications } from "@mantine/notifications";
-import { ActionIcon, Badge, Button, Group, Paper, Stack, Text, TextInput } from "@mantine/core";
+import { ActionIcon, Badge, Button, Group, Modal, Paper, ScrollArea, Stack, Text, TextInput } from "@mantine/core";
 import {
-  createDigitizationChapter, deleteDigitizationChapter, renameDigitizationChapter,
-  type DigitizationStateDto,
+  confirmChapterMerge, createDigitizationChapter, deleteDigitizationChapter, getMergedChapterText,
+  renameDigitizationChapter, type DigitizationStateDto,
 } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
-import { IconPlus, IconTrash } from "../icons";
+import { IconEye, IconGitMerge, IconPlus, IconTrash } from "../icons";
 
 // Phase 4 (epic #162) - chapter list/sidebar (#183) + create/rename/delete (#181, minus
 // drag-reorder which didn't fit this pass's time budget - chapters can still be reordered by
@@ -46,7 +46,29 @@ export function DigitizationChapterSidebar({ bookId, state }: { bookId: string; 
     onError,
   });
 
+  const [previewChapterId, setPreviewChapterId] = useState<string | null>(null);
+  const previewQuery = useQuery({
+    queryKey: ["digitizationMergedText", bookId, previewChapterId],
+    queryFn: () => getMergedChapterText(bookId, previewChapterId!),
+    enabled: previewChapterId !== null,
+  });
+
+  const mergeMutation = useMutation({
+    mutationFn: () => confirmChapterMerge(bookId),
+    onSuccess: () => {
+      invalidate();
+      notifications.show({ color: "green", message: t("digitize.mergeConfirmed") });
+    },
+    onError,
+  });
+
   const chapters = [...state.chapters].sort((a, b) => a.order - b.order);
+
+  // Phase 7's own gating (#192) - mirrors ConfirmChapterMergeAsync's backend check exactly, so the
+  // button's enabled/disabled state never disagrees with what the server would actually accept.
+  const unchapteredCount = state.pages.filter((p) => p.chapterId === null).length;
+  const notCompleteCount = state.pages.filter((p) => p.editStatus !== "Complete").length;
+  const canMerge = state.pages.length > 0 && unchapteredCount === 0 && notCompleteCount === 0;
 
   return (
     <Stack gap="xs" w={220}>
@@ -87,6 +109,9 @@ export function DigitizationChapterSidebar({ bookId, state }: { bookId: string; 
                   {chapter.title}
                 </Text>
                 <Badge size="xs" variant="light">{pageCount}</Badge>
+                <ActionIcon size="xs" variant="subtle" onClick={() => setPreviewChapterId(chapter.id)} aria-label={t("digitize.previewMerged")}>
+                  <IconEye size={12} />
+                </ActionIcon>
                 <ActionIcon size="xs" color="red" variant="subtle" onClick={() => deleteMutation.mutate(chapter.id)} aria-label={t("common.delete")}>
                   <IconTrash size={12} />
                 </ActionIcon>
@@ -117,6 +142,34 @@ export function DigitizationChapterSidebar({ bookId, state }: { bookId: string; 
           <IconPlus size={14} />
         </ActionIcon>
       </Group>
+
+      <Button
+        size="xs"
+        variant="light"
+        leftSection={<IconGitMerge size={14} />}
+        disabled={!canMerge}
+        loading={mergeMutation.isPending}
+        onClick={() => mergeMutation.mutate()}
+      >
+        {t("digitize.mergeIntoChapters")}
+      </Button>
+      {!canMerge && (
+        <Text size="xs" c="dimmed">
+          {unchapteredCount > 0
+            ? t("digitize.mergeBlockedUnchaptered", { count: unchapteredCount })
+            : notCompleteCount > 0
+              ? t("digitize.mergeBlockedNotComplete", { count: notCompleteCount })
+              : ""}
+        </Text>
+      )}
+
+      <Modal opened={previewChapterId !== null} onClose={() => setPreviewChapterId(null)} title={t("digitize.previewMerged")} size="lg" centered>
+        <ScrollArea h={400}>
+          <Text size="sm" style={{ whiteSpace: "pre-wrap", fontFamily: "monospace" }}>
+            {previewQuery.data ?? ""}
+          </Text>
+        </ScrollArea>
+      </Modal>
     </Stack>
   );
 }
