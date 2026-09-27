@@ -795,10 +795,38 @@ export function deleteDigitizationPages(id: string, pageIds: string[]): Promise<
 
 // Not wrapped in request() - this is loaded directly as an <img src>, same pattern as coverUrl()
 // (access_token as a query param since <img> tags can't set an Authorization header - see
-// Program.cs's bearer-token middleware).
-export function digitizationPageImageUrl(bookId: string, pageId: string): string {
+// Program.cs's bearer-token middleware). `cacheBust`, when given, is appended so the browser
+// re-fetches after a rotate/crop/split edit (see DigitizationPageManager's own edit handlers) -
+// the backend deliberately doesn't version these itself (see DigitizationEndpoints.cs's comment).
+export function digitizationPageImageUrl(bookId: string, pageId: string, cacheBust?: number): string {
   const { apiBaseUrl, token } = window.maktaba;
-  return `${apiBaseUrl}/api/books/${bookId}/digitize/pages/${pageId}/image?access_token=${encodeURIComponent(token)}`;
+  const base = `${apiBaseUrl}/api/books/${bookId}/digitize/pages/${pageId}/image?access_token=${encodeURIComponent(token)}`;
+  return cacheBust ? `${base}&v=${cacheBust}` : base;
+}
+
+// Phase 3 (Page Image Editing) - all three are destructive (baked straight into the page's own
+// jpg) and return the updated DigitizationState - see DigitizationService's own doc comment.
+export function rotateDigitizationPage(id: string, pageId: string, degrees: number): Promise<DigitizationStateDto> {
+  return request<DigitizationStateDto>(`/api/books/${id}/digitize/pages/${pageId}/rotate`, {
+    method: "POST",
+    body: JSON.stringify({ degrees }),
+  });
+}
+
+export function cropDigitizationPage(
+  id: string, pageId: string, x: number, y: number, width: number, height: number,
+): Promise<DigitizationStateDto> {
+  return request<DigitizationStateDto>(`/api/books/${id}/digitize/pages/${pageId}/crop`, {
+    method: "POST",
+    body: JSON.stringify({ x, y, width, height }),
+  });
+}
+
+export function splitDigitizationPage(id: string, pageId: string, splitRatio: number): Promise<DigitizationStateDto> {
+  return request<DigitizationStateDto>(`/api/books/${id}/digitize/pages/${pageId}/split`, {
+    method: "POST",
+    body: JSON.stringify({ splitRatio }),
+  });
 }
 
 // Issue #49: merges sourceBookId's files into targetId (skipping any the target already has, by

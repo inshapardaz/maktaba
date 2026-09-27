@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { notifications } from "@mantine/notifications";
 import {
-  Badge, Button, Checkbox, Group, Image, Modal, Paper, Select, SegmentedControl, SimpleGrid, Stack,
+  ActionIcon, Badge, Button, Checkbox, Group, Image, Modal, Paper, Select, SegmentedControl, SimpleGrid, Stack,
   Table, Text,
 } from "@mantine/core";
 import {
@@ -10,7 +10,8 @@ import {
   type DigitizationPageDto, type DigitizationStateDto,
 } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
-import { IconLayoutGrid, IconList, IconTrash } from "../icons";
+import { IconEdit, IconLayoutGrid, IconList, IconTrash } from "../icons";
+import { PageEditModal } from "./PageEditModal";
 
 const PAGE_SIZE_OPTIONS = ["12", "24", "48", "96", "all"];
 const STATUS_COLOR: Record<string, string> = {
@@ -36,6 +37,7 @@ export function DigitizationPageManager({ bookId, state }: { bookId: string; sta
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [editingPage, setEditingPage] = useState<DigitizationPageDto | null>(null);
 
   const sortedPages = useMemo(() => [...state.pages].sort((a, b) => a.order - b.order), [state.pages]);
 
@@ -184,6 +186,7 @@ export function DigitizationPageManager({ bookId, state }: { bookId: string; sta
               onToggle={() => toggle(page.id)}
               onDragStart={() => setDraggingId(page.id)}
               onDrop={() => handleDrop(page.id)}
+              onEdit={() => setEditingPage(page)}
             />
           ))}
         </SimpleGrid>
@@ -195,6 +198,7 @@ export function DigitizationPageManager({ bookId, state }: { bookId: string; sta
               <Table.Th>{t("digitize.pageNumber")}</Table.Th>
               <Table.Th />
               <Table.Th>{t("digitize.status")}</Table.Th>
+              <Table.Th />
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
@@ -218,6 +222,11 @@ export function DigitizationPageManager({ bookId, state }: { bookId: string; sta
                     {page.editStatus}
                   </Badge>
                 </Table.Td>
+                <Table.Td>
+                  <ActionIcon variant="subtle" onClick={() => setEditingPage(page)} aria-label={t("digitize.editPage", { page: page.order })}>
+                    <IconEdit size={14} />
+                  </ActionIcon>
+                </Table.Td>
               </Table.Tr>
             ))}
           </Table.Tbody>
@@ -237,12 +246,14 @@ export function DigitizationPageManager({ bookId, state }: { bookId: string; sta
           </Group>
         </Stack>
       </Modal>
+
+      {editingPage && <PageEditModal bookId={bookId} page={editingPage} onClose={() => setEditingPage(null)} />}
     </Stack>
   );
 }
 
 function PageThumbnail({
-  bookId, page, selected, onToggle, onDragStart, onDrop,
+  bookId, page, selected, onToggle, onDragStart, onDrop, onEdit,
 }: {
   bookId: string;
   page: DigitizationPageDto;
@@ -250,6 +261,7 @@ function PageThumbnail({
   onToggle: () => void;
   onDragStart: () => void;
   onDrop: () => void;
+  onEdit: () => void;
 }) {
   return (
     <Paper
@@ -269,6 +281,14 @@ function PageThumbnail({
       <Badge size="xs" color={STATUS_COLOR[page.editStatus] ?? "gray"} style={{ position: "absolute", top: 4, right: 4, zIndex: 1 }}>
         {page.order}
       </Badge>
+      <ActionIcon
+        size="sm"
+        variant="filled"
+        onClick={onEdit}
+        style={{ position: "absolute", bottom: 4, right: 4, zIndex: 1 }}
+      >
+        <IconEdit size={12} />
+      </ActionIcon>
       <Image src={digitizationPageImageUrl(bookId, page.id)} h={140} fit="contain" radius="sm" mt={20} />
     </Paper>
   );
