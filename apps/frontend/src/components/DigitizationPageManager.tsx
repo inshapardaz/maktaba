@@ -6,7 +6,7 @@ import {
   Table, Text,
 } from "@mantine/core";
 import {
-  bulkSetPageStatus, deleteDigitizationPages, digitizationPageImageUrl, reorderDigitizationPages,
+  bulkSetPageChapter, bulkSetPageStatus, deleteDigitizationPages, digitizationPageImageUrl, reorderDigitizationPages,
   type DigitizationPageDto, type DigitizationStateDto,
 } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
@@ -58,6 +58,15 @@ export function DigitizationPageManager({ bookId, state }: { bookId: string; sta
 
   const statusMutation = useMutation({
     mutationFn: (status: string) => bulkSetPageStatus(bookId, [...selected], status),
+    onSuccess: () => {
+      invalidate();
+      setSelected(new Set());
+    },
+    onError: (err) => notifications.show({ color: "red", message: err instanceof Error ? err.message : String(err) }),
+  });
+
+  const chapterMutation = useMutation({
+    mutationFn: (chapterId: string | null) => bulkSetPageChapter(bookId, [...selected], chapterId),
     onSuccess: () => {
       invalidate();
       setSelected(new Set());
@@ -167,6 +176,14 @@ export function DigitizationPageManager({ bookId, state }: { bookId: string; sta
                 disabled={statusMutation.isPending}
                 clearable
               />
+              <Select
+                size="xs"
+                placeholder={t("digitize.setChapter")}
+                data={state.chapters.map((c) => ({ value: c.id, label: c.title }))}
+                onChange={(v) => chapterMutation.mutate(v ?? null)}
+                disabled={chapterMutation.isPending || state.chapters.length === 0}
+                clearable
+              />
               <Button size="xs" color="red" leftSection={<IconTrash size={14} />} onClick={() => setDeleteConfirmOpen(true)}>
                 {t("common.delete")}
               </Button>
@@ -247,7 +264,9 @@ export function DigitizationPageManager({ bookId, state }: { bookId: string; sta
         </Stack>
       </Modal>
 
-      {editingPage && <PageEditModal bookId={bookId} page={editingPage} onClose={() => setEditingPage(null)} />}
+      {editingPage && (
+        <PageEditModal bookId={bookId} page={editingPage} chapters={state.chapters} onClose={() => setEditingPage(null)} />
+      )}
     </Stack>
   );
 }

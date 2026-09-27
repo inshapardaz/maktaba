@@ -1,10 +1,11 @@
 import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { notifications } from "@mantine/notifications";
-import { Alert, Box, Button, Center, Loader, Progress, Stack, Text, Title } from "@mantine/core";
+import { Alert, Box, Button, Center, Group, Loader, Progress, Stack, Text, Title } from "@mantine/core";
 import { getBook, getConversionProgress, getDigitizationState, startDigitizationConversion } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
 import { IconAlertCircle, IconScanLine } from "../icons";
+import { DigitizationChapterSidebar } from "./DigitizationChapterSidebar";
 import { DigitizationPageManager } from "./DigitizationPageManager";
 
 // Content for the digitization workflow's own top-level window (apps/desktop/src/main.ts's
@@ -76,7 +77,7 @@ export function DigitizationWindow({ bookId }: { bookId: string }) {
   const hasPages = stateQuery.data.pages.length > 0;
 
   return (
-    <Box p="xl" style={{ maxWidth: hasPages ? 1000 : 640, margin: "0 auto" }}>
+    <Box p="xl" style={{ maxWidth: hasPages ? 1200 : 640, margin: "0 auto" }}>
       <Stack gap="md">
         <Title order={3}>{bookQuery.data?.title ?? t("bookDetail.digitizeTitle")}</Title>
 
@@ -115,7 +116,12 @@ export function DigitizationWindow({ bookId }: { bookId: string }) {
             <Text size="sm" c="dimmed">
               {t("digitize.pagesReady", { count: stateQuery.data.pages.length })}
             </Text>
-            <DigitizationPageManager bookId={bookId} state={stateQuery.data} />
+            <Group align="flex-start" wrap="nowrap">
+              <DigitizationChapterSidebar bookId={bookId} state={stateQuery.data} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <DigitizationPageManager bookId={bookId} state={stateQuery.data} />
+              </div>
+            </Group>
           </>
         )}
       </Stack>

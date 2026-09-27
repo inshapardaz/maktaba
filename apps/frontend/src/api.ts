@@ -829,6 +829,42 @@ export function splitDigitizationPage(id: string, pageId: string, splitRatio: nu
   });
 }
 
+// Phase 4 (Chapters) - all five return the updated DigitizationStateDto, same shape every other
+// digitization mutation does.
+export function createDigitizationChapter(id: string, title: string): Promise<DigitizationStateDto> {
+  return request<DigitizationStateDto>(`/api/books/${id}/digitize/chapters`, {
+    method: "POST",
+    body: JSON.stringify({ title }),
+  });
+}
+
+export function renameDigitizationChapter(id: string, chapterId: string, title: string): Promise<DigitizationStateDto> {
+  return request<DigitizationStateDto>(`/api/books/${id}/digitize/chapters/${chapterId}`, {
+    method: "PUT",
+    body: JSON.stringify({ title }),
+  });
+}
+
+export function reorderDigitizationChapters(id: string, chapterIds: string[]): Promise<DigitizationStateDto> {
+  return request<DigitizationStateDto>(`/api/books/${id}/digitize/chapters/reorder`, {
+    method: "PUT",
+    body: JSON.stringify({ chapterIds }),
+  });
+}
+
+export function deleteDigitizationChapter(id: string, chapterId: string): Promise<DigitizationStateDto> {
+  return request<DigitizationStateDto>(`/api/books/${id}/digitize/chapters/${chapterId}`, { method: "DELETE" });
+}
+
+// The "first page of chapter" shortcut (issue #182) - sets chapterId's FirstPageId and autofills
+// every following page up to the next chapter's own first page into this chapter.
+export function setDigitizationChapterFirstPage(id: string, chapterId: string, pageId: string): Promise<DigitizationStateDto> {
+  return request<DigitizationStateDto>(`/api/books/${id}/digitize/chapters/${chapterId}/first-page`, {
+    method: "POST",
+    body: JSON.stringify({ pageId }),
+  });
+}
+
 // Issue #49: merges sourceBookId's files into targetId (skipping any the target already has, by
 // content) - targetId's own metadata is left untouched. Leaves the now-emptied source book behind
 // for the caller to remove separately (deleteBook + window.maktaba.trashPath, same as removing any
