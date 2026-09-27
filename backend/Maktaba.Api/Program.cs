@@ -68,6 +68,12 @@ builder.Services.AddScoped<IDigitizationRescanService, DigitizationRescanService
 builder.Services.AddScoped<IDigitizationService, DigitizationService>();
 builder.Services.AddScoped<IChapterService, ChapterService>();
 
+// Phase 1 - runs as a detached background task (like ILibraryMigrationService), so registered
+// singleton like that service rather than scoped; it builds its own MaktabaDbContext per run via
+// MaktabaDbContextFactory instead of a DI-injected scoped one.
+builder.Services.AddSingleton<IConversionProgressTracker, ConversionProgressTracker>();
+builder.Services.AddSingleton<IPdfToImageConversionService, PdfToImageConversionService>();
+
 builder.Services.AddScoped<NawishtaSessionResolver>();
 builder.Services.AddScoped<ILibraryQueryServiceFactory, LibraryQueryServiceFactory>();
 

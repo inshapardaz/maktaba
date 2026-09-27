@@ -4,6 +4,11 @@
     <ProjectReference Include="..\Maktaba.Core\Maktaba.Core.csproj" />
     <ProjectReference Include="..\Maktaba.Cloud\Maktaba.Cloud.csproj" />
     <ProjectReference Include="..\Maktaba.Nawishta\Maktaba.Nawishta.csproj" />
+    <!-- Digitization epic #162, Phase 1: PdfToImageConversionService needs PDFtoImage/SkiaSharp to
+         rasterize PDF pages, and lives here (not Maktaba.Metadata) since it also needs
+         MaktabaDbContext/IDigitizationJsonStore - Maktaba.Metadata has no MaktabaDbContext access
+         (it only depends on Maktaba.Core), so the dependency runs this direction. -->
+    <ProjectReference Include="..\Maktaba.Metadata\Maktaba.Metadata.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -64,6 +64,11 @@ contextBridge.exposeInMainWorld("maktaba", {
   openReaderWindow: (bookId: string, format: "Epub" | "Pdf" | "Docx" | "Txt", title?: string): Promise<void> =>
     ipcRenderer.invoke("maktaba:open-reader-window", { bookId, format, title }),
 
+  // Epic #162, Phase 1 - opens the digitization workflow's own top-level window, singleton per
+  // book (same pattern as openReaderWindow above).
+  openDigitizationWindow: (bookId: string, title?: string): Promise<void> =>
+    ipcRenderer.invoke("maktaba:open-digitization-window", { bookId, title }),
+
   // Resolves the real filesystem path for a File dropped onto the window (drag-and-drop import).
   getPathForFile: (file: File): string => webUtils.getPathForFile(file),
 

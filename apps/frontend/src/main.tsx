@@ -15,6 +15,7 @@ import { ReaderOverlay } from "./components/ReaderOverlay";
 import { isReadableFormat, type ReadableFormat } from "./api";
 import { BackendGate } from "./components/BackendGate";
 import { HelpWindow } from "./components/HelpWindow";
+import { DigitizationWindow } from "./components/DigitizationWindow";
 import { ImportProvider } from "./ImportContext";
 import { RescanProvider } from "./RescanContext";
 import { LibrarySyncProvider } from "./LibrarySyncContext";
@@ -45,6 +46,11 @@ const readerRequest =
 // button) is the same "separate top-level window loading this bundle with a ?view= query param"
 // pattern as the reader window above.
 const isHelpWindow = windowParams.get("view") === "help";
+
+// Epic #162, Phase 1 - the digitization workflow's own top-level window (apps/desktop/src/main.ts's
+// openDigitizationWindow), same "?view=... query param, decided once at load time" pattern.
+const digitizationRequest =
+  windowParams.get("view") === "digitization" ? { bookId: windowParams.get("bookId") ?? "" } : null;
 
 function ReaderWindow({ bookId, format, title }: { bookId: string; format: ReadableFormat; title: string | null }) {
   useEffect(() => {
@@ -84,11 +90,13 @@ createRoot(document.getElementById("root")!).render(
             <LanguageProvider>
               <Notifications position="bottom-right" />
               <QueryClientProvider client={queryClient}>
-                <BackendGate showTitleBar={!readerRequest && !isHelpWindow}>
+                <BackendGate showTitleBar={!readerRequest && !isHelpWindow && !digitizationRequest}>
                   {readerRequest ? (
                     <ReaderWindow bookId={readerRequest.bookId} format={readerRequest.format} title={readerRequest.title} />
                   ) : isHelpWindow ? (
                     <HelpWindow />
+                  ) : digitizationRequest ? (
+                    <DigitizationWindow bookId={digitizationRequest.bookId} />
                   ) : (
                     <ImportProvider>
                       <RescanProvider>

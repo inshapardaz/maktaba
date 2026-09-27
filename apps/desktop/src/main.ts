@@ -18,6 +18,8 @@ const isMac = process.platform === "darwin";
 const readerWindows = new Map<string, BrowserWindow>();
 // Only one Help window is ever needed - re-invoking maktaba:open-help-window just focuses it.
 let helpWindow: BrowserWindow | null = null;
+// Epic #162 - keyed by bookId, same singleton-per-book shape as readerWindows above.
+const digitizationWindows = new Map<string, BrowserWindow>();
 
 const isDev = !app.isPackaged;
 
@@ -314,6 +316,43 @@ ipcMain.handle(
   "maktaba:open-reader-window",
   (_event, { bookId, format, title }: { bookId: string; format: string; title?: string }) =>
     openReaderWindow(bookId, format, title),
+);
+
+// Epic #162, Phase 1 - the digitization workflow's own top-level window, singleton per book
+// (same pattern as openReaderWindow above, keyed by bookId alone since a book has only one
+// digitization session, unlike the reader which is also keyed by format).
+async function openDigitizationWindow(bookId: string, title?: string): Promise<void> {
+  if (!sidecar) return;
+
+  const existing = digitizationWindows.get(bookId);
+  if (existing && !existing.isDestroyed()) {
+    existing.focus();
+    return;
+  }
+
+  const win = new BrowserWindow({
+    width: 1100,
+    height: 800,
+    title: title || "Maktaba",
+    icon: appIconPath,
+    webPreferences: webPreferencesFor(sidecar),
+  });
+
+  digitizationWindows.set(bookId, win);
+  win.on("closed", () => digitizationWindows.delete(bookId));
+
+  const query: Record<string, string> = { view: "digitization", bookId };
+  if (title) query.title = title;
+  if (isDev) {
+    await win.loadURL(`http://localhost:5173/?${new URLSearchParams(query).toString()}`);
+  } else {
+    await win.loadFile(path.join(__dirname, "..", "..", "frontend", "dist", "index.html"), { query });
+  }
+}
+
+ipcMain.handle(
+  "maktaba:open-digitization-window",
+  (_event, { bookId, title }: { bookId: string; title?: string }) => openDigitizationWindow(bookId, title),
 );
 
 // Opened from the main window's title bar Help button (TitleBar.tsx) and the native app menu's
