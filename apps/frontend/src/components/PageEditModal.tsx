@@ -1,13 +1,13 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { notifications } from "@mantine/notifications";
-import { Button, Group, Image, Modal, NumberInput, Slider, Stack, Tabs, Text } from "@mantine/core";
+import { Button, Group, Image, Modal, NumberInput, Select, Slider, Stack, Tabs, Text } from "@mantine/core";
 import {
-  cropDigitizationPage, digitizationPageImageUrl, rotateDigitizationPage, splitDigitizationPage,
-  type DigitizationPageDto,
+  cropDigitizationPage, digitizationPageImageUrl, rotateDigitizationPage, setDigitizationChapterFirstPage,
+  splitDigitizationPage, type DigitizationChapterDto, type DigitizationPageDto,
 } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
-import { IconCrop, IconRotate, IconScanLine } from "../icons";
+import { IconBook2, IconCrop, IconRotate, IconScanLine } from "../icons";
 
 // Phase 3 (Page Image Editing) - crop/rotate/re-split for a single page, all destructive (see
 // DigitizationService's own doc comment on why nothing here is a persisted, re-appliable
@@ -15,10 +15,11 @@ import { IconCrop, IconRotate, IconScanLine } from "../icons";
 // full drag-to-crop widget didn't fit this pass's time budget; the percentages update a CSS
 // preview box live so it's not a total guessing game.
 export function PageEditModal({
-  bookId, page, onClose,
+  bookId, page, chapters, onClose,
 }: {
   bookId: string;
   page: DigitizationPageDto;
+  chapters: DigitizationChapterDto[];
   onClose: () => void;
 }) {
   const { t } = useLanguage();
@@ -27,6 +28,7 @@ export function PageEditModal({
   const [customDegrees, setCustomDegrees] = useState(90);
   const [crop, setCrop] = useState({ x: 0, y: 0, width: 100, height: 100 });
   const [splitRatio, setSplitRatio] = useState(50);
+  const [firstPageChapterId, setFirstPageChapterId] = useState<string | null>(page.chapterId);
 
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ["digitizationState", bookId] });
@@ -57,6 +59,12 @@ export function PageEditModal({
     onError: (err) => notifications.show({ color: "red", message: err instanceof Error ? err.message : String(err) }),
   });
 
+  const firstPageMutation = useMutation({
+    mutationFn: (chapterId: string) => setDigitizationChapterFirstPage(bookId, chapterId, page.id),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["digitizationState", bookId] }),
+    onError: (err) => notifications.show({ color: "red", message: err instanceof Error ? err.message : String(err) }),
+  });
+
   const imageUrl = digitizationPageImageUrl(bookId, page.id, cacheBust || undefined);
 
   return (
@@ -82,6 +90,7 @@ export function PageEditModal({
             <Tabs.Tab value="rotate" leftSection={<IconRotate size={14} />}>{t("digitize.rotate")}</Tabs.Tab>
             <Tabs.Tab value="crop" leftSection={<IconCrop size={14} />}>{t("digitize.crop")}</Tabs.Tab>
             <Tabs.Tab value="split" leftSection={<IconScanLine size={14} />}>{t("digitize.split")}</Tabs.Tab>
+            <Tabs.Tab value="chapter" leftSection={<IconBook2 size={14} />}>{t("digitize.chapter")}</Tabs.Tab>
           </Tabs.List>
 
           <Tabs.Panel value="rotate" pt="md">
@@ -121,6 +130,26 @@ export function PageEditModal({
               <Slider value={splitRatio} onChange={setSplitRatio} min={10} max={90} label={(v) => `${v}%`} />
               <Button loading={splitMutation.isPending} onClick={() => splitMutation.mutate()}>
                 {t("digitize.apply")}
+              </Button>
+            </Stack>
+          </Tabs.Panel>
+
+          <Tabs.Panel value="chapter" pt="md">
+            <Stack gap="xs">
+              <Select
+                label={t("digitize.setChapter")}
+                data={chapters.map((c) => ({ value: c.id, label: c.title }))}
+                value={firstPageChapterId}
+                onChange={(v) => setFirstPageChapterId(v)}
+                clearable
+              />
+              <Text size="sm" c="dimmed">{t("digitize.setFirstPageExplain")}</Text>
+              <Button
+                disabled={!firstPageChapterId}
+                loading={firstPageMutation.isPending}
+                onClick={() => firstPageChapterId && firstPageMutation.mutate(firstPageChapterId)}
+              >
+                {t("digitize.setFirstPage")}
               </Button>
             </Stack>
           </Tabs.Panel>

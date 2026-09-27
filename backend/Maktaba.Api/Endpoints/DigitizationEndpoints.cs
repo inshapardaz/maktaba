@@ -24,6 +24,12 @@ public record RotatePageRequest(double Degrees);
 public record CropPageRequest(double X, double Y, double Width, double Height);
 public record SplitPageRequest(double SplitRatio);
 
+// Phase 4 request bodies.
+public record CreateChapterRequest(string Title);
+public record RenameChapterRequest(string Title);
+public record ReorderChaptersRequest(IReadOnlyList<string> ChapterIds);
+public record SetFirstPageRequest(string PageId);
+
 // Phase 0 (epic #162) - just the "Digitize" entry point: start a book's digitization.json and read
 // its current state back. Every other digitization action (page management, OCR, chapters,
 // publishing, ...) is a later phase's own endpoint set, added to this same file as it lands.
@@ -263,6 +269,111 @@ public static class DigitizationEndpoints
             catch (ArgumentException ex)
             {
                 return Results.BadRequest(new { error = ex.Message });
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return Results.NotFound(new { error = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+        });
+
+        // Phase 4 (Chapters) - all five map exception -> HTTP status the same way the Phase 2/3
+        // endpoints above do, and all return the updated DigitizationState.
+        var chapters = group.MapGroup("/chapters");
+
+        chapters.MapPost("", async (string id, CreateChapterRequest request, IChapterService chapterService, CancellationToken ct) =>
+        {
+            if (!IdCodec.TryDecode(id, out var bookId))
+            {
+                return Results.NotFound();
+            }
+
+            try
+            {
+                return Results.Ok(await chapterService.CreateAsync(bookId, request.Title, ct));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+        });
+
+        chapters.MapPut("/{chapterId}", async (string id, string chapterId, RenameChapterRequest request, IChapterService chapterService, CancellationToken ct) =>
+        {
+            if (!IdCodec.TryDecode(id, out var bookId))
+            {
+                return Results.NotFound();
+            }
+
+            try
+            {
+                return Results.Ok(await chapterService.RenameAsync(bookId, chapterId, request.Title, ct));
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return Results.NotFound(new { error = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+        });
+
+        chapters.MapPut("/reorder", async (string id, ReorderChaptersRequest request, IChapterService chapterService, CancellationToken ct) =>
+        {
+            if (!IdCodec.TryDecode(id, out var bookId))
+            {
+                return Results.NotFound();
+            }
+
+            try
+            {
+                return Results.Ok(await chapterService.ReorderAsync(bookId, request.ChapterIds, ct));
+            }
+            catch (ArgumentException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+        });
+
+        chapters.MapDelete("/{chapterId}", async (string id, string chapterId, IChapterService chapterService, CancellationToken ct) =>
+        {
+            if (!IdCodec.TryDecode(id, out var bookId))
+            {
+                return Results.NotFound();
+            }
+
+            try
+            {
+                return Results.Ok(await chapterService.DeleteAsync(bookId, chapterId, ct));
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return Results.NotFound(new { error = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+        });
+
+        chapters.MapPost("/{chapterId}/first-page", async (string id, string chapterId, SetFirstPageRequest request, IChapterService chapterService, CancellationToken ct) =>
+        {
+            if (!IdCodec.TryDecode(id, out var bookId))
+            {
+                return Results.NotFound();
+            }
+
+            try
+            {
+                return Results.Ok(await chapterService.SetFirstPageAsync(bookId, chapterId, request.PageId, ct));
             }
             catch (KeyNotFoundException ex)
             {
