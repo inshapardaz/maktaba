@@ -597,7 +597,7 @@ export function Sidebar({
   const publishersQuery = useQuery({ queryKey: ["publisherGroups"], queryFn: listPublisherGroups });
   const languagesQuery = useQuery({ queryKey: ["languageGroups"], queryFn: listLanguageGroups });
   const seriesQuery = useQuery({ queryKey: ["series"], queryFn: listSeries });
-  const tagsQuery = useQuery({ queryKey: ["tags"], queryFn: listTags });
+  const tagsQuery = useQuery({ queryKey: ["tags"], queryFn: () => listTags() });
   const collectionsQuery = useQuery({ queryKey: ["collections"], queryFn: listCollections });
   // Per-library preference (Settings -> Libraries) - shares the ["library"] query App.tsx already
   // keeps warm, so this is a cache read, not an extra request.

@@ -45,6 +45,20 @@ public class NawishtaRawApiClient(HttpClient httpClient, string serverUrl)
         PropertyNameCaseInsensitive = true,
     };
 
+    // Used only for serializing a brand-new BookView's *request* body (CreateBookAsync) - its Id is
+    // always unset (int?, null) since the server assigns one, but the plain JsonOptions above
+    // serializes that as an explicit "id": null, which Nawishta's create-book request model
+    // (a non-nullable int Id) rejects with "The JSON value could not be converted to System.Int32" -
+    // confirmed live. Omitting every null property sidesteps that without needing a hand-maintained
+    // "create" DTO shape for the generated BookView - safe here specifically because this is only
+    // ever used for the one-shot create call, never for UpdateBookAsync's full-representation PUT,
+    // where an omitted (vs. explicit null) field could mean "leave unchanged" instead of "clear this"
+    // on Nawishta's side.
+    private static readonly JsonSerializerOptions CreateBookJsonOptions = new(JsonOptions)
+    {
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    };
+
     // How long before the token's own reported expiry EnsureFreshTokenAsync treats it as already
     // stale - renewing a little early absorbs request latency/clock skew between this process and
     // Nawishta's own server, rather than racing a request against the exact expiry instant.
@@ -185,6 +199,24 @@ public class NawishtaRawApiClient(HttpClient httpClient, string serverUrl)
         await ThrowIfErrorAsync(response, ct);
     }
 
+    /// <summary>PUT .../books/{bookId}/image - same [FromForm] IFormFile "file" convention as
+    /// UpdateAuthorImageAsync above (the generated client's own UpdateBookImageAsync guesses a
+    /// different, unverified multipart shape - see that method's own doc comment for the same class
+    /// of gap). Used best-effort by NawishtaBookMutationService.ImportAsync to set a newly-imported
+    /// book's cover from its extracted metadata - a failure here doesn't fail the import itself.</summary>
+    public async Task UpdateBookImageAsync(int libraryId, int bookId, string fileName, string mimeType, Stream content, CancellationToken ct)
+    {
+        await EnsureFreshTokenAsync(ct);
+        using var form = new MultipartFormDataContent();
+        using var fileContent = new StreamContent(content);
+        fileContent.Headers.ContentType = MediaTypeHeaderValue.Parse(mimeType);
+        form.Add(fileContent, "file", fileName);
+
+        using var request = new HttpRequestMessage(HttpMethod.Put, $"{_baseUrl}/libraries/{libraryId}/books/{bookId}/image") { Content = form };
+        using var response = await httpClient.SendAsync(request, ct);
+        await ThrowIfErrorAsync(response, ct);
+    }
+
     public async Task<NawishtaPageView<SeriesView>> GetSeriesAsync(int libraryId, CancellationToken ct) =>
         await GetJsonAsync<NawishtaPageView<SeriesView>>($"{_baseUrl}/libraries/{libraryId}/series?pageSize=1000", ct) ?? new();
 
@@ -208,8 +240,14 @@ public class NawishtaRawApiClient(HttpClient httpClient, string serverUrl)
     public Task<SeriesView?> CreateSeriesAsync(int libraryId, string name, CancellationToken ct) =>
         PostJsonAsync<SeriesView>($"{_baseUrl}/libraries/{libraryId}/series", new { name }, ct);
 
+    // Same find-or-create pattern/payload shape as CreateAuthorAsync/CreateSeriesAsync above -
+    // Maktaba's "Tags" maps onto Nawishta's Category (see NawishtaBrowseQueryService's doc comment
+    // on why, and NawishtaBookMutationService.ResolveCategoriesAsync, the write-side counterpart).
+    public Task<CategoryView?> CreateCategoryAsync(int libraryId, string name, CancellationToken ct) =>
+        PostJsonAsync<CategoryView>($"{_baseUrl}/libraries/{libraryId}/categories", new { name }, ct);
+
     public Task<BookView?> CreateBookAsync(int libraryId, BookView body, CancellationToken ct) =>
-        PostJsonAsync<BookView>($"{_baseUrl}/libraries/{libraryId}/books", body, ct);
+        PostJsonAsync<BookView>($"{_baseUrl}/libraries/{libraryId}/books", body, CreateBookJsonOptions, ct);
 
     public Task<BookView?> UpdateBookAsync(int libraryId, int bookId, BookView body, CancellationToken ct) =>
         PutJsonAsync<BookView>($"{_baseUrl}/libraries/{libraryId}/books/{bookId}", body, ct);
@@ -218,6 +256,18 @@ public class NawishtaRawApiClient(HttpClient httpClient, string serverUrl)
     {
         await EnsureFreshTokenAsync(ct);
         using var response = await httpClient.DeleteAsync($"{_baseUrl}/libraries/{libraryId}/books/{bookId}", ct);
+        await ThrowIfErrorAsync(response, ct);
+    }
+
+    /// <summary>DELETE .../books/{bookId}/contents/{contentId} - removes one of a book's attached
+    /// contents (BookFile equivalent). Unlike the GET/POST content endpoints, this one needs no
+    /// response-schema workaround (a DELETE returns no body), so it's a plain wrapper rather than
+    /// going through the generated client purely for the same EnsureFreshTokenAsync/ThrowIfErrorAsync
+    /// consistency every other write here has.</summary>
+    public async Task DeleteContentAsync(int libraryId, int bookId, long contentId, CancellationToken ct)
+    {
+        await EnsureFreshTokenAsync(ct);
+        using var response = await httpClient.DeleteAsync($"{_baseUrl}/libraries/{libraryId}/books/{bookId}/contents/{contentId}", ct);
         await ThrowIfErrorAsync(response, ct);
     }
 
@@ -437,10 +487,16 @@ public class NawishtaRawApiClient(HttpClient httpClient, string serverUrl)
         return await response.Content.ReadFromJsonAsync<T>(JsonOptions, ct);
     }
 
-    private async Task<T?> PostJsonAsync<T>(string url, object body, CancellationToken ct)
+    private Task<T?> PostJsonAsync<T>(string url, object body, CancellationToken ct) =>
+        PostJsonAsync<T>(url, body, JsonOptions, ct);
+
+    // requestOptions governs only how `body` is serialized - the response is always deserialized
+    // with the regular JsonOptions (PropertyNameCaseInsensitive, no null-omitting), since that's
+    // about reading Nawishta's response shape, not writing our own request.
+    private async Task<T?> PostJsonAsync<T>(string url, object body, JsonSerializerOptions requestOptions, CancellationToken ct)
     {
         await EnsureFreshTokenAsync(ct);
-        using var response = await httpClient.PostAsJsonAsync(url, body, JsonOptions, ct);
+        using var response = await httpClient.PostAsJsonAsync(url, body, requestOptions, ct);
         await ThrowIfErrorAsync(response, ct);
         var text = await response.Content.ReadAsStringAsync(ct);
         return string.IsNullOrWhiteSpace(text) ? default : JsonSerializer.Deserialize<T>(text, JsonOptions);

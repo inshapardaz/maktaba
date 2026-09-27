@@ -7,18 +7,19 @@ namespace Maktaba.Nawishta;
 
 /// <summary>
 /// Issue #111 (write path) - deliberately narrow: metadata edit, reading-status/rating/collection
-/// (all shadow-table), and delete. Not a full <see cref="IBookEditService"/> implementation -
-/// file/content management (add/rename/remove a file, merge two books) is left unimplemented on
-/// purpose, since Nawishta's own content model (chapters/pages/OCR/bind/publish - see
-/// NawishtaEntityMapper's doc comment) doesn't map onto "attach an EPUB/PDF" the way a local or
-/// S3/Google Drive/OneDrive library's file management does, and needs live verification against a
-/// real account before it's safe to build (see CLAUDE.md's Nawishta write-path section). Called
-/// directly from BookEndpoints.cs's PUT/PATCH/DELETE handlers (branching on ProviderType), not
-/// registered as IBookEditService/IBookRemovalService in DI - implementing only 3 of those
-/// interfaces' ~7 combined methods would leave the rest silently wrong for a Nawishta library
-/// instead of visibly unsupported.
+/// (all shadow-table), delete, and (since #150) importing a new book / adding a file to an existing
+/// one. Not a full <see cref="IBookEditService"/>/<see cref="IImportService"/> implementation still -
+/// renaming/removing an individual file and merging two books remain unimplemented, since neither
+/// has an obvious Nawishta-side equivalent the way "upload a new content" does (confirmed live-shaped
+/// against the reference editor - see NawishtaRawApiClient.UploadContentAsync's own doc comment).
+/// Called directly from BookEndpoints.cs's PUT/PATCH/POST/DELETE handlers (branching on
+/// ProviderType), not registered as IBookEditService/IBookRemovalService/IImportService in DI -
+/// implementing only a subset of those interfaces' combined methods would leave the rest silently
+/// wrong for a Nawishta library instead of visibly unsupported.
 /// </summary>
-public class NawishtaBookMutationService(NawishtaRawApiClient api, int remoteLibraryId, NawishtaShadowDbContext shadow)
+public class NawishtaBookMutationService(
+    NawishtaRawApiClient api, int remoteLibraryId, NawishtaShadowDbContext shadow,
+    IEnumerable<IBookMetadataExtractor>? metadataExtractors = null)
 {
     public async Task<Book?> UpdateMetadataAsync(int bookId, BookEditRequest request, CancellationToken ct = default)
     {
@@ -37,11 +38,14 @@ public class NawishtaBookMutationService(NawishtaRawApiClient api, int remoteLib
             ? (await ResolveSeriesAsync(seriesName, ct))?.Id
             : null;
         existing.SeriesIndex = request.SeriesIndex is { } idx ? (int)idx : null;
-        // Tags and Categories are deliberately left as fetched, not overwritten: Nawishta's own
-        // reference editor (library-editor) never edits Book.Tags at all (it's read-only/system
-        // output as far as that app is concerned - confirmed by its complete absence from
-        // bookForm.jsx's fields), and Categories is a separate, distinct concept from Collections
-        // (which map onto Nawishta's own Bookshelves as of issue #140 - see SyncCollectionsAsync).
+        // Maktaba's "Tags" maps onto Nawishta's Category, not BookView's own "tags" field (see
+        // NawishtaBrowseQueryService's doc comment) - written back here the same find-or-create way
+        // Authors/Series already are. Distinct from Collections (which map onto Nawishta's own
+        // Bookshelves as of issue #140 - see SyncCollectionsAsync), and from BookView.Tags itself,
+        // which stays untouched (Nawishta's own reference editor never edits it either - confirmed
+        // by its complete absence from bookForm.jsx's fields - and it's never populated by the API
+        // regardless, so there'd be nothing meaningful to preserve or overwrite).
+        existing.Categories = await ResolveCategoriesAsync(request.Tags, ct);
 
         var updated = await api.UpdateBookAsync(remoteLibraryId, bookId, existing, ct) ?? existing;
 
@@ -92,6 +96,127 @@ public class NawishtaBookMutationService(NawishtaRawApiClient api, int remoteLib
         var links = await shadow.BookCollectionLinks.Where(l => l.RemoteBookId == bookId).ToListAsync(ct);
         shadow.BookCollectionLinks.RemoveRange(links);
         await shadow.SaveChangesAsync(ct);
+        return true;
+    }
+
+    // Issue #150 - the Nawishta counterpart of ImportService.ImportFileAsync: creates a new book
+    // (metadata extracted locally via the same IBookMetadataExtractor implementations local/S3/
+    // Google Drive/OneDrive import already uses, so this doesn't need its own EPUB/PDF parsing) then
+    // uploads the picked file as its first content (NawishtaRawApiClient.UploadContentAsync - wire
+    // shape confirmed against the reference editor's addBookContent, see that method's own doc
+    // comment). No duplicate-detection: unlike EF-backed ImportService, there's no local content-hash
+    // index to check against for a Nawishta library, and no cheap way to ask Nawishta itself "does a
+    // book with this content already exist" - every import creates a new book. sourceFilePath is
+    // always a plain local path the user picked (see BookEndpoints.cs's /import), never itself a
+    // Nawishta-hosted file.
+    public async Task<Book> ImportAsync(string sourceFilePath, CancellationToken ct = default)
+    {
+        var format = NawishtaEntityMapper.GuessFormat(null, sourceFilePath)
+            ?? throw new NotSupportedException($"Unsupported file format: \"{Path.GetExtension(sourceFilePath)}\".");
+
+        var extractor = metadataExtractors?.FirstOrDefault(e => e.CanHandle(sourceFilePath));
+        var metadata = extractor is not null ? await extractor.ExtractAsync(sourceFilePath, ct) : null;
+
+        var title = metadata?.Title is { Length: > 0 } extractedTitle ? extractedTitle : Path.GetFileNameWithoutExtension(sourceFilePath);
+        var authors = metadata?.Authors is { Count: > 0 } authorNames ? await ResolveAuthorsAsync(authorNames, ct) : [];
+        var language = metadata?.Language is { Length: > 0 } extractedLanguage ? extractedLanguage : "en";
+
+        var newBook = new BookView
+        {
+            Title = title,
+            Description = metadata?.Description,
+            Language = language,
+            Publisher = metadata?.Publisher,
+            Authors = authors,
+        };
+
+        var created = await api.CreateBookAsync(remoteLibraryId, newBook, ct)
+            ?? throw new InvalidOperationException("Nawishta didn't return the newly created book.");
+        var bookId = created.Id ?? throw new InvalidOperationException("Nawishta's created book has no id.");
+
+        await using (var fileStream = File.OpenRead(sourceFilePath))
+        {
+            await api.UploadContentAsync(
+                remoteLibraryId, bookId, Path.GetFileName(sourceFilePath), NawishtaEntityMapper.MimeTypeFor(format), language, fileStream, ct);
+        }
+
+        // Best-effort, same "degrade rather than fail the whole operation" treatment covers get
+        // elsewhere in this app (EnsureCoverCachedAsync, DownloadAndCacheCoverAsync) - the book
+        // itself is still worth having even if its extracted cover fails to upload.
+        if (metadata?.CoverImageBytes is { Length: > 0 } coverBytes)
+        {
+            try
+            {
+                var extension = metadata.CoverContentType == "image/png" ? "png" : "jpg";
+                using var coverStream = new MemoryStream(coverBytes);
+                await api.UpdateBookImageAsync(remoteLibraryId, bookId, $"cover.{extension}", metadata.CoverContentType ?? "image/jpeg", coverStream, ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // Swallowed on purpose - see this block's own comment above.
+            }
+        }
+
+        var final = await api.GetBookByIdAsync(remoteLibraryId, bookId, ct) ?? created;
+        return NawishtaEntityMapper.ToBook(final, null);
+    }
+
+    // The Nawishta counterpart of ImportService.AddFileToBookAsync - uploads an additional content
+    // to a book that already exists there, rather than creating a new one. Reuses the existing
+    // book's own Language for the upload (Nawishta requires one per content - see
+    // UploadContentAsync's own doc comment), same fallback ImportAsync above uses for a brand-new book.
+    public async Task<Book?> AddFileAsync(int bookId, string sourceFilePath, CancellationToken ct = default)
+    {
+        var format = NawishtaEntityMapper.GuessFormat(null, sourceFilePath)
+            ?? throw new NotSupportedException($"Unsupported file format: \"{Path.GetExtension(sourceFilePath)}\".");
+
+        var existing = await api.GetBookByIdAsync(remoteLibraryId, bookId, ct);
+        if (existing is null)
+        {
+            return null;
+        }
+
+        await using (var fileStream = File.OpenRead(sourceFilePath))
+        {
+            await api.UploadContentAsync(
+                remoteLibraryId, bookId, Path.GetFileName(sourceFilePath), NawishtaEntityMapper.MimeTypeFor(format),
+                existing.Language is { Length: > 0 } ? existing.Language : "en", fileStream, ct);
+        }
+
+        var updated = await api.GetBookByIdAsync(remoteLibraryId, bookId, ct) ?? existing;
+        var state = await shadow.BookStates.FindAsync([bookId], ct);
+        return NawishtaEntityMapper.ToBook(updated, state);
+    }
+
+    // The Nawishta counterpart of BookEditService.DeleteFileAsync - same null/refuse/true-on-success
+    // contract (null = book or file not found, throws InvalidOperationException = refused because
+    // it's the book's only file, true = deleted) so BookEndpoints.cs's DELETE /{id}/files/{fileId}
+    // handler needs no Nawishta-specific response mapping. contentId is parsed back out of
+    // BookFile.FilePath ("{bookId}/{contentId}{extension}" - see NawishtaEntityMapper.ToBook) rather
+    // than trusted from fileId itself, since BookFile.Id is fileId truncated to int (Nawishta's own
+    // content ids are longs) - FilePath always carries the untruncated value.
+    public async Task<bool?> DeleteFileAsync(int bookId, int fileId, CancellationToken ct = default)
+    {
+        var book = await api.GetBookByIdAsync(remoteLibraryId, bookId, ct);
+        if (book is null)
+        {
+            return null;
+        }
+
+        var mapped = NawishtaEntityMapper.ToBook(book, null);
+        var file = mapped.Files.FirstOrDefault(f => f.Id == fileId);
+        if (file is null)
+        {
+            return null;
+        }
+
+        if (mapped.Files.Count <= 1)
+        {
+            throw new InvalidOperationException("Cannot delete a book's only file.");
+        }
+
+        var contentId = long.Parse(Path.ChangeExtension(file.FilePath.Split('/', 2)[1], null));
+        await api.DeleteContentAsync(remoteLibraryId, bookId, contentId, ct);
         return true;
     }
 
@@ -162,5 +287,42 @@ public class NawishtaBookMutationService(NawishtaRawApiClient api, int remoteLib
         var existingSeries = (await api.GetSeriesAsync(remoteLibraryId, ct)).Data ?? [];
         var match = existingSeries.FirstOrDefault(s => string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase));
         return match ?? await api.CreateSeriesAsync(remoteLibraryId, name, ct);
+    }
+
+    // Same find-or-create shape as ResolveAuthorsAsync above (multiple names, case-insensitive
+    // match against every category that already exists in this library, created if not) - the
+    // write-side counterpart of NawishtaBrowseQueryService.ListTagsAsync/NawishtaEntityMapper's own
+    // Category-as-Tags mapping.
+    private async Task<List<CategoryView>> ResolveCategoriesAsync(IReadOnlyList<string> names, CancellationToken ct)
+    {
+        var existingCategories = ((await api.GetCategoriesAsync(remoteLibraryId, ct)).Data ?? []).ToList();
+        var result = new List<CategoryView>();
+        foreach (var name in names)
+        {
+            var trimmed = name.Trim();
+            if (trimmed.Length == 0)
+            {
+                continue;
+            }
+
+            var match = existingCategories.FirstOrDefault(c => string.Equals(c.Name, trimmed, StringComparison.OrdinalIgnoreCase));
+            if (match is not null)
+            {
+                result.Add(match);
+                continue;
+            }
+
+            var created = await api.CreateCategoryAsync(remoteLibraryId, trimmed, ct);
+            if (created is null)
+            {
+                continue;
+            }
+
+            result.Add(created);
+            // Avoids creating a duplicate category if the same new name appears twice in one request.
+            existingCategories.Add(created);
+        }
+
+        return result;
     }
 }

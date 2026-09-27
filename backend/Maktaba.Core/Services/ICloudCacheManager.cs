@@ -41,6 +41,14 @@ public interface ICloudCacheManager
 
     void Delete(string libraryId, string relativePath, bool recursive = false);
 
+    /// <summary>Wipes this library's entire cache mirror (every cached cover and downloaded file) -
+    /// the "remove all cache and refetch from server" action for a library whose files live
+    /// remotely. Safe to call at any time: every caller re-downloads into the cache lazily on next
+    /// access (<see cref="IStorageProvider.GetLocalPathAsync"/>) or eagerly on next list
+    /// (<c>NawishtaBookQueryService.EnsureCoverCachedAsync</c>), the same way a first-ever access
+    /// already populates an empty cache. A no-op if nothing's cached yet.</summary>
+    void Clear(string libraryId);
+
     void Move(string libraryId, string fromRelativePath, string toRelativePath);
 
     /// <summary>Lists the immediate children of a cached folder (relative to the library root, not

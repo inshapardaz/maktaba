@@ -43,4 +43,12 @@ public class Book
     public List<BookCollection> BookCollections { get; set; } = [];
     public List<BookFile> Files { get; set; } = [];
     public List<Identifier> Identifiers { get; set; } = [];
+
+    // Null unless this book has a digitization.json (see DigitizationJsonStore) - a book that has
+    // never been digitized has no digitization status at all, not a Pending one. See
+    // BookDigitizationStatus's own doc comment for how this relates to ReadingStatus above.
+    public BookDigitizationStatus? DigitizationStatus { get; set; }
+
+    public List<DigitizationPage> DigitizationPages { get; set; } = [];
+    public List<Chapter> Chapters { get; set; } = [];
 }

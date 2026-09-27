@@ -210,7 +210,12 @@ public record LibraryDto(string Path, string Id, string Name, bool PeriodicalsEn
 // reached at all - a network problem) vs "auth" (the server responded, but the credential itself
 // no longer works - an expired/revoked token) are worded differently in the frontend's reconnect
 // error screen (issue #116), since only one of them is actually fixed by a plain retry.
-public record LibraryConnectionStatusDto(bool Connected, string? Reason);
+// RefreshedCredential is set on every successful Nawishta verify-connection call (which now always
+// forces a token renewal, not just a plain authenticated probe - see that endpoint's own doc
+// comment) - the frontend re-persists it to the on-disk encrypted store
+// (window.maktaba.saveCloudCredential) so a later session doesn't reopen with a refresh token
+// Nawishta's server has already rotated away by then. Never set for a non-Nawishta library.
+public record LibraryConnectionStatusDto(bool Connected, string? Reason, string? RefreshedCredential = null);
 
 // Same shape as ConnectCloudLibraryRequestDto minus Name - a migration targets the *active*
 // library's existing name/id, it doesn't create a new one.

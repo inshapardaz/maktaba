@@ -36,7 +36,21 @@ public static class LibraryEndpoints
         // the connection works) that separates "the server can't be reached at all" from "the
         // credential itself no longer works" - two cases the frontend needs to word, and let the
         // user act on, differently (a plain retry fixes neither the same way).
-        group.MapGet("/verify-connection", async (ILibraryService libraryService, NawishtaSessionResolver nawishtaResolver, CancellationToken ct) =>
+        // Called on every Nawishta library load - app startup (App.tsx's cloudReconnectQuery) and
+        // every manual switch (LibrarySwitchContext's switchTo) alike - to *unconditionally* renew
+        // the access/refresh token pair, not merely check whether the currently-cached one still
+        // works. Nawishta's refresh token is single-use/rotating with a 2-day TTL
+        // (NawishtaCredentialRefresher's own doc comment): renewing it eagerly on every load, rather
+        // than only reactively when NawishtaRawApiClient's own tracked-expiry check happens to decide
+        // it's due, keeps the on-disk copy (window.maktaba.saveCloudCredential, via
+        // RefreshedCredential below) as fresh as possible on every session, minimizing the odds of
+        // reopening after a few idle days with an already-rotated-away refresh token - the bug this
+        // was written to close. A successful renewal also doubles as the connectivity check this
+        // endpoint's name promises (a dead server/revoked account fails the renewal, same as it would
+        // have failed the old "make some authenticated call" check), so there's no need for a
+        // separate proving request.
+        group.MapGet("/verify-connection", async (
+            ILibraryService libraryService, NawishtaSessionResolver nawishtaResolver, CancellationToken ct) =>
         {
             if (!BookEndpoints.IsNawishtaLibrary(libraryService))
             {
@@ -60,18 +74,51 @@ public static class LibraryEndpoints
                 return Results.Ok(new LibraryConnectionStatusDto(false, "auth"));
             }
 
+            if (n.Api.RefreshAccessTokenAsync is not { } refresh)
+            {
+                // No refresh callback wired (shouldn't happen for a real Nawishta session - every
+                // StorageProviderFactory/NawishtaSessionResolver-built client sets one) - fall back to
+                // a plain authenticated call so this endpoint still proves connectivity either way.
+                try
+                {
+                    await n.Api.GetAuthorsAsync(n.RemoteLibraryId, ct);
+                    return Results.Ok(new LibraryConnectionStatusDto(true, null));
+                }
+                catch (NawishtaApiException ex) when (ex.StatusCode is 401 or 403)
+                {
+                    return Results.Ok(new LibraryConnectionStatusDto(false, "auth"));
+                }
+            }
+
             try
             {
-                await n.Api.GetAuthorsAsync(n.RemoteLibraryId, ct);
-                return Results.Ok(new LibraryConnectionStatusDto(true, null));
+                var renewed = await refresh(ct);
+                n.Api.SetAccessToken(renewed.AccessToken, DateTimeOffset.FromUnixTimeMilliseconds(renewed.ExpiresAt));
+                return Results.Ok(new LibraryConnectionStatusDto(true, null, System.Text.Json.JsonSerializer.Serialize(renewed)));
             }
-            catch (NawishtaApiException ex) when (ex.StatusCode is 401 or 403)
+            catch (NawishtaApiException ex) when (ex.StatusCode is 400 or 401 or 403)
             {
+                // 400 included alongside 401/403 - Nawishta's refresh-token endpoint rejects an
+                // already-rotated-away or expired refresh token with a plain 400 (a validation
+                // failure, not an auth challenge), unlike every other endpoint's own 401/403 for "the
+                // access token itself is bad". Both mean the same thing from here: this credential no
+                // longer works, sign in again.
                 return Results.Ok(new LibraryConnectionStatusDto(false, "auth"));
             }
             catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Net.Sockets.SocketException)
             {
                 return Results.Ok(new LibraryConnectionStatusDto(false, "unreachable"));
+            }
+            // Anything else (a malformed response, ...) used to escape this endpoint entirely -
+            // propagating past the "library must be open" middleware (which only catches
+            // LibraryNotOpenException/LibraryLockConflictException) as a raw, uncaught exception.
+            // Caught here too now, reported the same way an outright auth failure already is - the
+            // reconnect-needed cases are functionally the same from the user's side (this credential
+            // doesn't work anymore, sign in again), and a clean, worded message beats whatever an
+            // unhandled exception happens to surface as.
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                return Results.Ok(new LibraryConnectionStatusDto(false, "auth"));
             }
         });
 
@@ -225,6 +272,30 @@ public static class LibraryEndpoints
 
             var bookQuery = new NawishtaBookQueryService(n.Api, n.RemoteLibraryId, n.Shadow, n.CacheManager, n.LibraryId);
             await bookQuery.RefreshCoversAsync(ct);
+            return Results.NoContent();
+        });
+
+        // Issue: "tags aren't loading" debugging turned up covers/content going stale in the local
+        // cache mirror with no way to force a clean re-fetch short of deleting AppData by hand - this
+        // wipes the active Nawishta library's whole cache (every cached cover and downloaded book
+        // file, via ICloudCacheManager.Clear), not just covers like /refresh-covers above. Everything
+        // re-populates lazily/eagerly on the next request the same way a brand-new cache does, so
+        // there's nothing else to "refetch" as a separate step. Nawishta-only for now (see this
+        // endpoint's own frontend button, LibrariesSettings.tsx) - S3/Google Drive/OneDrive have
+        // their own staleness handling already (ETag/change-token checks in each provider).
+        group.MapPost("/clear-cache", (ILibraryService libraryService, NawishtaSessionResolver nawishtaResolver) =>
+        {
+            if (!BookEndpoints.IsNawishtaLibrary(libraryService))
+            {
+                return Results.BadRequest(new { error = "Not supported for this library." });
+            }
+
+            if (!nawishtaResolver.TryResolve(out var n))
+            {
+                return Results.NotFound();
+            }
+
+            n.CacheManager.Clear(n.LibraryId);
             return Results.NoContent();
         });
 

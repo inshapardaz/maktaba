@@ -405,6 +405,11 @@ function App() {
           status.reason === "auth" ? t("app.cloudReconnectTokenExpired") : t("app.cloudReconnectUnreachable"),
         );
       }
+      if (status.refreshedCredential) {
+        // Best-effort - a failed re-save just means the next cold start refreshes again (mildly
+        // wasteful, not incorrect), not worth failing this reconnect over.
+        await window.maktaba.saveCloudCredential(id, status.refreshedCredential).catch(() => {});
+      }
 
       return true;
     },

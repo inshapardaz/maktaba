@@ -41,9 +41,12 @@ public static class BrowseEndpoints
             return Results.Ok(series.Select(s => new BrowseGroupDto(IdCodec.Encode(s.Id), s.Name, s.Count)));
         });
 
-        app.MapGet("/api/tags", async (ILibraryQueryServiceFactory queryServices, CancellationToken ct) =>
+        // `all=true` (used by BookEditForm.tsx's tag picker) includes a tag with zero books
+        // currently attached - see IBrowseQueryService.ListAllTagsAsync's own doc comment for why
+        // that differs from the plain sidebar listing below.
+        app.MapGet("/api/tags", async (ILibraryQueryServiceFactory queryServices, bool? all, CancellationToken ct) =>
         {
-            var tags = await queryServices.Browse.ListTagsAsync(ct);
+            var tags = all == true ? await queryServices.Browse.ListAllTagsAsync(ct) : await queryServices.Browse.ListTagsAsync(ct);
             return Results.Ok(tags.Select(t => new BrowseGroupDto(IdCodec.Encode(t.Id), t.Name, t.Count)));
         });
 

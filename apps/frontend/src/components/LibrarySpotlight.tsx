@@ -33,7 +33,7 @@ export function LibrarySpotlight({ onSelectBook, onSelectFilter, onSearch }: Lib
     enabled: trimmed.length > 0,
   });
   const authorsQuery = useQuery({ queryKey: ["authors"], queryFn: listAuthors });
-  const tagsQuery = useQuery({ queryKey: ["tags"], queryFn: listTags });
+  const tagsQuery = useQuery({ queryKey: ["tags"], queryFn: () => listTags() });
   const collectionsQuery = useQuery({ queryKey: ["collections"], queryFn: listCollections });
 
   const actions = useMemo<SpotlightActions[]>(() => {

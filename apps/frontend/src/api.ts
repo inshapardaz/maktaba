@@ -476,6 +476,13 @@ export function refreshNawishtaCovers(): Promise<void> {
   return request<void>("/api/libraries/refresh-covers", { method: "POST" });
 }
 
+// Wipes the active Nawishta library's whole local cache mirror (every cached cover and downloaded
+// book file) - a stronger reset than refreshNawishtaCovers (covers only). Everything re-downloads
+// lazily/eagerly from Nawishta's server on the next request, same as a brand-new cache.
+export function clearNawishtaCache(): Promise<void> {
+  return request<void>("/api/libraries/clear-cache", { method: "POST" });
+}
+
 export interface LibraryConnectionStatus {
   connected: boolean;
   // Only populated when connected is false - "unreachable" (network problem) vs "auth" (the
@@ -484,6 +491,11 @@ export interface LibraryConnectionStatus {
   // Always {connected: true} for a non-Nawishta library, which already validates its credential
   // synchronously during reopenCloudLibrary above.
   reason?: "unreachable" | "auth";
+  // Set when this check itself renewed the Nawishta access/refresh token pair (the renewal only
+  // updates the backend's in-memory credential cache, lost on the next restart) - callers should
+  // re-persist it via window.maktaba.saveCloudCredential(id, refreshedCredential) so a later
+  // session doesn't reopen with a refresh token Nawishta has already rotated away.
+  refreshedCredential?: string;
 }
 
 export function verifyLibraryConnection(): Promise<LibraryConnectionStatus> {
@@ -682,6 +694,26 @@ export function deleteBook(
   );
 }
 
+// Digitization epic (#162), Phase 0's own entry point - creates digitization.json (no pages yet;
+// PDF rasterization into pages/ is a later phase) and returns its initial state. Idempotent: an
+// already-digitized book's existing digitization.json is returned untouched (isRightToLeft included)
+// rather than reset - callers should treat this as "open/resume digitization", not "reset it".
+export interface DigitizationStateDto {
+  version: number;
+  sourcePdf: string;
+  isRightToLeft: boolean;
+  status: string;
+  pages: unknown[];
+  chapters: unknown[];
+}
+
+export function startDigitization(id: string, isRightToLeft: boolean): Promise<DigitizationStateDto> {
+  return request<DigitizationStateDto>(`/api/books/${id}/digitize/start`, {
+    method: "POST",
+    body: JSON.stringify({ isRightToLeft }),
+  });
+}
+
 // Issue #49: merges sourceBookId's files into targetId (skipping any the target already has, by
 // content) - targetId's own metadata is left untouched. Leaves the now-emptied source book behind
 // for the caller to remove separately (deleteBook + window.maktaba.trashPath, same as removing any
@@ -818,8 +850,12 @@ export function renameSeries(id: string, name: string): Promise<BrowseGroup> {
   });
 }
 
-export function listTags(): Promise<BrowseGroup[]> {
-  return request<BrowseGroup[]>("/api/tags");
+// `all: true` (used by BookEditForm.tsx's tag picker) also includes a tag with zero books
+// currently attached, so a tag that was just untagged from its last book is still offered as a
+// suggestion instead of disappearing - unlike the sidebar's own default listing, which only shows
+// tags that currently have at least one book (see BrowseEndpoints.cs's own doc comment).
+export function listTags(all?: boolean): Promise<BrowseGroup[]> {
+  return request<BrowseGroup[]>(`/api/tags${all ? "?all=true" : ""}`);
 }
 
 // Cascades to every book with this tag automatically. Same 409-on-collision behavior as renameAuthor.

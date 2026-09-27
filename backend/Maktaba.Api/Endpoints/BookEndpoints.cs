@@ -153,6 +153,21 @@ public static class BookEndpoints
             foreach (var entry in entries)
             {
                 var book = entry.Book;
+
+                // Same "degrade rather than fail the whole response" treatment GET /{id}'s own file
+                // list already gives a per-file download failure (e.g. a Nawishta library whose
+                // download link 404s for this file - inshapardaz/api#50) - one book's broken file
+                // shouldn't take down the entire Continue Reading feed.
+                string absolutePath;
+                try
+                {
+                    absolutePath = entry.File is not null ? await storage.GetLocalPathAsync(entry.File.FilePath, ct) : "";
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    absolutePath = "";
+                }
+
                 dtos.Add(new ContinueReadingBookDto(
                     IdCodec.Encode(book.Id),
                     book.Title,
@@ -162,7 +177,7 @@ public static class BookEndpoints
                     CoverLocator.GetVersion(root, book.FolderPath),
                     book.ReadingStatus.ToString(),
                     (entry.File?.Format ?? BookFormat.Epub).ToString(),
-                    entry.File is not null ? await storage.GetLocalPathAsync(entry.File.FilePath, ct) : "",
+                    absolutePath,
                     entry.Percentage,
                     entry.UpdatedAt));
             }
@@ -324,10 +339,23 @@ public static class BookEndpoints
                 return Results.NotFound();
             }
 
-            var cover = await CoverLocator.FindAsync(storageFactory.Current, book.FolderPath, ct);
-            return cover is { } found
-                ? Results.File(found.FilePath, found.ContentType)
-                : Results.NotFound();
+            // A cover can genuinely fail to download even after ExistsAsync said it was there - a
+            // Nawishta library with a misconfigured fileStoreSource 404s the actual download link
+            // (inshapardaz/api#50 - confirmed scoped to specific libraries, not universal). That's a
+            // "no cover to show" outcome from this endpoint's own perspective, not a 500 - same
+            // "degrade rather than fail the whole response" treatment GET /{id} already gives a
+            // per-file download failure.
+            try
+            {
+                var cover = await CoverLocator.FindAsync(storageFactory.Current, book.FolderPath, ct);
+                return cover is { } found
+                    ? Results.File(found.FilePath, found.ContentType)
+                    : Results.NotFound();
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                return Results.NotFound();
+            }
         });
 
         group.MapGet("/{id}/file", async (string id, string? format, ILibraryQueryServiceFactory queryServices, IStorageProviderFactory storageFactory, CancellationToken ct) =>
@@ -584,6 +612,8 @@ public static class BookEndpoints
             AddBookFileRequest request,
             IImportService importService,
             IStorageProviderFactory storageFactory,
+            ILibraryService libraryService,
+            NawishtaSessionResolver nawishtaResolver,
             CancellationToken ct) =>
         {
             if (!IdCodec.TryDecode(id, out var bookId))
@@ -597,6 +627,28 @@ public static class BookEndpoints
             if (string.IsNullOrWhiteSpace(request.FilePath) || !File.Exists(request.FilePath))
             {
                 return Results.BadRequest(new { error = "File not found." });
+            }
+
+            if (IsNawishtaLibrary(libraryService))
+            {
+                nawishtaResolver.TryResolve(out var n);
+                try
+                {
+                    var nawishtaBook = await new NawishtaBookMutationService(n.Api, n.RemoteLibraryId, n.Shadow).AddFileAsync(bookId, request.FilePath, ct);
+                    if (nawishtaBook is null)
+                    {
+                        return Results.NotFound();
+                    }
+
+                    var addedNawishtaFile = nawishtaBook.Files[^1];
+                    return Results.Ok(new BookFileDto(
+                        IdCodec.Encode(addedNawishtaFile.Id), addedNawishtaFile.Format.ToString(), addedNawishtaFile.FileSizeBytes,
+                        await storageFactory.Current.GetLocalPathAsync(addedNawishtaFile.FilePath, ct), addedNawishtaFile.ContentHash));
+                }
+                catch (NotSupportedException ex)
+                {
+                    return Results.BadRequest(new { error = ex.Message });
+                }
             }
 
             try
@@ -668,7 +720,8 @@ public static class BookEndpoints
         });
 
         group.MapDelete("/{id}/files/{fileId}", async (
-            string id, string fileId, IBookEditService editService, CancellationToken ct) =>
+            string id, string fileId, IBookEditService editService,
+            ILibraryService libraryService, NawishtaSessionResolver nawishtaResolver, CancellationToken ct) =>
         {
             if (!IdCodec.TryDecode(id, out var bookId) || !IdCodec.TryDecode(fileId, out var bookFileId))
             {
@@ -677,6 +730,13 @@ public static class BookEndpoints
 
             try
             {
+                if (IsNawishtaLibrary(libraryService))
+                {
+                    nawishtaResolver.TryResolve(out var n);
+                    var nawishtaResult = await new NawishtaBookMutationService(n.Api, n.RemoteLibraryId, n.Shadow).DeleteFileAsync(bookId, bookFileId, ct);
+                    return nawishtaResult is null ? Results.NotFound() : Results.NoContent();
+                }
+
                 var result = await editService.DeleteFileAsync(bookId, bookFileId, ct);
                 return result is null ? Results.NotFound() : Results.NoContent();
             }
@@ -746,25 +806,37 @@ public static class BookEndpoints
 
         group.MapPost("/import", async (
             ImportBookRequest request, IImportService importService, ILibraryService libraryService,
+            NawishtaSessionResolver nawishtaResolver, IEnumerable<IBookMetadataExtractor> metadataExtractors,
             ILogger<Program> logger, CancellationToken ct) =>
         {
-            // Nawishta's content model (chapters/pages/OCR/bind/publish) doesn't map onto "attach an
-            // EPUB/PDF file" the way local/S3/Google Drive/OneDrive import does, and needs live
-            // verification before it's safe to build (see NawishtaBookMutationService's own doc
-            // comment) - a clear, friendly rejection here rather than letting ImportService proceed
-            // and fail confusingly partway through against NawishtaStorageProvider's file-write
-            // methods, which do throw NotSupportedException but with a less specific message.
-            if (IsNawishtaLibrary(libraryService))
-            {
-                return Results.BadRequest(new
-                {
-                    error = "Importing files isn't supported yet for a Nawishta-backed library - add books directly on the Nawishta server for now.",
-                });
-            }
-
             if (string.IsNullOrWhiteSpace(request.FilePath) || !File.Exists(request.FilePath))
             {
                 return Results.BadRequest(new { error = "File not found." });
+            }
+
+            // Issue #150 - creates the book on Nawishta itself and uploads the file as its first
+            // content (NawishtaBookMutationService.ImportAsync); no duplicate detection (see that
+            // method's own doc comment - there's no local content-hash index or cheap Nawishta-side
+            // check to run one against, unlike ImportService's own below).
+            if (IsNawishtaLibrary(libraryService))
+            {
+                nawishtaResolver.TryResolve(out var n);
+                try
+                {
+                    var nawishtaBook = await new NawishtaBookMutationService(n.Api, n.RemoteLibraryId, n.Shadow, metadataExtractors)
+                        .ImportAsync(request.FilePath, ct);
+                    var nawishtaSqid = IdCodec.Encode(nawishtaBook.Id);
+                    return Results.Created($"/api/books/{nawishtaSqid}", new { id = nawishtaSqid, title = nawishtaBook.Title });
+                }
+                catch (NotSupportedException ex)
+                {
+                    return Results.BadRequest(new { error = ex.Message });
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Failed to import {FilePath} to Nawishta", request.FilePath);
+                    return Results.BadRequest(new { error = $"Could not import this file: {ex.Message}" });
+                }
             }
 
             var resolution = request.DuplicateAction switch
