@@ -33,6 +33,9 @@ public record SetFirstPageRequest(string PageId);
 // Phase 5 request body.
 public record SavePageTextRequest(string Text);
 
+// Phase 6 request body.
+public record SetOcrApiKeyRequest(string ApiKey);
+
 // Phase 0 (epic #162) - just the "Digitize" entry point: start a book's digitization.json and read
 // its current state back. Every other digitization action (page management, OCR, chapters,
 // publishing, ...) is a later phase's own endpoint set, added to this same file as it lands.
@@ -474,7 +477,65 @@ public static class DigitizationEndpoints
             var snapshot = tracker.Snapshot;
             return Results.Ok(new ConversionProgressDto(snapshot.IsRunning, snapshot.Processed, snapshot.Total, snapshot.BookId, snapshot.Error));
         });
+
+        // Phase 6 (OCR via Google Vision) - always overwrites existing text, no confirmation (see
+        // the epic's own "already decided" appendix). Bulk OCR is frontend-orchestrated (one
+        // request per page, sequential) rather than a backend queue - a real background-progress
+        // tracker like conversion's own didn't feel worth the extra machinery for what's already a
+        // simple per-page HTTP call the frontend can loop over with its own progress UI.
+        group.MapPost("/pages/{pageId}/ocr", async (string id, string pageId, IDigitizationService digitization, CancellationToken ct) =>
+        {
+            if (!IdCodec.TryDecode(id, out var bookId))
+            {
+                return Results.NotFound();
+            }
+
+            try
+            {
+                var text = await digitization.RunOcrAsync(bookId, pageId, ct);
+                return Results.Ok(new { text });
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return Results.NotFound(new { error = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+        });
     }
 }
 
 public record ConversionProgressDto(bool IsRunning, int Processed, int Total, string? BookId, string? Error);
+
+// Phase 6 (OCR via Google Vision) - not book-scoped, mirrors IOcrApiKeyCache's own process-wide
+// (not per-library) scope. Kept in this same file rather than a new one since it exists purely to
+// support digitization's OCR feature.
+public static class OcrSettingsEndpoints
+{
+    public static void MapOcrSettingsEndpoints(this WebApplication app)
+    {
+        var group = app.MapGroup("/api/settings/ocr/google-vision-key");
+
+        // Called by the renderer once per session (on startup if a key is already saved, and again
+        // whenever Settings saves/clears it) - the key itself is encrypted at rest via Electron's
+        // safeStorage and only the renderer can decrypt it (see IOcrApiKeyCache's own doc comment),
+        // so this is how the plaintext actually reaches this process at all.
+        group.MapPut("", (SetOcrApiKeyRequest request, IOcrApiKeyCache cache) =>
+        {
+            cache.ApiKey = request.ApiKey;
+            return Results.NoContent();
+        });
+
+        group.MapDelete("", (IOcrApiKeyCache cache) =>
+        {
+            cache.ApiKey = null;
+            return Results.NoContent();
+        });
+
+        // Never returns the key itself - just whether one is currently cached, for Settings to show
+        // "configured"/"not configured" without ever needing the plaintext back from this process.
+        group.MapGet("/status", (IOcrApiKeyCache cache) => Results.Ok(new { hasKey = cache.ApiKey is not null }));
+    }
+}

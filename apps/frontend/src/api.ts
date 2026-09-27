@@ -1452,3 +1452,30 @@ export async function uploadPeriodicalCover(id: string, file: File): Promise<voi
     throw new ApiError(body?.error ?? `Request failed: ${res.status}`, res.status);
   }
 }
+
+// Phase 6 (OCR via Google Vision) - the API key itself lives encrypted in Electron's safeStorage
+// (via the existing maktaba:*-cloud-credential IPC, reused under a fixed ref "google-vision-api-key"
+// rather than new IPC - see OcrSettings.tsx) and is pushed here (plaintext, over the loopback
+// sidecar) once per session so the backend can cache it in memory - it never touches this
+// backend's own disk.
+export function setGoogleVisionApiKey(apiKey: string): Promise<void> {
+  return request<void>("/api/settings/ocr/google-vision-key", {
+    method: "PUT",
+    body: JSON.stringify({ apiKey }),
+  });
+}
+
+export function clearGoogleVisionApiKey(): Promise<void> {
+  return request<void>("/api/settings/ocr/google-vision-key", { method: "DELETE" });
+}
+
+export function getGoogleVisionKeyStatus(): Promise<{ hasKey: boolean }> {
+  return request<{ hasKey: boolean }>("/api/settings/ocr/google-vision-key/status");
+}
+
+// Always overwrites any existing text on the page, no confirmation (see the epic's own "already
+// decided" appendix) - returns the recognized text (already saved server-side to the page's own
+// Markdown file).
+export function runDigitizationPageOcr(id: string, pageId: string): Promise<string> {
+  return request<{ text: string }>(`/api/books/${id}/digitize/pages/${pageId}/ocr`, { method: "POST" }).then((r) => r.text);
+}
