@@ -38,6 +38,26 @@ public interface IDigitizationService
     /// <summary>Phase 2.</summary>
     Task DeletePagesAsync(int bookId, IReadOnlyList<string> pageIds, CancellationToken ct = default);
 
+    /// <summary>Phase 3 (Page Image Editing) - not in the epic's original interface list, added
+    /// here since crop/rotate/re-split are simple per-page operations on this same service. All
+    /// three bake the transform directly into the page's jpg (destructive) rather than persisting a
+    /// crop-rect/rotation to reapply later - see DigitizationService's own doc comment on why.
+    /// Rotates by an arbitrary angle (not just 90° multiples), expanding the canvas so nothing is
+    /// clipped.</summary>
+    Task RotatePageAsync(int bookId, string pageId, double degrees, CancellationToken ct = default);
+
+    /// <summary>Phase 3. Crops to the given fraction (0..1) of the page's *current* image (after
+    /// any prior rotate/crop already applied).</summary>
+    Task CropPageAsync(int bookId, string pageId, double x, double y, double width, double height, CancellationToken ct = default);
+
+    /// <summary>Phase 3. Splits a single page's current image into two at <paramref
+    /// name="splitRatio"/> (0..1, the left portion's width share), inserting the new right-hand page
+    /// immediately after and renumbering every following page - covers "auto-detect said this
+    /// wasn't a spread but it was" (issue #180). The reverse ("undo an incorrect split" - merging
+    /// two already-separate pages back into one before re-splitting) isn't implemented; see the
+    /// implementation's own doc comment.</summary>
+    Task<DigitizationState> SplitPageAsync(int bookId, string pageId, double splitRatio, CancellationToken ct = default);
+
     /// <summary>Phase 5. Writes a page's Markdown text file and updates its cached DB copy.</summary>
     Task SavePageTextAsync(int bookId, string pageId, string text, CancellationToken ct = default);
 
