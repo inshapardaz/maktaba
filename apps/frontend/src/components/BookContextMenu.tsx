@@ -1,6 +1,6 @@
 import { createPortal } from "react-dom";
 import { Menu } from "@mantine/core";
-import { IconArrowsExchange, IconBook2, IconCopy, IconEdit, IconInfoCircle, IconTrash } from "../icons";
+import { IconArrowsExchange, IconBook2, IconCopy, IconEdit, IconInfoCircle, IconScanLine, IconTrash } from "../icons";
 import { useLanguage } from "../i18n/LanguageContext";
 
 export interface BookContextMenuPosition {
@@ -18,6 +18,10 @@ interface BookContextMenuProps {
   onCopyToLibrary: () => void;
   onMoveToLibrary: () => void;
   onDelete: () => void;
+  // Undefined hides the item entirely - only BookDetailPanel's own call site currently passes
+  // this (epic #162, Phase 0's "Digitize" entry point, gated there on "has a PDF file" and "the
+  // active library is local"), the other call sites of this shared menu are left unchanged.
+  onDigitize?: () => void;
 }
 
 // Right-click menu shared by BookGrid's BookCard, BookList's BookRow, and HomeView's Currently
@@ -32,7 +36,7 @@ interface BookContextMenuProps {
 // transformed position rather than the actual click point, so the dropdown opened far from the
 // mouse. Portalling to document.body sidesteps that ancestor entirely.
 export function BookContextMenu({
-  position, canRead, onClose, onRead, onProperties, onEdit, onCopyToLibrary, onMoveToLibrary, onDelete,
+  position, canRead, onClose, onRead, onProperties, onEdit, onCopyToLibrary, onMoveToLibrary, onDelete, onDigitize,
 }: BookContextMenuProps) {
   const { t } = useLanguage();
 
@@ -57,6 +61,11 @@ export function BookContextMenu({
         <Menu.Item leftSection={<IconArrowsExchange size={14} />} onClick={onMoveToLibrary}>
           {t("bookContextMenu.moveToLibrary")}
         </Menu.Item>
+        {onDigitize && (
+          <Menu.Item leftSection={<IconScanLine size={14} />} onClick={onDigitize}>
+            {t("bookDetail.digitize")}
+          </Menu.Item>
+        )}
         <Menu.Divider />
         <Menu.Item color="red" leftSection={<IconTrash size={14} />} onClick={onDelete}>
           {t("bookList.delete")}

@@ -694,6 +694,26 @@ export function deleteBook(
   );
 }
 
+// Digitization epic (#162), Phase 0's own entry point - creates digitization.json (no pages yet;
+// PDF rasterization into pages/ is a later phase) and returns its initial state. Idempotent: an
+// already-digitized book's existing digitization.json is returned untouched (isRightToLeft included)
+// rather than reset - callers should treat this as "open/resume digitization", not "reset it".
+export interface DigitizationStateDto {
+  version: number;
+  sourcePdf: string;
+  isRightToLeft: boolean;
+  status: string;
+  pages: unknown[];
+  chapters: unknown[];
+}
+
+export function startDigitization(id: string, isRightToLeft: boolean): Promise<DigitizationStateDto> {
+  return request<DigitizationStateDto>(`/api/books/${id}/digitize/start`, {
+    method: "POST",
+    body: JSON.stringify({ isRightToLeft }),
+  });
+}
+
 // Issue #49: merges sourceBookId's files into targetId (skipping any the target already has, by
 // content) - targetId's own metadata is left untouched. Leaves the now-emptied source book behind
 // for the caller to remove separately (deleteBook + window.maktaba.trashPath, same as removing any

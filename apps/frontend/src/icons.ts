@@ -58,6 +58,7 @@ import {
   Play,
   Plus,
   RefreshCw,
+  ScanLine,
   Search,
   Settings,
   Square,
@@ -140,6 +141,7 @@ export const IconPencil = withStrokeWidth(PenLine);
 export const IconPlayerPlay = withStrokeWidth(Play);
 export const IconPlus = withStrokeWidth(Plus);
 export const IconRefresh = withStrokeWidth(RefreshCw);
+export const IconScanLine = withStrokeWidth(ScanLine);
 export const IconSearch = withStrokeWidth(Search);
 export const IconSettings = withStrokeWidth(Settings);
 export const IconSquare = withStrokeWidth(Square);

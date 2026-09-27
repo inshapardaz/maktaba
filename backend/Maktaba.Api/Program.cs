@@ -59,6 +59,15 @@ builder.Services.AddSingleton<IRescanProgressTracker, RescanProgressTracker>();
 builder.Services.AddSingleton<ICalibreConverter, CalibreConverter>();
 builder.Services.AddScoped<IBookConversionService, BookConversionService>();
 builder.Services.AddScoped<IPeriodicalService, PeriodicalService>();
+
+// Digitization epic (#162), Phase 0 - IDigitizationJsonStore has no MaktabaDbContext dependency
+// (v1 is local-library-only, see the epic's non-goals) so it's registered singleton like the other
+// stateless helpers above; the two services that do touch MaktabaDbContext are scoped.
+builder.Services.AddSingleton<IDigitizationJsonStore, DigitizationJsonStore>();
+builder.Services.AddScoped<IDigitizationRescanService, DigitizationRescanService>();
+builder.Services.AddScoped<IDigitizationService, DigitizationService>();
+builder.Services.AddScoped<IChapterService, ChapterService>();
+
 builder.Services.AddScoped<NawishtaSessionResolver>();
 builder.Services.AddScoped<ILibraryQueryServiceFactory, LibraryQueryServiceFactory>();
 
@@ -164,6 +173,7 @@ app.MapGet("/api/hello", () => Results.Ok(new { message = "Hello from Maktaba.Ap
 app.MapLibraryEndpoints();
 app.MapNawishtaEndpoints();
 app.MapBookEndpoints();
+app.MapDigitizationEndpoints();
 app.MapBrowseEndpoints();
 app.MapCollectionEndpoints();
 app.MapSystemEndpoints();

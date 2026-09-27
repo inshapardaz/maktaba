@@ -22,6 +22,8 @@ public class MaktabaDbContext(DbContextOptions<MaktabaDbContext> options) : DbCo
     public DbSet<Note> Notes => Set<Note>();
     public DbSet<ReadingProgress> ReadingProgress => Set<ReadingProgress>();
     public DbSet<ReadingActivity> ReadingActivities => Set<ReadingActivity>();
+    public DbSet<DigitizationPage> DigitizationPages => Set<DigitizationPage>();
+    public DbSet<Chapter> Chapters => Set<Chapter>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -111,5 +113,22 @@ public class MaktabaDbContext(DbContextOptions<MaktabaDbContext> options) : DbCo
         modelBuilder.Entity<Author>().HasIndex(a => a.Name);
         modelBuilder.Entity<Book>().HasIndex(b => b.SortTitle);
         modelBuilder.Entity<Periodical>().HasIndex(p => p.Name);
+
+        modelBuilder.Entity<Chapter>(e =>
+        {
+            e.HasOne(c => c.Book).WithMany(b => b.Chapters).HasForeignKey(c => c.BookId);
+            // SetNull, not Cascade - deleting a chapter's first page shouldn't delete the chapter
+            // itself, just leave it pointing at no page (same "first page" gone, chapter stays).
+            e.HasOne(c => c.FirstPage).WithMany().HasForeignKey(c => c.FirstPageId).OnDelete(DeleteBehavior.SetNull);
+            e.HasIndex(c => new { c.BookId, c.JsonChapterId }).IsUnique();
+        });
+
+        modelBuilder.Entity<DigitizationPage>(e =>
+        {
+            e.HasOne(p => p.Book).WithMany(b => b.DigitizationPages).HasForeignKey(p => p.BookId);
+            // SetNull, not Cascade - deleting a chapter shouldn't delete its pages, just unassign them.
+            e.HasOne(p => p.Chapter).WithMany(c => c.Pages).HasForeignKey(p => p.ChapterId).OnDelete(DeleteBehavior.SetNull);
+            e.HasIndex(p => new { p.BookId, p.JsonPageId }).IsUnique();
+        });
     }
 }

@@ -47,6 +47,7 @@ import {
   IconPages,
   IconPencil,
   IconPlus,
+  IconScanLine,
   IconTrash,
   IconUser,
   IconX,
@@ -78,6 +79,7 @@ import { invalidateLibraryQueries } from "../queries";
 import { READING_STATUS_COLOR, READING_STATUS_LABEL_KEY } from "../readingStatus";
 import { useReaderLauncher } from "../ReaderLauncherContext";
 import { BookEditForm } from "./BookEditForm";
+import { DigitizeConfirmDialog } from "./DigitizeConfirmDialog";
 import { languageDisplayName, type GroupFilter } from "./Sidebar";
 import { SpineCover } from "./SpineCover";
 
@@ -144,6 +146,7 @@ export function BookDetailPanel({ bookId, onClose, onRemoved, onSelectFilter }: 
   const [removeError, setRemoveError] = useState<string | null>(null);
   const [confirmingRemove, setConfirmingRemove] = useState(false);
   const [addFileError, setAddFileError] = useState<string | null>(null);
+  const [digitizeDialogOpen, setDigitizeDialogOpen] = useState(false);
 
   const {
     data: book,
@@ -361,6 +364,7 @@ export function BookDetailPanel({ bookId, onClose, onRemoved, onSelectFilter }: 
     : "";
 
   return (
+    <>
     <Modal opened onClose={onClose} centered size={560} padding="lg">
       {isLoading && (
         <Center py="xl">
@@ -801,6 +805,16 @@ export function BookDetailPanel({ bookId, onClose, onRemoved, onSelectFilter }: 
             <Button size="sm" variant="default" onClick={() => setEditing(true)}>
               {t("bookDetail.edit")}
             </Button>
+            {providerType === "local" && book.files.some((f) => f.format === "Pdf") && (
+              <Button
+                size="sm"
+                variant="default"
+                leftSection={<IconScanLine size={14} />}
+                onClick={() => setDigitizeDialogOpen(true)}
+              >
+                {t("bookDetail.digitize")}
+              </Button>
+            )}
             {confirmingRemove ? (
               <Group gap={6}>
                 <Text size="xs" c="dimmed">
@@ -833,5 +847,16 @@ export function BookDetailPanel({ bookId, onClose, onRemoved, onSelectFilter }: 
         </Stack>
       )}
     </Modal>
+    {digitizeDialogOpen && book && (
+      <DigitizeConfirmDialog
+        bookId={bookId}
+        title={book.title}
+        language={book.language}
+        hasEpub={book.files.some((f) => f.format === "Epub")}
+        onClose={() => setDigitizeDialogOpen(false)}
+        onStarted={() => invalidateLibraryQueries(queryClient)}
+      />
+    )}
+    </>
   );
 }
