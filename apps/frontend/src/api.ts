@@ -865,6 +865,20 @@ export function setDigitizationChapterFirstPage(id: string, chapterId: string, p
   });
 }
 
+// Phase 5 (Typing Editor) - GetPageText reads a page's actual Markdown *content* (empty string if
+// never typed); DigitizationStateDto's own page.text field is only the file's relative path, never
+// its content (see DigitizationPageDto).
+export function getDigitizationPageText(id: string, pageId: string): Promise<string> {
+  return request<{ text: string }>(`/api/books/${id}/digitize/pages/${pageId}/text`).then((r) => r.text);
+}
+
+export function saveDigitizationPageText(id: string, pageId: string, text: string): Promise<DigitizationStateDto> {
+  return request<DigitizationStateDto>(`/api/books/${id}/digitize/pages/${pageId}/text`, {
+    method: "PUT",
+    body: JSON.stringify({ text }),
+  });
+}
+
 // Issue #49: merges sourceBookId's files into targetId (skipping any the target already has, by
 // content) - targetId's own metadata is left untouched. Leaves the now-emptied source book behind
 // for the caller to remove separately (deleteBook + window.maktaba.trashPath, same as removing any

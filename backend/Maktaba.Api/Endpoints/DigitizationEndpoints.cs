@@ -30,6 +30,9 @@ public record RenameChapterRequest(string Title);
 public record ReorderChaptersRequest(IReadOnlyList<string> ChapterIds);
 public record SetFirstPageRequest(string PageId);
 
+// Phase 5 request body.
+public record SavePageTextRequest(string Text);
+
 // Phase 0 (epic #162) - just the "Digitize" entry point: start a book's digitization.json and read
 // its current state back. Every other digitization action (page management, OCR, chapters,
 // publishing, ...) is a later phase's own endpoint set, added to this same file as it lands.
@@ -198,6 +201,59 @@ public static class DigitizationEndpoints
             {
                 return Results.BadRequest(new { error = ex.Message });
             }
+        });
+
+        // Phase 5 (Typing Editor) - writes the page's Markdown text file.
+        group.MapPut("/pages/{pageId}/text", async (string id, string pageId, SavePageTextRequest request, IDigitizationService digitization, CancellationToken ct) =>
+        {
+            if (!IdCodec.TryDecode(id, out var bookId))
+            {
+                return Results.NotFound();
+            }
+
+            try
+            {
+                await digitization.SavePageTextAsync(bookId, pageId, request.Text, ct);
+                return Results.Ok(await digitization.GetStateAsync(bookId, ct));
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return Results.NotFound(new { error = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+        });
+
+        // Serves a page's own Markdown text content (empty string if never typed) - DigitizationState's
+        // own Text field is only the file's relative *path* (see DigitizationJsonPage), never the
+        // content itself, so the typing editor needs this separate read.
+        group.MapGet("/pages/{pageId}/text", async (
+            string id, string pageId, ILibraryService libraryService, ILibraryQueryServiceFactory queryServices,
+            IDigitizationService digitization, CancellationToken ct) =>
+        {
+            if (!IdCodec.TryDecode(id, out var bookId) || libraryService.LibraryRootPath is not { } root)
+            {
+                return Results.NotFound();
+            }
+
+            var book = await queryServices.Books.GetByIdAsync(bookId, ct);
+            var state = await digitization.GetStateAsync(bookId, ct);
+            var page = state?.Pages.FirstOrDefault(p => p.Id == pageId);
+            if (book is null || page is null)
+            {
+                return Results.NotFound();
+            }
+
+            if (page.Text is null)
+            {
+                return Results.Ok(new { text = "" });
+            }
+
+            var textPath = Path.Combine(root, book.FolderPath, page.Text);
+            var text = File.Exists(textPath) ? await File.ReadAllTextAsync(textPath, ct) : "";
+            return Results.Ok(new { text });
         });
 
         // Phase 3 (Page Image Editing) - all three bake the transform into the page's own jpg and
