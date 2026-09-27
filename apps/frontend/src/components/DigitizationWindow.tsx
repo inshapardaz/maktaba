@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { notifications } from "@mantine/notifications";
 import { Alert, Box, Button, Center, Group, Loader, Progress, Stack, Text, Title } from "@mantine/core";
-import { getBook, getConversionProgress, getDigitizationState, startDigitizationConversion } from "../api";
+import { getBook, getConversionProgress, getDigitizationState, setGoogleVisionApiKey, startDigitizationConversion } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
 import { IconAlertCircle, IconScanLine } from "../icons";
 import { DigitizationChapterSidebar } from "./DigitizationChapterSidebar";
@@ -19,6 +19,16 @@ export function DigitizationWindow({ bookId }: { bookId: string }) {
 
   useEffect(() => {
     document.title = "Maktaba";
+  }, []);
+
+  // Phase 6 (OCR) - the backend's IOcrApiKeyCache is in-memory-only and starts empty every process
+  // restart; this window is where the API key actually gets used (Run OCR), so it re-pushes an
+  // already-saved key here rather than relying on the user having visited Settings this session -
+  // see OcrSettings.tsx's own copy of this same reconnect for the Settings-side case.
+  useEffect(() => {
+    void window.maktaba.getCloudCredential("google-vision-api-key").then((saved) => {
+      if (saved) void setGoogleVisionApiKey(saved);
+    });
   }, []);
 
   const bookQuery = useQuery({ queryKey: ["book", bookId], queryFn: () => getBook(bookId) });

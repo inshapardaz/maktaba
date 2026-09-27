@@ -74,6 +74,15 @@ builder.Services.AddScoped<IChapterService, ChapterService>();
 builder.Services.AddSingleton<IConversionProgressTracker, ConversionProgressTracker>();
 builder.Services.AddSingleton<IPdfToImageConversionService, PdfToImageConversionService>();
 
+// Phase 6 - IOcrApiKeyCache mirrors ICloudCredentialCache (in-memory only, populated by the
+// renderer each session - see that interface's own doc comment); IGoogleVisionOcrService is a
+// pooled HttpClient wrapper like IMetadataLookupService below.
+builder.Services.AddSingleton<IOcrApiKeyCache, OcrApiKeyCache>();
+builder.Services.AddHttpClient<IGoogleVisionOcrService, GoogleVisionOcrService>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
+
 builder.Services.AddScoped<NawishtaSessionResolver>();
 builder.Services.AddScoped<ILibraryQueryServiceFactory, LibraryQueryServiceFactory>();
 
@@ -180,6 +189,7 @@ app.MapLibraryEndpoints();
 app.MapNawishtaEndpoints();
 app.MapBookEndpoints();
 app.MapDigitizationEndpoints();
+app.MapOcrSettingsEndpoints();
 app.MapBrowseEndpoints();
 app.MapCollectionEndpoints();
 app.MapSystemEndpoints();
