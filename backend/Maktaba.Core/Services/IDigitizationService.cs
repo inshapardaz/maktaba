@@ -65,4 +65,12 @@ public interface IDigitizationService
     /// text on that page (no confirmation - see the epic's "already decided" appendix), and returns
     /// the recognized text.</summary>
     Task<string> RunOcrAsync(int bookId, string pageId, CancellationToken ct = default);
+
+    /// <summary>Phase 7 (Merge Pages into Chapters, issue #192) - the "Merge into chapters" action's
+    /// gate: throws InvalidOperationException (with a human-readable reason) unless every page has
+    /// a chapter assigned and every page's EditStatus is Complete. On success, sets
+    /// BookDigitizationStatus to ChapterProofRead (see that enum's own doc comment on what each
+    /// transition means) - the actual merged Markdown is computed on demand by
+    /// IChapterMergeService, not stored here.</summary>
+    Task<DigitizationState> ConfirmChapterMergeAsync(int bookId, CancellationToken ct = default);
 }

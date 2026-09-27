@@ -1479,3 +1479,14 @@ export function getGoogleVisionKeyStatus(): Promise<{ hasKey: boolean }> {
 export function runDigitizationPageOcr(id: string, pageId: string): Promise<string> {
   return request<{ text: string }>(`/api/books/${id}/digitize/pages/${pageId}/ocr`, { method: "POST" }).then((r) => r.text);
 }
+
+// Phase 7 (Merge Pages into Chapters) - preview one chapter's merged Markdown (computed fresh on
+// every call from each page's current text, never persisted - see IChapterMergeService's own doc
+// comment) and confirm the merge, which gates on every page being chaptered + Complete.
+export function getMergedChapterText(id: string, chapterId: string): Promise<string> {
+  return request<{ text: string }>(`/api/books/${id}/digitize/chapters/${chapterId}/merged-text`).then((r) => r.text);
+}
+
+export function confirmChapterMerge(id: string): Promise<DigitizationStateDto> {
+  return request<DigitizationStateDto>(`/api/books/${id}/digitize/merge`, { method: "POST" });
+}
