@@ -698,13 +698,32 @@ export function deleteBook(
 // PDF rasterization into pages/ is a later phase) and returns its initial state. Idempotent: an
 // already-digitized book's existing digitization.json is returned untouched (isRightToLeft included)
 // rather than reset - callers should treat this as "open/resume digitization", not "reset it".
+export interface DigitizationPageDto {
+  id: string;
+  order: number;
+  image: string;
+  text: string | null;
+  editStatus: string;
+  chapterId: string | null;
+  sourcePdfPage: number | null;
+  sourceSpreadSide: string | null;
+  rotation: number;
+}
+
+export interface DigitizationChapterDto {
+  id: string;
+  title: string;
+  order: number;
+  firstPageId: string | null;
+}
+
 export interface DigitizationStateDto {
   version: number;
   sourcePdf: string;
   isRightToLeft: boolean;
   status: string;
-  pages: unknown[];
-  chapters: unknown[];
+  pages: DigitizationPageDto[];
+  chapters: DigitizationChapterDto[];
 }
 
 export function startDigitization(id: string, isRightToLeft: boolean): Promise<DigitizationStateDto> {
@@ -742,6 +761,44 @@ export interface ConversionProgress {
 // PdfToImageConversionService.Start), same reasoning as getRescanProgress.
 export function getConversionProgress(): Promise<ConversionProgress> {
   return request<ConversionProgress>("/api/digitize/convert/progress");
+}
+
+// Phase 2 (Page Management UI) - all four return the same DigitizationStateDto shape GET
+// /digitize does, so callers can just replace their cached state with the response.
+export function reorderDigitizationPages(id: string, pageIds: string[]): Promise<DigitizationStateDto> {
+  return request<DigitizationStateDto>(`/api/books/${id}/digitize/pages/reorder`, {
+    method: "PUT",
+    body: JSON.stringify({ pageIds }),
+  });
+}
+
+export function bulkSetPageStatus(id: string, pageIds: string[], status: string): Promise<DigitizationStateDto> {
+  return request<DigitizationStateDto>(`/api/books/${id}/digitize/pages/status`, {
+    method: "PUT",
+    body: JSON.stringify({ pageIds, status }),
+  });
+}
+
+export function bulkSetPageChapter(id: string, pageIds: string[], chapterId: string | null): Promise<DigitizationStateDto> {
+  return request<DigitizationStateDto>(`/api/books/${id}/digitize/pages/chapter`, {
+    method: "PUT",
+    body: JSON.stringify({ pageIds, chapterId }),
+  });
+}
+
+export function deleteDigitizationPages(id: string, pageIds: string[]): Promise<DigitizationStateDto> {
+  return request<DigitizationStateDto>(`/api/books/${id}/digitize/pages/delete`, {
+    method: "POST",
+    body: JSON.stringify({ pageIds }),
+  });
+}
+
+// Not wrapped in request() - this is loaded directly as an <img src>, same pattern as coverUrl()
+// (access_token as a query param since <img> tags can't set an Authorization header - see
+// Program.cs's bearer-token middleware).
+export function digitizationPageImageUrl(bookId: string, pageId: string): string {
+  const { apiBaseUrl, token } = window.maktaba;
+  return `${apiBaseUrl}/api/books/${bookId}/digitize/pages/${pageId}/image?access_token=${encodeURIComponent(token)}`;
 }
 
 // Issue #49: merges sourceBookId's files into targetId (skipping any the target already has, by

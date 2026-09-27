@@ -5,6 +5,7 @@ import { Alert, Box, Button, Center, Loader, Progress, Stack, Text, Title } from
 import { getBook, getConversionProgress, getDigitizationState, startDigitizationConversion } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
 import { IconAlertCircle, IconScanLine } from "../icons";
+import { DigitizationPageManager } from "./DigitizationPageManager";
 
 // Content for the digitization workflow's own top-level window (apps/desktop/src/main.ts's
 // openDigitizationWindow, opened from DigitizeConfirmDialog.tsx once digitization.json exists).
@@ -75,7 +76,7 @@ export function DigitizationWindow({ bookId }: { bookId: string }) {
   const hasPages = stateQuery.data.pages.length > 0;
 
   return (
-    <Box p="xl" style={{ maxWidth: 640, margin: "0 auto" }}>
+    <Box p="xl" style={{ maxWidth: hasPages ? 1000 : 640, margin: "0 auto" }}>
       <Stack gap="md">
         <Title order={3}>{bookQuery.data?.title ?? t("bookDetail.digitizeTitle")}</Title>
 
@@ -110,9 +111,12 @@ export function DigitizationWindow({ bookId }: { bookId: string }) {
         )}
 
         {hasPages && !running && (
-          <Alert color="green" icon={<IconScanLine size={18} />}>
-            {t("digitize.pagesReady", { count: stateQuery.data.pages.length })}
-          </Alert>
+          <>
+            <Text size="sm" c="dimmed">
+              {t("digitize.pagesReady", { count: stateQuery.data.pages.length })}
+            </Text>
+            <DigitizationPageManager bookId={bookId} state={stateQuery.data} />
+          </>
         )}
       </Stack>
     </Box>
