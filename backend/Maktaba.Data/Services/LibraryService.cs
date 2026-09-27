@@ -693,11 +693,12 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
     // Periodical's Publisher/Editor columns + PeriodicalTags table) - a cheap, representative
     // column, issue #27's BookFile.IsCustomNamed column, issue #30's Periodical.Language column,
     // Periodical's Publisher/Editor columns + PeriodicalTags table, and issue #67's Book.PageCount
-    // column) - a cheap, representative stand-in for "is this database current" without needing
-    // full EF Core migrations, which this project deliberately doesn't use. Every future schema-
-    // breaking change needs its own probe added here, or an upgrading user's existing metadata.db
-    // won't be recognized as stale and requests against the new column/table will throw instead of
-    // transparently rebuilding.
+    // column, and issue #162's Digitization epic Phase 0 adding Book.DigitizationStatus plus the
+    // DigitizationPages/Chapters tables) - a cheap, representative stand-in for "is this database
+    // current" without needing full EF Core migrations, which this project deliberately doesn't
+    // use. Every future schema-breaking change needs its own probe added here, or an upgrading
+    // user's existing metadata.db won't be recognized as stale and requests against the new
+    // column/table will throw instead of transparently rebuilding.
     private static async Task<bool> IsCurrentSchemaAsync(MaktabaDbContext db, CancellationToken ct)
     {
         try
@@ -713,6 +714,11 @@ public class LibraryService : ILibraryService, ILibraryPathProvider
             await db.PeriodicalTags.Select(pt => pt.PeriodicalId).Take(1).ToListAsync(ct);
             await db.Books.Select(b => b.PageCount).Take(1).ToListAsync(ct);
             await db.Collections.Select(c => c.ParentCollectionId).Take(1).ToListAsync(ct);
+            // Digitization epic #162, Phase 0: Book.DigitizationStatus, plus the DigitizationPages/
+            // Chapters tables.
+            await db.Books.Select(b => b.DigitizationStatus).Take(1).ToListAsync(ct);
+            await db.DigitizationPages.Select(p => p.Id).Take(1).ToListAsync(ct);
+            await db.Chapters.Select(c => c.Id).Take(1).ToListAsync(ct);
             return true;
         }
         catch (SqliteException)
