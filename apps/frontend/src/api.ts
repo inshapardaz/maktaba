@@ -1476,8 +1476,20 @@ export function getGoogleVisionKeyStatus(): Promise<{ hasKey: boolean }> {
 // Always overwrites any existing text on the page, no confirmation (see the epic's own "already
 // decided" appendix) - returns the recognized text (already saved server-side to the page's own
 // Markdown file).
-export function runDigitizationPageOcr(id: string, pageId: string): Promise<string> {
-  return request<{ text: string }>(`/api/books/${id}/digitize/pages/${pageId}/ocr`, { method: "POST" }).then((r) => r.text);
+//
+// Re-reads the decrypted API key from safeStorage on every single call and sends it along, rather
+// than trusting the backend's own in-memory cache (pushed once, fire-and-forget, on window open -
+// see DigitizationWindow.tsx/OcrSettings.tsx) to still be populated by the time this fires. That
+// push is async (an IPC decrypt + an HTTP round trip); a click soon after the window opens, or any
+// silent failure in that push, used to leave the backend's cache empty and send Google an empty
+// key, which comes back as "API key not valid" even though a real key was saved - this closes that
+// race for good instead of just narrowing it.
+export async function runDigitizationPageOcr(id: string, pageId: string): Promise<string> {
+  const apiKey = await window.maktaba.getCloudCredential("google-vision-api-key");
+  return request<{ text: string }>(`/api/books/${id}/digitize/pages/${pageId}/ocr`, {
+    method: "POST",
+    body: JSON.stringify({ apiKey }),
+  }).then((r) => r.text);
 }
 
 // Phase 7 (Merge Pages into Chapters) - preview one chapter's merged Markdown (computed fresh on

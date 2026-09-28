@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { notifications } from "@mantine/notifications";
 import { Alert, Box, Button, Center, Loader, Progress, Stack, Text } from "@mantine/core";
@@ -8,6 +8,7 @@ import { IconAlertCircle, IconScanLine } from "../icons";
 import { DigitizationChapterSidebar } from "./DigitizationChapterSidebar";
 import { DigitizationPageManager } from "./DigitizationPageManager";
 import { DigitizationTitleBar } from "./DigitizationTitleBar";
+import { PageEditorView } from "./PageEditorView";
 import { TITLEBAR_HEIGHT } from "./TitleBar";
 
 const CONTENT_HEIGHT = `calc(100vh - ${TITLEBAR_HEIGHT}px)`;
@@ -20,6 +21,7 @@ const CONTENT_HEIGHT = `calc(100vh - ${TITLEBAR_HEIGHT}px)`;
 export function DigitizationWindow({ bookId }: { bookId: string }) {
   const { t } = useLanguage();
   const queryClient = useQueryClient();
+  const [editingPageId, setEditingPageId] = useState<string | null>(null);
 
   useEffect(() => {
     document.title = "Maktaba";
@@ -83,7 +85,7 @@ export function DigitizationWindow({ bookId }: { bookId: string }) {
         showCounts={hasPages}
       />
 
-      <Box style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
+      <Box style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
         {(bookQuery.isLoading || stateQuery.isLoading) && (
           <Center h={CONTENT_HEIGHT}>
             <Loader />
@@ -136,13 +138,23 @@ export function DigitizationWindow({ bookId }: { bookId: string }) {
           </Center>
         )}
 
-        {stateQuery.data && hasPages && !running && (
+        {stateQuery.data && hasPages && !running && editingPageId && (
+          <PageEditorView
+            bookId={bookId}
+            pages={stateQuery.data.pages}
+            chapters={stateQuery.data.chapters}
+            initialPageId={editingPageId}
+            onClose={() => setEditingPageId(null)}
+          />
+        )}
+
+        {stateQuery.data && hasPages && !running && !editingPageId && (
           <Box style={{ display: "flex", alignItems: "flex-start", height: "100%" }}>
-            <Box p="sm" style={{ flexShrink: 0, height: "100%", overflow: "auto" }}>
+            <Box p="sm" style={{ flexShrink: 0, height: "100%", overflow: "auto", backgroundColor: "var(--app-surface)" }}>
               <DigitizationChapterSidebar bookId={bookId} state={stateQuery.data} />
             </Box>
             <Box p="sm" style={{ flex: 1, minWidth: 0, height: "100%", overflow: "auto" }}>
-              <DigitizationPageManager bookId={bookId} state={stateQuery.data} />
+              <DigitizationPageManager bookId={bookId} state={stateQuery.data} onOpenEditor={setEditingPageId} />
             </Box>
           </Box>
         )}

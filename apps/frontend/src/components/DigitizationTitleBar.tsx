@@ -52,6 +52,11 @@ export function DigitizationTitleBar({
         alignItems: "center",
         gap: 6,
         flexShrink: 0,
+        // Matches AppShell.Header's own background in the main window (App.tsx sets this inline,
+        // per-instance, rather than through the shared theme - a plain Box here didn't pick it up
+        // automatically, which is why this window's title bar looked visibly different/flat
+        // compared to the main window's).
+        backgroundColor: "var(--app-surface)",
         borderBottom: "1px solid var(--mantine-color-default-border)",
         boxSizing: "border-box",
         overflow: "hidden",

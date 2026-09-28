@@ -36,6 +36,10 @@ public record SavePageTextRequest(string Text);
 // Phase 6 request body.
 public record SetOcrApiKeyRequest(string ApiKey);
 
+// Optional - null/empty means "use whatever's already cached" (see the /pages/{pageId}/ocr
+// handler's own comment on why the frontend now sends this on every call instead).
+public record RunOcrRequest(string? ApiKey);
+
 // Phase 0 (epic #162) - just the "Digitize" entry point: start a book's digitization.json and read
 // its current state back. Every other digitization action (page management, OCR, chapters,
 // publishing, ...) is a later phase's own endpoint set, added to this same file as it lands.
@@ -483,11 +487,25 @@ public static class DigitizationEndpoints
         // request per page, sequential) rather than a backend queue - a real background-progress
         // tracker like conversion's own didn't feel worth the extra machinery for what's already a
         // simple per-page HTTP call the frontend can loop over with its own progress UI.
-        group.MapPost("/pages/{pageId}/ocr", async (string id, string pageId, IDigitizationService digitization, CancellationToken ct) =>
+        group.MapPost("/pages/{pageId}/ocr", async (
+            string id, string pageId, RunOcrRequest? request, IOcrApiKeyCache ocrApiKeyCache, IDigitizationService digitization, CancellationToken ct) =>
         {
             if (!IdCodec.TryDecode(id, out var bookId))
             {
                 return Results.NotFound();
+            }
+
+            // Refreshes the in-memory key from this request's own body, if the caller sent one,
+            // *before* running OCR - closes a real race the previous "push the key once via
+            // PUT .../google-vision-key on window open, hope RunOcr never races ahead of it"
+            // design had: a click right after the window opened (or a decrypt/push that silently
+            // failed) could still find IOcrApiKeyCache.ApiKey null here, sending Google an empty
+            // key and getting back "API key not valid" even though a real key was saved - the
+            // frontend now re-reads the decrypted key from safeStorage immediately before every
+            // OCR call and always includes it, so this can no longer go stale.
+            if (!string.IsNullOrEmpty(request?.ApiKey))
+            {
+                ocrApiKeyCache.ApiKey = request.ApiKey;
             }
 
             try

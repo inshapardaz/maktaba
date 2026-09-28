@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { CUSTOM_THEME_COLOR, DEFAULT_CUSTOM_THEME_COLOR_HEX, DEFAULT_THEME_COLOR, THEME_COLOR_OPTIONS, type ThemeColorName } from "./theme";
 
 const STORAGE_KEY = "maktaba-theme-color";
@@ -37,6 +37,20 @@ const ThemeColorContext = createContext<ThemeColorContextValue | null>(null);
 export function ThemeColorProvider({ children }: { children: ReactNode }) {
   const [themeColor, setThemeColorState] = useState<ThemeColorName | typeof CUSTOM_THEME_COLOR>(getStoredThemeColor);
   const [customColorHex, setCustomColorHexState] = useState<string>(getStoredCustomColorHex);
+
+  // See AppThemeContext.tsx's identical listener for why: an already-open secondary window
+  // (reader/digitization/help) otherwise never learns the accent color changed in another window.
+  useEffect(() => {
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === STORAGE_KEY) {
+        setThemeColorState(getStoredThemeColor());
+      } else if (event.key === CUSTOM_HEX_STORAGE_KEY) {
+        setCustomColorHexState(getStoredCustomColorHex());
+      }
+    };
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, []);
 
   const value = useMemo<ThemeColorContextValue>(
     () => ({
