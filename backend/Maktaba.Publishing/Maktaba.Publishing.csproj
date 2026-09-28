@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Maktaba.Core\Maktaba.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- EpubPublisher renders each chapter's merged Markdown to XHTML - see that class's own doc
+         comment on the source this was ported from. -->
+    <PackageReference Include="Markdig" Version="0.37.0" />
+    <!-- PdfPublisher draws each chapter's text onto pages via SKDocument.CreatePdf - reuses the
+         same package Maktaba.Metadata already depends on for reading PDFs, just for writing one
+         here instead. -->
+    <PackageReference Include="SkiaSharp" Version="4.150.1" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>
