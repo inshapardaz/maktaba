@@ -60,6 +60,7 @@ import {
   deleteBookFile,
   coverUrl,
   extractBookCover,
+  getDigitizationState,
   listTags,
   renameBookFile,
   updateBook,
@@ -147,6 +148,24 @@ export function BookDetailPanel({ bookId, onClose, onRemoved, onSelectFilter }: 
   const [confirmingRemove, setConfirmingRemove] = useState(false);
   const [addFileError, setAddFileError] = useState<string | null>(null);
   const [digitizeDialogOpen, setDigitizeDialogOpen] = useState(false);
+  const [checkingDigitization, setCheckingDigitization] = useState(false);
+
+  // If digitization already started for this book, the confirm-before-starting dialog is pointless
+  // (there's nothing left to confirm) - go straight to the editor window instead, same as clicking
+  // "Digitize..." again on an already-digitized book should feel like "resume," not "start over."
+  const handleDigitizeClick = async (bookTitle: string) => {
+    setCheckingDigitization(true);
+    try {
+      const existing = await getDigitizationState(bookId);
+      if (existing) {
+        void window.maktaba.openDigitizationWindow(bookId, bookTitle);
+      } else {
+        setDigitizeDialogOpen(true);
+      }
+    } finally {
+      setCheckingDigitization(false);
+    }
+  };
 
   const {
     data: book,
@@ -810,7 +829,8 @@ export function BookDetailPanel({ bookId, onClose, onRemoved, onSelectFilter }: 
                 size="sm"
                 variant="default"
                 leftSection={<IconScanLine size={14} />}
-                onClick={() => setDigitizeDialogOpen(true)}
+                loading={checkingDigitization}
+                onClick={() => void handleDigitizeClick(book.title)}
               >
                 {t("bookDetail.digitize")}
               </Button>
