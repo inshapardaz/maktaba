@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
 // "organic" (default) is the warm terracotta/parchment design system (theme.ts); "white" is plain
 // Mantine with no customization at all, kept selectable (Settings -> Appearance) for anyone who
@@ -44,6 +44,27 @@ const AppThemeContext = createContext<AppThemeContextValue | null>(null);
 export function AppThemeProvider({ children }: { children: ReactNode }) {
   const [appTheme, setAppThemeState] = useState<AppThemeName>(getStoredAppTheme);
   const [darkChrome, setDarkChromeState] = useState<boolean>(getStoredDarkChrome);
+
+  // Electron's separate top-level windows (reader/digitization/help) are each their own renderer
+  // with independent React state, but share one localStorage (same origin) - changing the theme in
+  // one window used to only update that window's own state, leaving any other already-open window
+  // showing the old theme until it was closed and reopened. The "storage" event fires in every
+  // *other* same-origin window (never the one that made the change, matching normal multi-tab
+  // browser behavior) whenever localStorage changes, so listening for it here is what makes an
+  // already-open digitization/reader window pick up a theme change live instead of needing a
+  // restart. Mantine's own color-scheme (light/dark) already does this out of the box via its
+  // localStorageColorSchemeManager; appTheme/darkChrome are hand-rolled state, so needed it too.
+  useEffect(() => {
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === STORAGE_KEY) {
+        setAppThemeState(getStoredAppTheme());
+      } else if (event.key === DARK_CHROME_KEY) {
+        setDarkChromeState(getStoredDarkChrome());
+      }
+    };
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, []);
 
   const value = useMemo<AppThemeContextValue>(
     () => ({

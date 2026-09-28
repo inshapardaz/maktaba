@@ -18,6 +18,8 @@ import {
   ChartBar,
   Check,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   ChevronUp,
   CircleAlert,
   CircleCheck,
@@ -63,6 +65,8 @@ import {
   RotateCw,
   ScanLine,
   Search,
+  ZoomIn,
+  ZoomOut,
   Settings,
   Square,
   SquarePen,
@@ -106,6 +110,8 @@ export const IconCamera = withStrokeWidth(Camera);
 export const IconChartBar = withStrokeWidth(ChartBar);
 export const IconCheck = withStrokeWidth(Check);
 export const IconChevronDown = withStrokeWidth(ChevronDown);
+export const IconChevronLeft = withStrokeWidth(ChevronLeft);
+export const IconChevronRight = withStrokeWidth(ChevronRight);
 export const IconChevronUp = withStrokeWidth(ChevronUp);
 export const IconCircleCheck = withStrokeWidth(CircleCheck);
 export const IconCircleDashed = withStrokeWidth(CircleDashed);
@@ -149,6 +155,8 @@ export const IconRefresh = withStrokeWidth(RefreshCw);
 export const IconRotate = withStrokeWidth(RotateCw);
 export const IconScanLine = withStrokeWidth(ScanLine);
 export const IconSearch = withStrokeWidth(Search);
+export const IconZoomIn = withStrokeWidth(ZoomIn);
+export const IconZoomOut = withStrokeWidth(ZoomOut);
 export const IconSettings = withStrokeWidth(Settings);
 export const IconSquare = withStrokeWidth(Square);
 export const IconStack2 = withStrokeWidth(SquareStack);

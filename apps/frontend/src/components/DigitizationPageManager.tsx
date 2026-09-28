@@ -2,17 +2,17 @@ import { useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { notifications } from "@mantine/notifications";
 import {
-  ActionIcon, Badge, Button, Checkbox, Group, Image, Modal, Paper, Select, SegmentedControl, SimpleGrid, Stack,
-  Table, Text,
+  ActionIcon, Badge, Button, Checkbox, Group, Image, Modal, Paper, ScrollArea, Select, SegmentedControl, SimpleGrid,
+  Stack, Table, Text,
 } from "@mantine/core";
 import {
   bulkSetPageChapter, bulkSetPageStatus, deleteDigitizationPages, digitizationPageImageUrl, reorderDigitizationPages,
-  runDigitizationPageOcr, type DigitizationPageDto, type DigitizationStateDto,
+  runDigitizationPageOcr, type DigitizationChapterDto, type DigitizationPageDto, type DigitizationStateDto,
 } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
-import { IconEdit, IconFileText, IconLayoutGrid, IconList, IconScanLine, IconTrash } from "../icons";
+import { IconEdit, IconEye, IconFileText, IconLayoutGrid, IconList, IconScanLine, IconTrash } from "../icons";
 import { PageEditModal } from "./PageEditModal";
-import { TypingEditor } from "./TypingEditor";
+import { PagePreviewModal } from "./PagePreviewModal";
 
 const PAGE_SIZE_OPTIONS = ["12", "24", "48", "96", "all"];
 const STATUS_COLOR: Record<string, string> = {
@@ -24,11 +24,16 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 // Phase 2 (epic #162) - list/grid page management for a digitized book: page size selector,
-// multi-select + bulk delete/status, drag-and-drop reorder. Bulk set-chapter is wired at the API
-// layer (bulkSetPageChapter) but has no UI here yet since chapters themselves don't exist until
-// Phase 4 - this view will grow a chapter picker once that lands, the same way it will grow crop/
-// rotate controls once Phase 3 lands.
-export function DigitizationPageManager({ bookId, state }: { bookId: string; state: DigitizationStateDto }) {
+// multi-select + bulk delete/status/chapter, drag-and-drop reorder. Per-page editing (text/image/
+// crop/rotate/split/chapter/status/OCR) all lives in the unified full-page PageEditorView now
+// (opened via onOpenEditor, owned by DigitizationWindow) rather than separate modals here.
+export function DigitizationPageManager({
+  bookId, state, onOpenEditor,
+}: {
+  bookId: string;
+  state: DigitizationStateDto;
+  onOpenEditor: (pageId: string) => void;
+}) {
   const { t } = useLanguage();
   const queryClient = useQueryClient();
 
@@ -38,10 +43,19 @@ export function DigitizationPageManager({ bookId, state }: { bookId: string; sta
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
-  const [editingPage, setEditingPage] = useState<DigitizationPageDto | null>(null);
-  const [typingPageId, setTypingPageId] = useState<string | null>(null);
+  const [previewPageId, setPreviewPageId] = useState<string | null>(null);
+  const [editingImagePage, setEditingImagePage] = useState<DigitizationPageDto | null>(null);
 
   const sortedPages = useMemo(() => [...state.pages].sort((a, b) => a.order - b.order), [state.pages]);
+  const sortedChapters = useMemo(() => [...state.chapters].sort((a, b) => a.order - b.order), [state.chapters]);
+  // 1-indexed position among this book's own chapters, in chapter order - "chapter number" as
+  // shown to the user, distinct from the chapter's own opaque digitization.json id.
+  const chapterNumberById = useMemo(() => {
+    const map = new Map<string, number>();
+    sortedChapters.forEach((c, i) => map.set(c.id, i + 1));
+    return map;
+  }, [sortedChapters]);
+  const chapterById = useMemo(() => new Map<string, DigitizationChapterDto>(sortedChapters.map((c) => [c.id, c])), [sortedChapters]);
 
   const pageCount = pageSize === "all" ? 1 : Math.max(1, Math.ceil(sortedPages.length / Number(pageSize)));
   const visiblePages = useMemo(() => {
@@ -143,6 +157,13 @@ export function DigitizationPageManager({ bookId, state }: { bookId: string; sta
     reorderMutation.mutate(ids);
   };
 
+  const chapterLabel = (page: DigitizationPageDto): string => {
+    if (!page.chapterId) return t("digitize.noChapter");
+    const num = chapterNumberById.get(page.chapterId);
+    const title = chapterById.get(page.chapterId)?.title ?? "";
+    return num ? t("digitize.chapterNumber", { number: num }) + (title ? ` — ${title}` : "") : title;
+  };
+
   return (
     <Stack gap="md">
       <Group justify="space-between" wrap="wrap">
@@ -206,7 +227,7 @@ export function DigitizationPageManager({ bookId, state }: { bookId: string; sta
               <Select
                 size="xs"
                 placeholder={t("digitize.setChapter")}
-                data={state.chapters.map((c) => ({ value: c.id, label: c.title }))}
+                data={sortedChapters.map((c, i) => ({ value: c.id, label: `${t("digitize.chapterNumber", { number: i + 1 })} — ${c.title}` }))}
                 onChange={(v) => chapterMutation.mutate(v ?? null)}
                 disabled={chapterMutation.isPending || state.chapters.length === 0}
                 clearable
@@ -235,61 +256,81 @@ export function DigitizationPageManager({ bookId, state }: { bookId: string; sta
               key={page.id}
               bookId={bookId}
               page={page}
+              chapterLabel={page.chapterId ? chapterLabel(page) : null}
               selected={selected.has(page.id)}
               onToggle={() => toggle(page.id)}
               onDragStart={() => setDraggingId(page.id)}
               onDrop={() => handleDrop(page.id)}
-              onEdit={() => setEditingPage(page)}
-              onType={() => setTypingPageId(page.id)}
+              onEditImage={() => setEditingImagePage(page)}
+              onOpenEditor={() => onOpenEditor(page.id)}
+              onPreview={() => setPreviewPageId(page.id)}
             />
           ))}
         </SimpleGrid>
       ) : (
-        <Table striped highlightOnHover>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th />
-              <Table.Th>{t("digitize.pageNumber")}</Table.Th>
-              <Table.Th />
-              <Table.Th>{t("digitize.status")}</Table.Th>
-              <Table.Th />
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {visiblePages.map((page) => (
-              <Table.Tr
-                key={page.id}
-                draggable
-                onDragStart={() => setDraggingId(page.id)}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={() => handleDrop(page.id)}
-              >
-                <Table.Td>
-                  <Checkbox checked={selected.has(page.id)} onChange={() => toggle(page.id)} />
-                </Table.Td>
-                <Table.Td>{page.order}</Table.Td>
-                <Table.Td>
-                  <Image src={digitizationPageImageUrl(bookId, page.id)} h={48} w={36} fit="contain" />
-                </Table.Td>
-                <Table.Td>
-                  <Badge color={STATUS_COLOR[page.editStatus] ?? "gray"} variant="light">
-                    {page.editStatus}
-                  </Badge>
-                </Table.Td>
-                <Table.Td>
-                  <Group gap={4} wrap="nowrap">
-                    <ActionIcon variant="subtle" onClick={() => setTypingPageId(page.id)} aria-label={t("digitize.typingEditor")}>
-                      <IconFileText size={14} />
-                    </ActionIcon>
-                    <ActionIcon variant="subtle" onClick={() => setEditingPage(page)} aria-label={t("digitize.editPage", { page: page.order })}>
-                      <IconEdit size={14} />
-                    </ActionIcon>
-                  </Group>
-                </Table.Td>
+        <ScrollArea.Autosize mah="calc(100vh - 280px)" type="auto">
+          <Table striped highlightOnHover>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th />
+                <Table.Th>{t("digitize.pageNumber")}</Table.Th>
+                <Table.Th />
+                <Table.Th ta="right">{t("digitize.chapter")}</Table.Th>
+                <Table.Th ta="right">{t("digitize.status")}</Table.Th>
+                <Table.Th ta="right">{t("digitize.actions")}</Table.Th>
               </Table.Tr>
-            ))}
-          </Table.Tbody>
-        </Table>
+            </Table.Thead>
+            <Table.Tbody>
+              {visiblePages.map((page) => (
+                <Table.Tr
+                  key={page.id}
+                  draggable
+                  onDragStart={() => setDraggingId(page.id)}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={() => handleDrop(page.id)}
+                >
+                  <Table.Td>
+                    <Checkbox checked={selected.has(page.id)} onChange={() => toggle(page.id)} />
+                  </Table.Td>
+                  <Table.Td>{page.order}</Table.Td>
+                  <Table.Td>
+                    <Image
+                      src={digitizationPageImageUrl(bookId, page.id)}
+                      h={48}
+                      w={36}
+                      fit="contain"
+                      style={{ cursor: "pointer" }}
+                      onClick={() => setPreviewPageId(page.id)}
+                    />
+                  </Table.Td>
+                  <Table.Td ta="right">
+                    <Text size="sm" c={page.chapterId ? undefined : "dimmed"}>
+                      {chapterLabel(page)}
+                    </Text>
+                  </Table.Td>
+                  <Table.Td ta="right">
+                    <Badge color={STATUS_COLOR[page.editStatus] ?? "gray"} variant="light">
+                      {page.editStatus}
+                    </Badge>
+                  </Table.Td>
+                  <Table.Td>
+                    <Group gap={4} wrap="nowrap" justify="flex-end">
+                      <ActionIcon variant="subtle" onClick={() => setPreviewPageId(page.id)} aria-label={t("digitize.previewPage", { page: page.order })}>
+                        <IconEye size={14} />
+                      </ActionIcon>
+                      <ActionIcon variant="subtle" onClick={() => setEditingImagePage(page)} aria-label={t("digitize.editImage", { page: page.order })}>
+                        <IconEdit size={14} />
+                      </ActionIcon>
+                      <ActionIcon variant="subtle" onClick={() => onOpenEditor(page.id)} aria-label={t("digitize.openEditor", { page: page.order })}>
+                        <IconFileText size={14} />
+                      </ActionIcon>
+                    </Group>
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        </ScrollArea.Autosize>
       )}
 
       <Modal opened={deleteConfirmOpen} onClose={() => setDeleteConfirmOpen(false)} title={t("digitize.deletePages")} centered>
@@ -306,28 +347,30 @@ export function DigitizationPageManager({ bookId, state }: { bookId: string; sta
         </Stack>
       </Modal>
 
-      {editingPage && (
-        <PageEditModal bookId={bookId} page={editingPage} chapters={state.chapters} onClose={() => setEditingPage(null)} />
+      {previewPageId && (
+        <PagePreviewModal bookId={bookId} pages={state.pages} initialPageId={previewPageId} onClose={() => setPreviewPageId(null)} />
       )}
 
-      {typingPageId && (
-        <TypingEditor bookId={bookId} pages={state.pages} initialPageId={typingPageId} onClose={() => setTypingPageId(null)} />
+      {editingImagePage && (
+        <PageEditModal bookId={bookId} page={editingImagePage} onClose={() => setEditingImagePage(null)} />
       )}
     </Stack>
   );
 }
 
 function PageThumbnail({
-  bookId, page, selected, onToggle, onDragStart, onDrop, onEdit, onType,
+  bookId, page, chapterLabel, selected, onToggle, onDragStart, onDrop, onEditImage, onOpenEditor, onPreview,
 }: {
   bookId: string;
   page: DigitizationPageDto;
+  chapterLabel: string | null;
   selected: boolean;
   onToggle: () => void;
   onDragStart: () => void;
   onDrop: () => void;
-  onEdit: () => void;
-  onType: () => void;
+  onEditImage: () => void;
+  onOpenEditor: () => void;
+  onPreview: () => void;
 }) {
   return (
     <Paper
@@ -350,20 +393,33 @@ function PageThumbnail({
       <ActionIcon
         size="sm"
         variant="filled"
-        onClick={onType}
+        onClick={onEditImage}
         style={{ position: "absolute", bottom: 4, left: 4, zIndex: 1 }}
       >
-        <IconFileText size={12} />
+        <IconEdit size={12} />
       </ActionIcon>
       <ActionIcon
         size="sm"
         variant="filled"
-        onClick={onEdit}
+        onClick={onOpenEditor}
         style={{ position: "absolute", bottom: 4, right: 4, zIndex: 1 }}
       >
-        <IconEdit size={12} />
+        <IconFileText size={12} />
       </ActionIcon>
-      <Image src={digitizationPageImageUrl(bookId, page.id)} h={140} fit="contain" radius="sm" mt={20} />
+      <Image
+        src={digitizationPageImageUrl(bookId, page.id)}
+        h={140}
+        fit="contain"
+        radius="sm"
+        mt={20}
+        style={{ cursor: "zoom-in" }}
+        onClick={onPreview}
+      />
+      {chapterLabel && (
+        <Text size="xs" c="dimmed" truncate ta="center" mt={2}>
+          {chapterLabel}
+        </Text>
+      )}
     </Paper>
   );
 }

@@ -90,7 +90,7 @@ createRoot(document.getElementById("root")!).render(
             <LanguageProvider>
               <Notifications position="bottom-right" />
               <QueryClientProvider client={queryClient}>
-                <BackendGate showTitleBar={!readerRequest && !isHelpWindow && !digitizationRequest}>
+                <BackendGate showTitleBar={!readerRequest && !isHelpWindow}>
                   {readerRequest ? (
                     <ReaderWindow bookId={readerRequest.bookId} format={readerRequest.format} title={readerRequest.title} />
                   ) : isHelpWindow ? (
