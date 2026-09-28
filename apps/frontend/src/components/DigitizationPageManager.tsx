@@ -10,7 +10,8 @@ import {
   runDigitizationPageOcr, type DigitizationChapterDto, type DigitizationPageDto, type DigitizationStateDto,
 } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
-import { IconEdit, IconEye, IconLayoutGrid, IconList, IconScanLine, IconTrash } from "../icons";
+import { IconEdit, IconEye, IconFileText, IconLayoutGrid, IconList, IconScanLine, IconTrash } from "../icons";
+import { PageEditModal } from "./PageEditModal";
 import { PagePreviewModal } from "./PagePreviewModal";
 
 const PAGE_SIZE_OPTIONS = ["12", "24", "48", "96", "all"];
@@ -43,6 +44,7 @@ export function DigitizationPageManager({
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [previewPageId, setPreviewPageId] = useState<string | null>(null);
+  const [editingImagePage, setEditingImagePage] = useState<DigitizationPageDto | null>(null);
 
   const sortedPages = useMemo(() => [...state.pages].sort((a, b) => a.order - b.order), [state.pages]);
   const sortedChapters = useMemo(() => [...state.chapters].sort((a, b) => a.order - b.order), [state.chapters]);
@@ -259,7 +261,8 @@ export function DigitizationPageManager({
               onToggle={() => toggle(page.id)}
               onDragStart={() => setDraggingId(page.id)}
               onDrop={() => handleDrop(page.id)}
-              onEdit={() => onOpenEditor(page.id)}
+              onEditImage={() => setEditingImagePage(page)}
+              onOpenEditor={() => onOpenEditor(page.id)}
               onPreview={() => setPreviewPageId(page.id)}
             />
           ))}
@@ -315,8 +318,11 @@ export function DigitizationPageManager({
                       <ActionIcon variant="subtle" onClick={() => setPreviewPageId(page.id)} aria-label={t("digitize.previewPage", { page: page.order })}>
                         <IconEye size={14} />
                       </ActionIcon>
-                      <ActionIcon variant="subtle" onClick={() => onOpenEditor(page.id)} aria-label={t("digitize.editPage", { page: page.order })}>
+                      <ActionIcon variant="subtle" onClick={() => setEditingImagePage(page)} aria-label={t("digitize.editImage", { page: page.order })}>
                         <IconEdit size={14} />
+                      </ActionIcon>
+                      <ActionIcon variant="subtle" onClick={() => onOpenEditor(page.id)} aria-label={t("digitize.openEditor", { page: page.order })}>
+                        <IconFileText size={14} />
                       </ActionIcon>
                     </Group>
                   </Table.Td>
@@ -344,12 +350,16 @@ export function DigitizationPageManager({
       {previewPageId && (
         <PagePreviewModal bookId={bookId} pages={state.pages} initialPageId={previewPageId} onClose={() => setPreviewPageId(null)} />
       )}
+
+      {editingImagePage && (
+        <PageEditModal bookId={bookId} page={editingImagePage} onClose={() => setEditingImagePage(null)} />
+      )}
     </Stack>
   );
 }
 
 function PageThumbnail({
-  bookId, page, chapterLabel, selected, onToggle, onDragStart, onDrop, onEdit, onPreview,
+  bookId, page, chapterLabel, selected, onToggle, onDragStart, onDrop, onEditImage, onOpenEditor, onPreview,
 }: {
   bookId: string;
   page: DigitizationPageDto;
@@ -358,7 +368,8 @@ function PageThumbnail({
   onToggle: () => void;
   onDragStart: () => void;
   onDrop: () => void;
-  onEdit: () => void;
+  onEditImage: () => void;
+  onOpenEditor: () => void;
   onPreview: () => void;
 }) {
   return (
@@ -382,10 +393,18 @@ function PageThumbnail({
       <ActionIcon
         size="sm"
         variant="filled"
-        onClick={onEdit}
-        style={{ position: "absolute", bottom: 4, right: 4, zIndex: 1 }}
+        onClick={onEditImage}
+        style={{ position: "absolute", bottom: 4, left: 4, zIndex: 1 }}
       >
         <IconEdit size={12} />
+      </ActionIcon>
+      <ActionIcon
+        size="sm"
+        variant="filled"
+        onClick={onOpenEditor}
+        style={{ position: "absolute", bottom: 4, right: 4, zIndex: 1 }}
+      >
+        <IconFileText size={12} />
       </ActionIcon>
       <Image
         src={digitizationPageImageUrl(bookId, page.id)}

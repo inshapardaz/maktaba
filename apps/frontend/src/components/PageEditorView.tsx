@@ -2,17 +2,15 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { notifications } from "@mantine/notifications";
 import {
-  ActionIcon, Button, Group, Image, Modal, NumberInput, Popover, ScrollArea, SegmentedControl, Select, Slider,
-  Text, Textarea, Tooltip,
+  ActionIcon, Button, Group, Image, Menu, Modal, ScrollArea, Select, Text, Textarea, Tooltip,
 } from "@mantine/core";
 import {
-  bulkSetPageChapter, bulkSetPageStatus, cropDigitizationPage, digitizationPageImageUrl, getDigitizationPageText,
-  rotateDigitizationPage, runDigitizationPageOcr, saveDigitizationPageText, splitDigitizationPage,
-  type DigitizationChapterDto, type DigitizationPageDto,
+  bulkSetPageChapter, bulkSetPageStatus, digitizationPageImageUrl, getDigitizationPageText,
+  runDigitizationPageOcr, saveDigitizationPageText, type DigitizationChapterDto, type DigitizationPageDto,
 } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
 import {
-  IconArrowLeft, IconArrowRight, IconCrop, IconRotate, IconScanLine, IconZoomIn, IconZoomOut,
+  IconArrowRight, IconChevronLeft, IconChevronRight, IconScanLine, IconX, IconZoomIn, IconZoomOut,
 } from "../icons";
 
 const STATUSES = ["Pending", "Typing", "Typed", "ProofRead", "Complete"];
@@ -21,11 +19,11 @@ const ZOOM_STEP = 25;
 const ZOOM_MIN = 25;
 const ZOOM_MAX = 300;
 
-// Unified full-page editor for a single page (replaces the old modal-based PageEditModal/
-// TypingEditor pair) - image and text side by side at equal height, each independently scrollable,
-// rotate/crop/split/chapter/status/OCR all merged into one toolbar rather than separate dialogs.
-// Renders in place of the page list/chapter sidebar (see DigitizationWindow.tsx's editingPageId),
-// not as a Modal - "replace the whole page" per the actual feedback this came from.
+// Unified full-page editor for a single page's text/chapter/status/OCR (image editing - crop/
+// rotate/re-split - stayed in the separate PageEditModal, opened from the page list/grid instead
+// of here). Replaces the page list/chapter sidebar entirely while open (see DigitizationWindow.tsx's
+// editingPageId) rather than floating over it - image and text side by side at equal height, each
+// independently scrollable.
 export function PageEditorView({
   bookId, pages, chapters, initialPageId, onClose,
 }: {
@@ -42,16 +40,13 @@ export function PageEditorView({
   const [text, setText] = useState("");
   const [dirty, setDirty] = useState(false);
   const [zoom, setZoom] = useState(100);
-  const [cacheBust, setCacheBust] = useState(0);
-  const [cropOpen, setCropOpen] = useState(false);
-  const [crop, setCrop] = useState({ x: 0, y: 0, width: 100, height: 100 });
-  const [splitOpen, setSplitOpen] = useState(false);
-  const [splitRatio, setSplitRatio] = useState(50);
   const [pendingNav, setPendingNav] = useState<(() => void) | null>(null);
   const saveTimer = useRef<number | null>(null);
 
   const page = sortedPages[index];
   const chapter = chapters.find((c) => c.id === page.chapterId);
+  const statusIndex = STATUSES.indexOf(page.editStatus);
+  const nextStatus = statusIndex >= 0 && statusIndex < STATUSES.length - 1 ? STATUSES[statusIndex + 1] : null;
 
   const invalidateState = () => void queryClient.invalidateQueries({ queryKey: ["digitizationState", bookId] });
 
@@ -88,35 +83,6 @@ export function PageEditorView({
   const chapterMutation = useMutation({
     mutationFn: (chapterId: string | null) => bulkSetPageChapter(bookId, [page.id], chapterId),
     onSuccess: invalidateState,
-    onError: (err) => notifications.show({ color: "red", message: err instanceof Error ? err.message : String(err) }),
-  });
-
-  const rotateMutation = useMutation({
-    mutationFn: (degrees: number) => rotateDigitizationPage(bookId, page.id, degrees),
-    onSuccess: () => {
-      invalidateState();
-      setCacheBust(Date.now());
-    },
-    onError: (err) => notifications.show({ color: "red", message: err instanceof Error ? err.message : String(err) }),
-  });
-
-  const cropMutation = useMutation({
-    mutationFn: () => cropDigitizationPage(bookId, page.id, crop.x / 100, crop.y / 100, crop.width / 100, crop.height / 100),
-    onSuccess: () => {
-      invalidateState();
-      setCacheBust(Date.now());
-      setCrop({ x: 0, y: 0, width: 100, height: 100 });
-      setCropOpen(false);
-    },
-    onError: (err) => notifications.show({ color: "red", message: err instanceof Error ? err.message : String(err) }),
-  });
-
-  const splitMutation = useMutation({
-    mutationFn: () => splitDigitizationPage(bookId, page.id, splitRatio / 100),
-    onSuccess: () => {
-      invalidateState();
-      setSplitOpen(false);
-    },
     onError: (err) => notifications.show({ color: "red", message: err instanceof Error ? err.message : String(err) }),
   });
 
@@ -161,86 +127,58 @@ export function PageEditorView({
 
   const handleClose = () => guardedNavigate(onClose);
 
-  const imageUrl = digitizationPageImageUrl(bookId, page.id, cacheBust || undefined);
+  const imageUrl = digitizationPageImageUrl(bookId, page.id);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+    <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
       <Group gap="xs" p="xs" wrap="wrap" style={{ borderBottom: "1px solid var(--mantine-color-default-border)", flexShrink: 0 }}>
-        <ActionIcon variant="default" onClick={handleClose} aria-label={t("common.back")}>
-          <IconArrowLeft size={16} />
-        </ActionIcon>
-        <Button variant="default" size="xs" leftSection={<IconArrowLeft size={14} />} disabled={index === 0} onClick={() => goTo(index - 1)}>
-          {t("common.previous")}
-        </Button>
-        <Button variant="default" size="xs" rightSection={<IconArrowRight size={14} />} disabled={index === sortedPages.length - 1} onClick={() => goTo(index + 1)}>
-          {t("common.next")}
-        </Button>
+        <Group gap={0} wrap="nowrap" style={{ border: "1px solid var(--mantine-color-default-border)", borderRadius: "var(--mantine-radius-sm)" }}>
+          <ActionIcon variant="subtle" size="lg" radius={0} disabled={index === 0} onClick={() => goTo(index - 1)} aria-label={t("common.previous")}>
+            <IconChevronLeft size={16} />
+          </ActionIcon>
+          <Text size="sm" fw={600} px={8} style={{ whiteSpace: "nowrap" }}>
+            {t("digitize.pageOfPages", { current: index + 1, total: sortedPages.length })}
+          </Text>
+          <ActionIcon variant="subtle" size="lg" radius={0} disabled={index === sortedPages.length - 1} onClick={() => goTo(index + 1)} aria-label={t("common.next")}>
+            <IconChevronRight size={16} />
+          </ActionIcon>
+        </Group>
 
-        <Text size="sm" fw={600}>
-          {t("digitize.pageOfPages", { current: index + 1, total: sortedPages.length })}
-          {" — "}
-          {chapter?.title ?? t("digitize.noChapter")}
-        </Text>
+        <Menu shadow="md">
+          <Menu.Target>
+            <Button variant="default" size="xs">
+              {chapter?.title ?? t("digitize.noChapter")}
+            </Button>
+          </Menu.Target>
+          <Menu.Dropdown>
+            <Menu.Item onClick={() => chapterMutation.mutate(null)}>{t("digitize.noChapter")}</Menu.Item>
+            {chapters.map((c) => (
+              <Menu.Item key={c.id} onClick={() => chapterMutation.mutate(c.id)}>
+                {c.title}
+              </Menu.Item>
+            ))}
+          </Menu.Dropdown>
+        </Menu>
 
         <Select
           size="xs"
-          w={160}
-          placeholder={t("digitize.setChapter")}
-          data={chapters.map((c) => ({ value: c.id, label: c.title }))}
-          value={page.chapterId}
-          onChange={(v) => chapterMutation.mutate(v ?? null)}
-          disabled={chapterMutation.isPending}
-          clearable
+          w={130}
+          data={STATUSES}
+          value={page.editStatus}
+          onChange={(v) => v && statusMutation.mutate(v)}
+          allowDeselect={false}
         />
-
-        <SegmentedControl size="xs" data={STATUSES} value={page.editStatus} onChange={(v) => statusMutation.mutate(v)} />
-
-        <Tooltip label={t("digitize.rotateLeft")}>
-          <ActionIcon variant="default" loading={rotateMutation.isPending} onClick={() => rotateMutation.mutate(-90)}>
-            <IconRotate size={16} style={{ transform: "scaleX(-1)" }} />
+        <Tooltip label={t("digitize.advanceStatus")}>
+          <ActionIcon
+            variant="default"
+            disabled={!nextStatus}
+            loading={statusMutation.isPending}
+            onClick={() => nextStatus && statusMutation.mutate(nextStatus)}
+            aria-label={t("digitize.advanceStatus")}
+          >
+            <IconArrowRight size={16} />
           </ActionIcon>
         </Tooltip>
-        <Tooltip label={t("digitize.rotateRight")}>
-          <ActionIcon variant="default" loading={rotateMutation.isPending} onClick={() => rotateMutation.mutate(90)}>
-            <IconRotate size={16} />
-          </ActionIcon>
-        </Tooltip>
-
-        <Popover opened={cropOpen} onChange={setCropOpen} withArrow>
-          <Popover.Target>
-            <ActionIcon variant="default" onClick={() => setCropOpen((v) => !v)} aria-label={t("digitize.crop")}>
-              <IconCrop size={16} />
-            </ActionIcon>
-          </Popover.Target>
-          <Popover.Dropdown>
-            <Group gap="xs" mb="xs">
-              <NumberInput label="X%" min={0} max={99} value={crop.x} onChange={(v) => setCrop((c) => ({ ...c, x: Number(v) || 0 }))} w={80} />
-              <NumberInput label="Y%" min={0} max={99} value={crop.y} onChange={(v) => setCrop((c) => ({ ...c, y: Number(v) || 0 }))} w={80} />
-            </Group>
-            <Group gap="xs" mb="xs">
-              <NumberInput label="W%" min={1} max={100} value={crop.width} onChange={(v) => setCrop((c) => ({ ...c, width: Number(v) || 1 }))} w={80} />
-              <NumberInput label="H%" min={1} max={100} value={crop.height} onChange={(v) => setCrop((c) => ({ ...c, height: Number(v) || 1 }))} w={80} />
-            </Group>
-            <Button size="xs" fullWidth loading={cropMutation.isPending} onClick={() => cropMutation.mutate()}>
-              {t("digitize.apply")}
-            </Button>
-          </Popover.Dropdown>
-        </Popover>
-
-        <Popover opened={splitOpen} onChange={setSplitOpen} withArrow>
-          <Popover.Target>
-            <ActionIcon variant="default" onClick={() => setSplitOpen((v) => !v)} aria-label={t("digitize.split")}>
-              <IconScanLine size={16} />
-            </ActionIcon>
-          </Popover.Target>
-          <Popover.Dropdown w={220}>
-            <Text size="xs" c="dimmed" mb="xs">{t("digitize.splitExplain")}</Text>
-            <Slider value={splitRatio} onChange={setSplitRatio} min={10} max={90} label={(v) => `${v}%`} mb="xs" />
-            <Button size="xs" fullWidth loading={splitMutation.isPending} onClick={() => splitMutation.mutate()}>
-              {t("digitize.apply")}
-            </Button>
-          </Popover.Dropdown>
-        </Popover>
 
         <Group gap={4} wrap="nowrap">
           <ActionIcon variant="default" disabled={zoom <= ZOOM_MIN} onClick={() => setZoom((z) => Math.max(ZOOM_MIN, z - ZOOM_STEP))} aria-label={t("digitize.zoomOut")}>
@@ -259,13 +197,17 @@ export function PageEditorView({
         <Text size="xs" c="dimmed" ms="auto">
           {saveMutation.isPending ? t("common.saving") : dirty ? t("digitize.unsavedChanges") : t("digitize.saved")}
         </Text>
+
+        <ActionIcon variant="default" onClick={handleClose} aria-label={t("common.close")}>
+          <IconX size={16} />
+        </ActionIcon>
       </Group>
 
       <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
-        <ScrollArea style={{ flex: 1, height: "100%", borderInlineEnd: "1px solid var(--mantine-color-default-border)" }} p="sm">
+        <ScrollArea style={{ flex: 1, minHeight: 0, borderInlineEnd: "1px solid var(--mantine-color-default-border)" }} p="sm">
           <Image src={imageUrl} fit="contain" w={`${zoom}%`} />
         </ScrollArea>
-        <ScrollArea style={{ flex: 1, height: "100%" }} p="sm">
+        <ScrollArea style={{ flex: 1, minHeight: 0 }} p="sm">
           <Textarea
             value={text}
             onChange={(e) => handleTextChange(e.currentTarget.value)}

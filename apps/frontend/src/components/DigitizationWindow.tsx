@@ -85,7 +85,7 @@ export function DigitizationWindow({ bookId }: { bookId: string }) {
         showCounts={hasPages}
       />
 
-      <Box style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
+      <Box style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
         {(bookQuery.isLoading || stateQuery.isLoading) && (
           <Center h={CONTENT_HEIGHT}>
             <Loader />
@@ -149,11 +149,11 @@ export function DigitizationWindow({ bookId }: { bookId: string }) {
         )}
 
         {stateQuery.data && hasPages && !running && !editingPageId && (
-          <Box style={{ display: "flex", alignItems: "flex-start", height: "100%" }}>
-            <Box p="sm" style={{ flexShrink: 0, height: "100%", overflow: "auto", backgroundColor: "var(--app-surface)" }}>
+          <Box style={{ display: "flex", alignItems: "flex-start", flex: 1, minHeight: 0 }}>
+            <Box p="sm" style={{ flexShrink: 0, alignSelf: "stretch", overflow: "auto", backgroundColor: "var(--app-surface)" }}>
               <DigitizationChapterSidebar bookId={bookId} state={stateQuery.data} />
             </Box>
-            <Box p="sm" style={{ flex: 1, minWidth: 0, height: "100%", overflow: "auto" }}>
+            <Box p="sm" style={{ flex: 1, minWidth: 0, alignSelf: "stretch", overflow: "auto" }}>
               <DigitizationPageManager bookId={bookId} state={stateQuery.data} onOpenEditor={setEditingPageId} />
             </Box>
           </Box>
