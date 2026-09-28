@@ -7,7 +7,7 @@ import {
   renameDigitizationChapter, type DigitizationStateDto,
 } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
-import { IconEye, IconGitMerge, IconPlus, IconTrash } from "../icons";
+import { IconEye, IconGitMerge, IconPlus, IconTrash, IconX } from "../icons";
 
 // Phase 4 (epic #162) - chapter list/sidebar (#183) + create/rename/delete (#181, minus
 // drag-reorder which didn't fit this pass's time budget - chapters can still be reordered by
@@ -87,11 +87,23 @@ export function DigitizationChapterSidebar({ bookId, state }: { bookId: string; 
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && renameValue.trim()) {
                       renameMutation.mutate({ chapterId: chapter.id, title: renameValue.trim() });
+                    } else if (e.key === "Escape") {
+                      setRenamingId(null);
                     }
                   }}
                   autoFocus
+                  style={{ flex: 1 }}
                 />
-                <Button size="xs" onClick={() => renameValue.trim() && renameMutation.mutate({ chapterId: chapter.id, title: renameValue.trim() })}>
+                <ActionIcon
+                  size="sm"
+                  variant="default"
+                  onClick={() => setRenamingId(null)}
+                  disabled={renameMutation.isPending}
+                  aria-label={t("common.cancel")}
+                >
+                  <IconX size={14} />
+                </ActionIcon>
+                <Button size="xs" loading={renameMutation.isPending} onClick={() => renameValue.trim() && renameMutation.mutate({ chapterId: chapter.id, title: renameValue.trim() })}>
                   {t("common.save")}
                 </Button>
               </Group>

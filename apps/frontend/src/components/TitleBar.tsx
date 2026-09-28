@@ -149,7 +149,7 @@ export function TitleBarBrand() {
 // closest equivalent. Hidden entirely when the user has turned the menu off in Settings ->
 // Appearance (settings.menuBar) - main.ts's own maktaba:show-app-menu handler no-ops in that case
 // too, but skipping the render avoids offering a control that would visibly do nothing.
-function MenuButton() {
+export function MenuButton() {
   const { t } = useLanguage();
   const menuBarQuery = useQuery({ queryKey: ["menuBarEnabled"], queryFn: () => window.maktaba.getMenuBarEnabled() });
 

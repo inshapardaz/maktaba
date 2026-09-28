@@ -2,16 +2,17 @@ import { useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { notifications } from "@mantine/notifications";
 import {
-  ActionIcon, Badge, Button, Checkbox, Group, Image, Modal, Paper, Select, SegmentedControl, SimpleGrid, Stack,
-  Table, Text,
+  ActionIcon, Badge, Button, Checkbox, Group, Image, Modal, Paper, ScrollArea, Select, SegmentedControl, SimpleGrid,
+  Stack, Table, Text,
 } from "@mantine/core";
 import {
   bulkSetPageChapter, bulkSetPageStatus, deleteDigitizationPages, digitizationPageImageUrl, reorderDigitizationPages,
   runDigitizationPageOcr, type DigitizationPageDto, type DigitizationStateDto,
 } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
-import { IconEdit, IconFileText, IconLayoutGrid, IconList, IconScanLine, IconTrash } from "../icons";
+import { IconEdit, IconEye, IconFileText, IconLayoutGrid, IconList, IconScanLine, IconTrash } from "../icons";
 import { PageEditModal } from "./PageEditModal";
+import { PagePreviewModal } from "./PagePreviewModal";
 import { TypingEditor } from "./TypingEditor";
 
 const PAGE_SIZE_OPTIONS = ["12", "24", "48", "96", "all"];
@@ -40,6 +41,7 @@ export function DigitizationPageManager({ bookId, state }: { bookId: string; sta
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [editingPage, setEditingPage] = useState<DigitizationPageDto | null>(null);
   const [typingPageId, setTypingPageId] = useState<string | null>(null);
+  const [previewPageId, setPreviewPageId] = useState<string | null>(null);
 
   const sortedPages = useMemo(() => [...state.pages].sort((a, b) => a.order - b.order), [state.pages]);
 
@@ -241,55 +243,68 @@ export function DigitizationPageManager({ bookId, state }: { bookId: string; sta
               onDrop={() => handleDrop(page.id)}
               onEdit={() => setEditingPage(page)}
               onType={() => setTypingPageId(page.id)}
+              onPreview={() => setPreviewPageId(page.id)}
             />
           ))}
         </SimpleGrid>
       ) : (
-        <Table striped highlightOnHover>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th />
-              <Table.Th>{t("digitize.pageNumber")}</Table.Th>
-              <Table.Th />
-              <Table.Th>{t("digitize.status")}</Table.Th>
-              <Table.Th />
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {visiblePages.map((page) => (
-              <Table.Tr
-                key={page.id}
-                draggable
-                onDragStart={() => setDraggingId(page.id)}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={() => handleDrop(page.id)}
-              >
-                <Table.Td>
-                  <Checkbox checked={selected.has(page.id)} onChange={() => toggle(page.id)} />
-                </Table.Td>
-                <Table.Td>{page.order}</Table.Td>
-                <Table.Td>
-                  <Image src={digitizationPageImageUrl(bookId, page.id)} h={48} w={36} fit="contain" />
-                </Table.Td>
-                <Table.Td>
-                  <Badge color={STATUS_COLOR[page.editStatus] ?? "gray"} variant="light">
-                    {page.editStatus}
-                  </Badge>
-                </Table.Td>
-                <Table.Td>
-                  <Group gap={4} wrap="nowrap">
-                    <ActionIcon variant="subtle" onClick={() => setTypingPageId(page.id)} aria-label={t("digitize.typingEditor")}>
-                      <IconFileText size={14} />
-                    </ActionIcon>
-                    <ActionIcon variant="subtle" onClick={() => setEditingPage(page)} aria-label={t("digitize.editPage", { page: page.order })}>
-                      <IconEdit size={14} />
-                    </ActionIcon>
-                  </Group>
-                </Table.Td>
+        <ScrollArea.Autosize mah="calc(100vh - 280px)" type="auto">
+          <Table striped highlightOnHover>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th />
+                <Table.Th>{t("digitize.pageNumber")}</Table.Th>
+                <Table.Th />
+                <Table.Th>{t("digitize.status")}</Table.Th>
+                <Table.Th />
               </Table.Tr>
-            ))}
-          </Table.Tbody>
-        </Table>
+            </Table.Thead>
+            <Table.Tbody>
+              {visiblePages.map((page) => (
+                <Table.Tr
+                  key={page.id}
+                  draggable
+                  onDragStart={() => setDraggingId(page.id)}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={() => handleDrop(page.id)}
+                >
+                  <Table.Td>
+                    <Checkbox checked={selected.has(page.id)} onChange={() => toggle(page.id)} />
+                  </Table.Td>
+                  <Table.Td>{page.order}</Table.Td>
+                  <Table.Td>
+                    <Image
+                      src={digitizationPageImageUrl(bookId, page.id)}
+                      h={48}
+                      w={36}
+                      fit="contain"
+                      style={{ cursor: "pointer" }}
+                      onClick={() => setPreviewPageId(page.id)}
+                    />
+                  </Table.Td>
+                  <Table.Td>
+                    <Badge color={STATUS_COLOR[page.editStatus] ?? "gray"} variant="light">
+                      {page.editStatus}
+                    </Badge>
+                  </Table.Td>
+                  <Table.Td>
+                    <Group gap={4} wrap="nowrap">
+                      <ActionIcon variant="subtle" onClick={() => setPreviewPageId(page.id)} aria-label={t("digitize.previewPage", { page: page.order })}>
+                        <IconEye size={14} />
+                      </ActionIcon>
+                      <ActionIcon variant="subtle" onClick={() => setTypingPageId(page.id)} aria-label={t("digitize.typingEditor")}>
+                        <IconFileText size={14} />
+                      </ActionIcon>
+                      <ActionIcon variant="subtle" onClick={() => setEditingPage(page)} aria-label={t("digitize.editPage", { page: page.order })}>
+                        <IconEdit size={14} />
+                      </ActionIcon>
+                    </Group>
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        </ScrollArea.Autosize>
       )}
 
       <Modal opened={deleteConfirmOpen} onClose={() => setDeleteConfirmOpen(false)} title={t("digitize.deletePages")} centered>
@@ -313,12 +328,16 @@ export function DigitizationPageManager({ bookId, state }: { bookId: string; sta
       {typingPageId && (
         <TypingEditor bookId={bookId} pages={state.pages} initialPageId={typingPageId} onClose={() => setTypingPageId(null)} />
       )}
+
+      {previewPageId && (
+        <PagePreviewModal bookId={bookId} pages={state.pages} initialPageId={previewPageId} onClose={() => setPreviewPageId(null)} />
+      )}
     </Stack>
   );
 }
 
 function PageThumbnail({
-  bookId, page, selected, onToggle, onDragStart, onDrop, onEdit, onType,
+  bookId, page, selected, onToggle, onDragStart, onDrop, onEdit, onType, onPreview,
 }: {
   bookId: string;
   page: DigitizationPageDto;
@@ -328,6 +347,7 @@ function PageThumbnail({
   onDrop: () => void;
   onEdit: () => void;
   onType: () => void;
+  onPreview: () => void;
 }) {
   return (
     <Paper
@@ -363,7 +383,15 @@ function PageThumbnail({
       >
         <IconEdit size={12} />
       </ActionIcon>
-      <Image src={digitizationPageImageUrl(bookId, page.id)} h={140} fit="contain" radius="sm" mt={20} />
+      <Image
+        src={digitizationPageImageUrl(bookId, page.id)}
+        h={140}
+        fit="contain"
+        radius="sm"
+        mt={20}
+        style={{ cursor: "zoom-in" }}
+        onClick={onPreview}
+      />
     </Paper>
   );
 }

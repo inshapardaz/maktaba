@@ -1,19 +1,22 @@
 import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { notifications } from "@mantine/notifications";
-import { Alert, Box, Button, Center, Group, Loader, Progress, Stack, Text, Title } from "@mantine/core";
+import { Alert, Box, Button, Center, Loader, Progress, Stack, Text } from "@mantine/core";
 import { getBook, getConversionProgress, getDigitizationState, setGoogleVisionApiKey, startDigitizationConversion } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
 import { IconAlertCircle, IconScanLine } from "../icons";
 import { DigitizationChapterSidebar } from "./DigitizationChapterSidebar";
 import { DigitizationPageManager } from "./DigitizationPageManager";
-import { PublishPanel } from "./PublishPanel";
+import { DigitizationTitleBar } from "./DigitizationTitleBar";
+import { TITLEBAR_HEIGHT } from "./TitleBar";
+
+const CONTENT_HEIGHT = `calc(100vh - ${TITLEBAR_HEIGHT}px)`;
 
 // Content for the digitization workflow's own top-level window (apps/desktop/src/main.ts's
 // openDigitizationWindow, opened from DigitizeConfirmDialog.tsx once digitization.json exists).
-// Phase 1 only owns "convert the source PDF into pages/, show progress" - the actual page list/
-// grid/editing UI is Phase 2+'s own job; this window's content will grow into that as those land,
-// the same way ReaderOverlay.tsx is the one thing rendered inside a reader window.
+// Frameless, with its own DigitizationTitleBar reusing the main window's custom chrome
+// (WindowControls/MenuButton) rather than native OS chrome, so a digitization window looks and
+// behaves consistently with the rest of the app - see DigitizationTitleBar's own doc comment.
 export function DigitizationWindow({ bookId }: { bookId: string }) {
   const { t } = useLanguage();
   const queryClient = useQueryClient();
@@ -66,77 +69,84 @@ export function DigitizationWindow({ bookId }: { bookId: string }) {
     },
   });
 
-  if (bookQuery.isLoading || stateQuery.isLoading) {
-    return (
-      <Center h="100vh">
-        <Loader />
-      </Center>
-    );
-  }
-
-  if (!stateQuery.data) {
-    return (
-      <Center h="100vh" p="xl">
-        <Alert color="red" icon={<IconAlertCircle size={18} />}>
-          {t("digitize.notStarted")}
-        </Alert>
-      </Center>
-    );
-  }
-
   const running = progressQuery.data?.isRunning ?? false;
-  const hasPages = stateQuery.data.pages.length > 0;
+  const hasPages = (stateQuery.data?.pages.length ?? 0) > 0;
 
   return (
-    <Box p="xl" style={{ maxWidth: hasPages ? 1200 : 640, margin: "0 auto" }}>
-      <Stack gap="md">
-        <Title order={3}>{bookQuery.data?.title ?? t("bookDetail.digitizeTitle")}</Title>
+    <Box style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
+      <DigitizationTitleBar
+        bookId={bookId}
+        bookTitle={bookQuery.data?.title}
+        authors={bookQuery.data?.authors}
+        chapterCount={stateQuery.data?.chapters.length ?? 0}
+        pageCount={stateQuery.data?.pages.length ?? 0}
+        showCounts={hasPages}
+      />
 
-        {!hasPages && !running && (
-          <Stack gap="sm" align="flex-start">
-            <Text size="sm" c="dimmed">
-              {t("digitize.convertExplain")}
-            </Text>
-            <Button
-              leftSection={<IconScanLine size={16} />}
-              loading={convertMutation.isPending}
-              onClick={() => convertMutation.mutate()}
-            >
-              {t("digitize.convertStart")}
-            </Button>
-          </Stack>
+      <Box style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
+        {(bookQuery.isLoading || stateQuery.isLoading) && (
+          <Center h={CONTENT_HEIGHT}>
+            <Loader />
+          </Center>
+        )}
+
+        {!bookQuery.isLoading && !stateQuery.isLoading && !stateQuery.data && (
+          <Center h={CONTENT_HEIGHT} p="xl">
+            <Alert color="red" icon={<IconAlertCircle size={18} />}>
+              {t("digitize.notStarted")}
+            </Alert>
+          </Center>
+        )}
+
+        {stateQuery.data && !hasPages && !running && (
+          // "When the window loads, show a centered message to pick the source file and confirm
+          // digitizing it" - the source PDF was already picked when the user clicked "Digitize…"
+          // on the book (see DigitizeConfirmDialog.tsx), so this is that confirmation step: the
+          // one action available before any pages exist, centered rather than tucked in a corner.
+          <Center h={CONTENT_HEIGHT} p="xl">
+            <Stack gap="sm" align="center" maw={420}>
+              <Text size="sm" c="dimmed" ta="center">
+                {t("digitize.convertExplain")}
+              </Text>
+              <Button
+                leftSection={<IconScanLine size={16} />}
+                loading={convertMutation.isPending}
+                onClick={() => convertMutation.mutate()}
+              >
+                {t("digitize.convertStart")}
+              </Button>
+            </Stack>
+          </Center>
         )}
 
         {running && (
-          <Stack gap="xs">
-            <Text size="sm">
-              {t("digitize.convertProgress", {
-                processed: progressQuery.data?.processed ?? 0,
-                total: progressQuery.data?.total ?? 0,
-              })}
-            </Text>
-            <Progress
-              value={progressQuery.data?.total ? (progressQuery.data.processed / progressQuery.data.total) * 100 : 0}
-              animated
-            />
-          </Stack>
+          <Center h={CONTENT_HEIGHT} p="xl">
+            <Stack gap="xs" maw={420} w="100%">
+              <Text size="sm" ta="center">
+                {t("digitize.convertProgress", {
+                  processed: progressQuery.data?.processed ?? 0,
+                  total: progressQuery.data?.total ?? 0,
+                })}
+              </Text>
+              <Progress
+                value={progressQuery.data?.total ? (progressQuery.data.processed / progressQuery.data.total) * 100 : 0}
+                animated
+              />
+            </Stack>
+          </Center>
         )}
 
-        {hasPages && !running && (
-          <>
-            <Text size="sm" c="dimmed">
-              {t("digitize.pagesReady", { count: stateQuery.data.pages.length })}
-            </Text>
-            <PublishPanel bookId={bookId} />
-            <Group align="flex-start" wrap="nowrap">
+        {stateQuery.data && hasPages && !running && (
+          <Box style={{ display: "flex", alignItems: "flex-start", height: "100%" }}>
+            <Box p="sm" style={{ flexShrink: 0, height: "100%", overflow: "auto" }}>
               <DigitizationChapterSidebar bookId={bookId} state={stateQuery.data} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <DigitizationPageManager bookId={bookId} state={stateQuery.data} />
-              </div>
-            </Group>
-          </>
+            </Box>
+            <Box p="sm" style={{ flex: 1, minWidth: 0, height: "100%", overflow: "auto" }}>
+              <DigitizationPageManager bookId={bookId} state={stateQuery.data} />
+            </Box>
+          </Box>
         )}
-      </Stack>
+      </Box>
     </Box>
   );
 }

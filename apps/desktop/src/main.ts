@@ -207,14 +207,19 @@ const TITLEBAR_HEIGHT = 40;
 // createWindow's "maximize"/"unmaximize" listeners) rather than polled, so the button's icon stays
 // in sync with e.g. a Windows snap-layout or double-click-titlebar maximize too, not just its own
 // clicks.
-ipcMain.handle("maktaba:window-minimize", () => mainWindow?.minimize());
-ipcMain.handle("maktaba:window-toggle-maximize", () => {
-  if (!mainWindow) return;
-  if (mainWindow.isMaximized()) mainWindow.unmaximize();
-  else mainWindow.maximize();
+// Resolved per-window (BrowserWindow.fromWebContents(event.sender)) rather than hardcoded to
+// mainWindow - the digitization window reuses WindowControls too (see openDigitizationWindow
+// below), and these buttons must act on whichever frameless window they're actually rendered in,
+// not always the main one.
+ipcMain.handle("maktaba:window-minimize", (event) => BrowserWindow.fromWebContents(event.sender)?.minimize());
+ipcMain.handle("maktaba:window-toggle-maximize", (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win) return;
+  if (win.isMaximized()) win.unmaximize();
+  else win.maximize();
 });
-ipcMain.handle("maktaba:window-close", () => mainWindow?.close());
-ipcMain.handle("maktaba:window-is-maximized", () => mainWindow?.isMaximized() ?? false);
+ipcMain.handle("maktaba:window-close", (event) => BrowserWindow.fromWebContents(event.sender)?.close());
+ipcMain.handle("maktaba:window-is-maximized", (event) => BrowserWindow.fromWebContents(event.sender)?.isMaximized() ?? false);
 
 async function createWindow(): Promise<void> {
   sidecar = await initSidecar();
@@ -336,7 +341,17 @@ async function openDigitizationWindow(bookId: string, title?: string): Promise<v
     title: title || "Maktaba",
     icon: appIconPath,
     webPreferences: webPreferencesFor(sidecar),
+    // Same frameless-with-custom-chrome shape as the main window (see createWindow above) -
+    // DigitizationWindow.tsx renders its own TitleBar-style bar (via WindowControls/TitleBarBrand)
+    // rather than relying on native OS chrome, so its custom controls/menu/title look consistent
+    // with the main window instead of getting a second, different-looking title bar.
+    ...(isMac
+      ? { titleBarStyle: "hidden", trafficLightPosition: { x: 16, y: (TITLEBAR_HEIGHT - 12) / 2 } }
+      : { frame: false }),
   });
+
+  win.on("maximize", () => win.webContents.send("maktaba:window-maximized-changed", true));
+  win.on("unmaximize", () => win.webContents.send("maktaba:window-maximized-changed", false));
 
   digitizationWindows.set(bookId, win);
   win.on("closed", () => digitizationWindows.delete(bookId));
