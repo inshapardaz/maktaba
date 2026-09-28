@@ -545,6 +545,35 @@ public static class DigitizationEndpoints
                 return Results.BadRequest(new { error = ex.Message });
             }
         });
+
+        // Phase 8 (Publishing) - re-publishing the same format updates the previously-published
+        // BookFile in place (see DigitizationPublishingService's own doc comment on how), so this
+        // is safe to call repeatedly after corrections without ever creating a duplicate file.
+        group.MapPost("/publish/{format}", async (string id, string format, IDigitizationPublishingService publishing, CancellationToken ct) =>
+        {
+            if (!IdCodec.TryDecode(id, out var bookId))
+            {
+                return Results.NotFound();
+            }
+
+            try
+            {
+                var bookFile = await publishing.PublishAsync(bookId, format, ct);
+                return Results.Ok(new { id = IdCodec.Encode(bookFile.Id), format = bookFile.Format.ToString(), fileSizeBytes = bookFile.FileSizeBytes });
+            }
+            catch (ArgumentException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return Results.NotFound(new { error = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+        });
     }
 }
 

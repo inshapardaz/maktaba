@@ -6,6 +6,10 @@ public enum BookFormat
     Pdf,
     Docx,
     Txt,
+    // Digitization epic #162, Phase 8 - a book published in Markdown format. Appended at the end
+    // (never renumbering the existing values) since BookFormat is stored as a plain int column -
+    // no schema change needed, just a new valid value.
+    Markdown,
 }
 
 public class BookFile

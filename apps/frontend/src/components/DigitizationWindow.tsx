@@ -7,6 +7,7 @@ import { useLanguage } from "../i18n/LanguageContext";
 import { IconAlertCircle, IconScanLine } from "../icons";
 import { DigitizationChapterSidebar } from "./DigitizationChapterSidebar";
 import { DigitizationPageManager } from "./DigitizationPageManager";
+import { PublishPanel } from "./PublishPanel";
 
 // Content for the digitization workflow's own top-level window (apps/desktop/src/main.ts's
 // openDigitizationWindow, opened from DigitizeConfirmDialog.tsx once digitization.json exists).
@@ -126,6 +127,7 @@ export function DigitizationWindow({ bookId }: { bookId: string }) {
             <Text size="sm" c="dimmed">
               {t("digitize.pagesReady", { count: stateQuery.data.pages.length })}
             </Text>
+            <PublishPanel bookId={bookId} />
             <Group align="flex-start" wrap="nowrap">
               <DigitizationChapterSidebar bookId={bookId} state={stateQuery.data} />
               <div style={{ flex: 1, minWidth: 0 }}>
