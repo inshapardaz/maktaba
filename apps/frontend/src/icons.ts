@@ -29,6 +29,7 @@ import {
   Coffee,
   Compass,
   Copy,
+  Crop,
   ExternalLink,
   Eye,
   FileText,
@@ -58,6 +59,7 @@ import {
   Play,
   Plus,
   RefreshCw,
+  RotateCw,
   ScanLine,
   Search,
   Settings,
@@ -107,6 +109,7 @@ export const IconChevronUp = withStrokeWidth(ChevronUp);
 export const IconCircleCheck = withStrokeWidth(CircleCheck);
 export const IconCircleDashed = withStrokeWidth(CircleDashed);
 export const IconCloud = withStrokeWidth(Cloud);
+export const IconCrop = withStrokeWidth(Crop);
 export const IconCloudOff = withStrokeWidth(CloudOff);
 export const IconCloudUpload = withStrokeWidth(CloudUpload);
 export const IconCoffee = withStrokeWidth(Coffee);
@@ -141,6 +144,7 @@ export const IconPencil = withStrokeWidth(PenLine);
 export const IconPlayerPlay = withStrokeWidth(Play);
 export const IconPlus = withStrokeWidth(Plus);
 export const IconRefresh = withStrokeWidth(RefreshCw);
+export const IconRotate = withStrokeWidth(RotateCw);
 export const IconScanLine = withStrokeWidth(ScanLine);
 export const IconSearch = withStrokeWidth(Search);
 export const IconSettings = withStrokeWidth(Settings);

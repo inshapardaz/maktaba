@@ -19,6 +19,11 @@ public record BulkSetStatusRequest(IReadOnlyList<string> PageIds, string Status)
 public record BulkSetChapterRequest(IReadOnlyList<string> PageIds, string? ChapterId);
 public record DeletePagesRequest(IReadOnlyList<string> PageIds);
 
+// Phase 3 request bodies.
+public record RotatePageRequest(double Degrees);
+public record CropPageRequest(double X, double Y, double Width, double Height);
+public record SplitPageRequest(double SplitRatio);
+
 // Phase 0 (epic #162) - just the "Digitize" entry point: start a book's digitization.json and read
 // its current state back. Every other digitization action (page management, OCR, chapters,
 // publishing, ...) is a later phase's own endpoint set, added to this same file as it lands.
@@ -189,10 +194,89 @@ public static class DigitizationEndpoints
             }
         });
 
-        // Serves a page's own image bytes for the page grid/list thumbnails and the (later phase's)
-        // typing editor - plain disk read, no caching header logic yet (pages are immutable once
-        // rasterized until Phase 3's crop/rotate lands, at which point this may want a version/etag
-        // the way CoverLocator.GetVersion does for book covers).
+        // Phase 3 (Page Image Editing) - all three bake the transform into the page's own jpg and
+        // return the (mostly unchanged, for rotate/crop) DigitizationState - see
+        // DigitizationService's own doc comment on why these are destructive rather than
+        // persisting a re-appliable transform. No cache-busting header/version is added here; the
+        // frontend appends its own cache-busting query param after a successful edit (see
+        // digitizationPageImageUrl's callers) since <img> tags cache aggressively by URL.
+        group.MapPost("/pages/{pageId}/rotate", async (string id, string pageId, RotatePageRequest request, IDigitizationService digitization, CancellationToken ct) =>
+        {
+            if (!IdCodec.TryDecode(id, out var bookId))
+            {
+                return Results.NotFound();
+            }
+
+            try
+            {
+                await digitization.RotatePageAsync(bookId, pageId, request.Degrees, ct);
+                return Results.Ok(await digitization.GetStateAsync(bookId, ct));
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return Results.NotFound(new { error = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+        });
+
+        group.MapPost("/pages/{pageId}/crop", async (string id, string pageId, CropPageRequest request, IDigitizationService digitization, CancellationToken ct) =>
+        {
+            if (!IdCodec.TryDecode(id, out var bookId))
+            {
+                return Results.NotFound();
+            }
+
+            try
+            {
+                await digitization.CropPageAsync(bookId, pageId, request.X, request.Y, request.Width, request.Height, ct);
+                return Results.Ok(await digitization.GetStateAsync(bookId, ct));
+            }
+            catch (ArgumentException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return Results.NotFound(new { error = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+        });
+
+        group.MapPost("/pages/{pageId}/split", async (string id, string pageId, SplitPageRequest request, IDigitizationService digitization, CancellationToken ct) =>
+        {
+            if (!IdCodec.TryDecode(id, out var bookId))
+            {
+                return Results.NotFound();
+            }
+
+            try
+            {
+                var state = await digitization.SplitPageAsync(bookId, pageId, request.SplitRatio, ct);
+                return Results.Ok(state);
+            }
+            catch (ArgumentException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return Results.NotFound(new { error = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+        });
+
+        // Serves a page's own image bytes for the page grid/list thumbnails and the typing editor -
+        // plain disk read; see the comment above the Phase 3 endpoints for why there's no
+        // server-side cache-busting version here.
         group.MapGet("/pages/{pageId}/image", async (
             string id, string pageId, ILibraryService libraryService, ILibraryQueryServiceFactory queryServices,
             IDigitizationService digitization, CancellationToken ct) =>
