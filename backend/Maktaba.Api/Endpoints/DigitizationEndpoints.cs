@@ -10,6 +10,15 @@ namespace Maktaba.Api.Endpoints;
 // isRtlLanguage.ts), but a caller hitting this endpoint directly gets the same default.
 public record StartDigitizationRequest(bool? IsRightToLeft);
 
+// Phase 2 request bodies - all take the digitization.json page id ("p1", "p2", ...), never the
+// internal DigitizationPage.Id, matching every other API boundary's "never expose the raw int"
+// convention (see IdCodec's own doc comment) - a page's json id already is an opaque string, no
+// sqid encoding needed for it.
+public record ReorderPagesRequest(IReadOnlyList<string> PageIds);
+public record BulkSetStatusRequest(IReadOnlyList<string> PageIds, string Status);
+public record BulkSetChapterRequest(IReadOnlyList<string> PageIds, string? ChapterId);
+public record DeletePagesRequest(IReadOnlyList<string> PageIds);
+
 // Phase 0 (epic #162) - just the "Digitize" entry point: start a book's digitization.json and read
 // its current state back. Every other digitization action (page management, OCR, chapters,
 // publishing, ...) is a later phase's own endpoint set, added to this same file as it lands.
@@ -88,6 +97,121 @@ public static class DigitizationEndpoints
             {
                 return Results.Conflict(new { error = ex.Message });
             }
+        });
+
+        // Phase 2 (Page Management UI) - all four take/return the same DigitizationState shape as
+        // GET ""/POST "/start" so the frontend can just replace its cached state with the response
+        // rather than re-fetching. Every "not found"/validation failure below maps a thrown
+        // exception to 400/404 rather than letting a 500 through, following this project's own
+        // 404-vs-throw convention at the API boundary (see CLAUDE.md's "Backend conventions").
+        group.MapPut("/pages/reorder", async (string id, ReorderPagesRequest request, IDigitizationService digitization, CancellationToken ct) =>
+        {
+            if (!IdCodec.TryDecode(id, out var bookId))
+            {
+                return Results.NotFound();
+            }
+
+            try
+            {
+                await digitization.ReorderPagesAsync(bookId, request.PageIds, ct);
+                return Results.Ok(await digitization.GetStateAsync(bookId, ct));
+            }
+            catch (ArgumentException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+        });
+
+        group.MapPut("/pages/status", async (string id, BulkSetStatusRequest request, IDigitizationService digitization, CancellationToken ct) =>
+        {
+            if (!IdCodec.TryDecode(id, out var bookId))
+            {
+                return Results.NotFound();
+            }
+
+            if (!Enum.TryParse<PageEditStatus>(request.Status, out var status))
+            {
+                return Results.BadRequest(new { error = $"Unknown status '{request.Status}'." });
+            }
+
+            try
+            {
+                await digitization.BulkSetStatusAsync(bookId, request.PageIds, status, ct);
+                return Results.Ok(await digitization.GetStateAsync(bookId, ct));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+        });
+
+        group.MapPut("/pages/chapter", async (string id, BulkSetChapterRequest request, IDigitizationService digitization, CancellationToken ct) =>
+        {
+            if (!IdCodec.TryDecode(id, out var bookId))
+            {
+                return Results.NotFound();
+            }
+
+            try
+            {
+                await digitization.BulkSetChapterAsync(bookId, request.PageIds, request.ChapterId, ct);
+                return Results.Ok(await digitization.GetStateAsync(bookId, ct));
+            }
+            catch (ArgumentException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+        });
+
+        group.MapPost("/pages/delete", async (string id, DeletePagesRequest request, IDigitizationService digitization, CancellationToken ct) =>
+        {
+            if (!IdCodec.TryDecode(id, out var bookId))
+            {
+                return Results.NotFound();
+            }
+
+            try
+            {
+                await digitization.DeletePagesAsync(bookId, request.PageIds, ct);
+                return Results.Ok(await digitization.GetStateAsync(bookId, ct));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+        });
+
+        // Serves a page's own image bytes for the page grid/list thumbnails and the (later phase's)
+        // typing editor - plain disk read, no caching header logic yet (pages are immutable once
+        // rasterized until Phase 3's crop/rotate lands, at which point this may want a version/etag
+        // the way CoverLocator.GetVersion does for book covers).
+        group.MapGet("/pages/{pageId}/image", async (
+            string id, string pageId, ILibraryService libraryService, ILibraryQueryServiceFactory queryServices,
+            IDigitizationService digitization, CancellationToken ct) =>
+        {
+            if (!IdCodec.TryDecode(id, out var bookId) || libraryService.LibraryRootPath is not { } root)
+            {
+                return Results.NotFound();
+            }
+
+            var book = await queryServices.Books.GetByIdAsync(bookId, ct);
+            var state = await digitization.GetStateAsync(bookId, ct);
+            var page = state?.Pages.FirstOrDefault(p => p.Id == pageId);
+            if (book is null || page is null)
+            {
+                return Results.NotFound();
+            }
+
+            var imagePath = Path.Combine(root, book.FolderPath, page.Image);
+            return File.Exists(imagePath) ? Results.File(imagePath, "image/jpeg") : Results.NotFound();
         });
 
         // Not book-scoped (this process only ever runs one conversion at a time - see
