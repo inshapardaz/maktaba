@@ -377,9 +377,22 @@ public class DigitizationService(
         return tempRelative;
     }
 
-    // Phase 5.
-    public Task SavePageTextAsync(int bookId, string pageId, string text, CancellationToken ct = default) =>
-        throw new NotImplementedException("Implemented in Phase 5 (Typing Editor).");
+    // Phase 5 (Typing Editor) - writes the page's own Markdown text file (creating one at its
+    // number-derived path if this is the first time the page has any text at all - see the epic's
+    // "page number is the filename" amendment) and updates its cached Text column via the usual
+    // rescan pass, same as every other page mutation in this class.
+    public async Task SavePageTextAsync(int bookId, string pageId, string text, CancellationToken ct = default)
+    {
+        var (_, absoluteFolder) = await LoadBookAsync(bookId, ct);
+        var state = await RequireStateAsync(absoluteFolder, ct);
+        var page = FindPage(state, pageId);
+
+        var textRelative = page.Text ?? DigitizationPaths.PageTextPath(page.Order);
+        await File.WriteAllTextAsync(Path.Combine(absoluteFolder, textRelative), text, ct);
+
+        var updatedPages = state.Pages.Select(p => p.Id == pageId ? p with { Text = textRelative } : p).ToList();
+        await PersistPagesAsync(bookId, absoluteFolder, state, updatedPages, ct);
+    }
 
     // Phase 6.
     public Task<string> RunOcrAsync(int bookId, string pageId, CancellationToken ct = default) =>
