@@ -412,4 +412,35 @@ public class DigitizationService(
         await SavePageTextAsync(bookId, pageId, text, ct);
         return text;
     }
+
+    public async Task<DigitizationState> ConfirmChapterMergeAsync(int bookId, CancellationToken ct = default)
+    {
+        var (book, absoluteFolder) = await LoadBookAsync(bookId, ct);
+        var state = await RequireStateAsync(absoluteFolder, ct);
+
+        if (state.Pages.Count == 0)
+        {
+            throw new InvalidOperationException("This book has no pages yet.");
+        }
+
+        var unchaptered = state.Pages.Count(p => p.ChapterId is null);
+        if (unchaptered > 0)
+        {
+            throw new InvalidOperationException($"{unchaptered} page(s) don't have a chapter assigned yet.");
+        }
+
+        var notComplete = state.Pages.Count(p => p.EditStatus != nameof(PageEditStatus.Complete));
+        if (notComplete > 0)
+        {
+            throw new InvalidOperationException($"{notComplete} page(s) aren't marked Complete yet.");
+        }
+
+        var updated = state with { Status = nameof(BookDigitizationStatus.ChapterProofRead) };
+        await jsonStore.WriteAsync(absoluteFolder, updated, ct);
+
+        book.DigitizationStatus = BookDigitizationStatus.ChapterProofRead;
+        await db.SaveChangesAsync(ct);
+
+        return updated;
+    }
 }

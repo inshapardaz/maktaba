@@ -504,6 +504,47 @@ public static class DigitizationEndpoints
                 return Results.BadRequest(new { error = ex.Message });
             }
         });
+
+        // Phase 7 (Merge Pages into Chapters) - preview a chapter's merged Markdown (issue #191)
+        // and confirm the merge, gating on every page being chaptered + Complete (issue #192).
+        chapters.MapGet("/{chapterId}/merged-text", async (string id, string chapterId, IChapterMergeService mergeService, CancellationToken ct) =>
+        {
+            if (!IdCodec.TryDecode(id, out var bookId))
+            {
+                return Results.NotFound();
+            }
+
+            try
+            {
+                var text = await mergeService.MergeChapterAsync(bookId, chapterId, ct);
+                return Results.Ok(new { text });
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return Results.NotFound(new { error = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+        });
+
+        group.MapPost("/merge", async (string id, IDigitizationService digitization, CancellationToken ct) =>
+        {
+            if (!IdCodec.TryDecode(id, out var bookId))
+            {
+                return Results.NotFound();
+            }
+
+            try
+            {
+                return Results.Ok(await digitization.ConfirmChapterMergeAsync(bookId, ct));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+        });
     }
 }
 
