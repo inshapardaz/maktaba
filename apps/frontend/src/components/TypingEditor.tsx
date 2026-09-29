@@ -3,11 +3,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { notifications } from "@mantine/notifications";
 import { Button, Group, Image, Modal, ScrollArea, SegmentedControl, Stack, Text, Textarea } from "@mantine/core";
 import {
-  bulkSetPageStatus, digitizationPageImageUrl, getDigitizationPageText, saveDigitizationPageText,
-  type DigitizationPageDto,
+  bulkSetPageStatus, digitizationPageImageUrl, getDigitizationPageText, runDigitizationPageOcr,
+  saveDigitizationPageText, type DigitizationPageDto,
 } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
-import { IconArrowLeft, IconArrowRight } from "../icons";
+import { IconArrowLeft, IconArrowRight, IconScanLine } from "../icons";
 
 const STATUSES = ["Pending", "Typing", "Typed", "ProofRead", "Complete"];
 const AUTOSAVE_DELAY_MS = 1500;
@@ -58,6 +58,16 @@ export function TypingEditor({
     onError: (err) => notifications.show({ color: "red", message: err instanceof Error ? err.message : String(err) }),
   });
 
+  const ocrMutation = useMutation({
+    mutationFn: () => runDigitizationPageOcr(bookId, page.id),
+    onSuccess: (recognizedText) => {
+      setText(recognizedText);
+      setDirty(false);
+      void queryClient.invalidateQueries({ queryKey: ["digitizationState", bookId] });
+    },
+    onError: (err) => notifications.show({ color: "red", message: err instanceof Error ? err.message : String(err) }),
+  });
+
   const statusMutation = useMutation({
     mutationFn: (status: string) => bulkSetPageStatus(bookId, [page.id], status),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["digitizationState", bookId] }),
@@ -95,7 +105,12 @@ export function TypingEditor({
               {t("common.next")}
             </Button>
           </Group>
-          <SegmentedControl size="xs" data={STATUSES} value={page.editStatus} onChange={(v) => statusMutation.mutate(v)} />
+          <Group gap="xs">
+            <Button size="xs" variant="light" leftSection={<IconScanLine size={14} />} loading={ocrMutation.isPending} onClick={() => ocrMutation.mutate()}>
+              {t("digitize.runOcr")}
+            </Button>
+            <SegmentedControl size="xs" data={STATUSES} value={page.editStatus} onChange={(v) => statusMutation.mutate(v)} />
+          </Group>
         </Group>
 
         <Group align="flex-start" wrap="nowrap" gap="md">

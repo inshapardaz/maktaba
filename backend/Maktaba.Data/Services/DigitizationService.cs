@@ -9,7 +9,9 @@ namespace Maktaba.Data.Services;
 public class DigitizationService(
     MaktabaDbContext db,
     ILibraryService libraryService,
-    IDigitizationJsonStore jsonStore) : IDigitizationService
+    IDigitizationJsonStore jsonStore,
+    IGoogleVisionOcrService ocrService,
+    IOcrApiKeyCache ocrApiKeyCache) : IDigitizationService
 {
     private async Task<(Book Book, string AbsoluteFolder)> LoadBookAsync(int bookId, CancellationToken ct)
     {
@@ -394,7 +396,20 @@ public class DigitizationService(
         await PersistPagesAsync(bookId, absoluteFolder, state, updatedPages, ct);
     }
 
-    // Phase 6.
-    public Task<string> RunOcrAsync(int bookId, string pageId, CancellationToken ct = default) =>
-        throw new NotImplementedException("Implemented in Phase 6 (OCR via Google Vision).");
+    // Phase 6 (OCR via Google Vision) - always overwrites any existing text on the page, no
+    // confirmation prompt (see the epic's own "already decided" appendix). The API key itself never
+    // touches this method - IOcrApiKeyCache is populated by the renderer (which alone can decrypt
+    // the safeStorage-encrypted key) once per session, see that interface's own doc comment.
+    public async Task<string> RunOcrAsync(int bookId, string pageId, CancellationToken ct = default)
+    {
+        var (_, absoluteFolder) = await LoadBookAsync(bookId, ct);
+        var state = await RequireStateAsync(absoluteFolder, ct);
+        var page = FindPage(state, pageId);
+
+        var imageBytes = await File.ReadAllBytesAsync(Path.Combine(absoluteFolder, page.Image), ct);
+        var text = await ocrService.RecognizeTextAsync(imageBytes, ocrApiKeyCache.ApiKey ?? "", ct);
+
+        await SavePageTextAsync(bookId, pageId, text, ct);
+        return text;
+    }
 }

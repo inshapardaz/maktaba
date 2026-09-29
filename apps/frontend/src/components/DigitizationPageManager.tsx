@@ -7,10 +7,10 @@ import {
 } from "@mantine/core";
 import {
   bulkSetPageChapter, bulkSetPageStatus, deleteDigitizationPages, digitizationPageImageUrl, reorderDigitizationPages,
-  type DigitizationPageDto, type DigitizationStateDto,
+  runDigitizationPageOcr, type DigitizationPageDto, type DigitizationStateDto,
 } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
-import { IconEdit, IconFileText, IconLayoutGrid, IconList, IconTrash } from "../icons";
+import { IconEdit, IconFileText, IconLayoutGrid, IconList, IconScanLine, IconTrash } from "../icons";
 import { PageEditModal } from "./PageEditModal";
 import { TypingEditor } from "./TypingEditor";
 
@@ -84,6 +84,31 @@ export function DigitizationPageManager({ bookId, state }: { bookId: string; sta
       setDeleteConfirmOpen(false);
     },
     onError: (err) => notifications.show({ color: "red", message: err instanceof Error ? err.message : String(err) }),
+  });
+
+  // Sequential, not parallel - one Google Vision request at a time, with its own small progress
+  // counter, rather than a backend queue (see DigitizationEndpoints.cs's own comment on why bulk
+  // OCR stayed frontend-orchestrated). Always overwrites existing text, no confirmation - matches
+  // the epic's own already-decided behavior for a single page's OCR.
+  const [ocrProgress, setOcrProgress] = useState<{ done: number; total: number } | null>(null);
+  const bulkOcrMutation = useMutation({
+    mutationFn: async () => {
+      const ids = [...selected];
+      setOcrProgress({ done: 0, total: ids.length });
+      for (let i = 0; i < ids.length; i++) {
+        await runDigitizationPageOcr(bookId, ids[i]);
+        setOcrProgress({ done: i + 1, total: ids.length });
+      }
+    },
+    onSuccess: () => {
+      invalidate();
+      setSelected(new Set());
+      setOcrProgress(null);
+    },
+    onError: (err) => {
+      setOcrProgress(null);
+      notifications.show({ color: "red", message: err instanceof Error ? err.message : String(err) });
+    },
   });
 
   const toggle = (id: string) => {
@@ -186,6 +211,15 @@ export function DigitizationPageManager({ bookId, state }: { bookId: string; sta
                 disabled={chapterMutation.isPending || state.chapters.length === 0}
                 clearable
               />
+              <Button
+                size="xs"
+                variant="light"
+                leftSection={<IconScanLine size={14} />}
+                loading={bulkOcrMutation.isPending}
+                onClick={() => bulkOcrMutation.mutate()}
+              >
+                {ocrProgress ? t("digitize.ocrProgress", { done: ocrProgress.done, total: ocrProgress.total }) : t("digitize.runOcr")}
+              </Button>
               <Button size="xs" color="red" leftSection={<IconTrash size={14} />} onClick={() => setDeleteConfirmOpen(true)}>
                 {t("common.delete")}
               </Button>

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Box, Group, Select, SegmentedControl, Stack, Switch, Tabs, Text } from "@mantine/core";
-import { IconAlertTriangle, IconBook2, IconBooks, IconInfoCircle, IconLanguage, IconSettings } from "../icons";
+import { IconAlertTriangle, IconBook2, IconBooks, IconInfoCircle, IconLanguage, IconScanLine, IconSettings } from "../icons";
 import { useLanguage } from "../i18n/LanguageContext";
 import type { ReadableFormat } from "../api";
 import {
@@ -24,10 +24,11 @@ import { BrowseViewHeader } from "./BrowseViewHeader";
 import { ColorSchemeToggle } from "./ColorSchemeToggle";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { LibrariesSettings } from "./LibrariesSettings";
+import { OcrSettings } from "./OcrSettings";
 import { StarDictSettings } from "./StarDictSettings";
 import { ThemeColorSwatches } from "./ThemeColorSwatches";
 
-export type SettingsTab = "general" | "libraries" | "reading" | "dictionaries" | "about";
+export type SettingsTab = "general" | "libraries" | "reading" | "dictionaries" | "ocr" | "about";
 
 interface SettingsScreenProps {
   onBack: () => void;
@@ -135,6 +136,9 @@ export function SettingsScreen({ onBack, onLibraryChanged, initialTab }: Setting
             </Tabs.Tab>
             <Tabs.Tab value="dictionaries" leftSection={<IconLanguage size={14} />}>
               {t("settings.dictionaries")}
+            </Tabs.Tab>
+            <Tabs.Tab value="ocr" leftSection={<IconScanLine size={14} />}>
+              {t("settings.ocr")}
             </Tabs.Tab>
             <Tabs.Tab value="about" leftSection={<IconInfoCircle size={14} />}>
               {t("settings.about")}
@@ -326,7 +330,11 @@ export function SettingsScreen({ onBack, onLibraryChanged, initialTab }: Setting
           <Tabs.Panel value="dictionaries" pt="lg">
             <StarDictSettings />
           </Tabs.Panel>
-  
+
+          <Tabs.Panel value="ocr" pt="lg">
+            <OcrSettings />
+          </Tabs.Panel>
+
           <Tabs.Panel value="about" pt="lg">
             <AboutSettings />
           </Tabs.Panel>
