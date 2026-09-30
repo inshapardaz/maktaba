@@ -5,6 +5,7 @@ using Maktaba.Data;
 using Maktaba.Data.Services;
 using Maktaba.Metadata;
 using Maktaba.Nawishta;
+using Maktaba.Publishing;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -68,6 +69,14 @@ builder.Services.AddScoped<IDigitizationRescanService, DigitizationRescanService
 builder.Services.AddScoped<IDigitizationService, DigitizationService>();
 builder.Services.AddScoped<IChapterService, ChapterService>();
 builder.Services.AddScoped<IChapterMergeService, ChapterMergeService>();
+
+// Phase 8 - one IBookPublisher per format, resolved via IEnumerable<IBookPublisher> by
+// DigitizationPublishingService (mirrors the IBookMetadataExtractor multi-registration pattern
+// above). Each publisher is stateless (pure bytes-in/bytes-out), so singleton is fine.
+builder.Services.AddSingleton<IBookPublisher, EpubPublisher>();
+builder.Services.AddSingleton<IBookPublisher, MarkdownPublisher>();
+builder.Services.AddSingleton<IBookPublisher, PdfPublisher>();
+builder.Services.AddScoped<IDigitizationPublishingService, DigitizationPublishingService>();
 
 // Phase 1 - runs as a detached background task (like ILibraryMigrationService), so registered
 // singleton like that service rather than scoped; it builds its own MaktabaDbContext per run via

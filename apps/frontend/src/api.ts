@@ -1490,3 +1490,11 @@ export function getMergedChapterText(id: string, chapterId: string): Promise<str
 export function confirmChapterMerge(id: string): Promise<DigitizationStateDto> {
   return request<DigitizationStateDto>(`/api/books/${id}/digitize/merge`, { method: "POST" });
 }
+
+// Phase 8 (Publishing) - re-publishing the same format updates the previously-published BookFile
+// in place rather than creating a duplicate (see DigitizationPublishingService's own doc comment).
+export type PublishFormat = "Epub" | "Markdown" | "Pdf";
+
+export function publishDigitizedBook(id: string, format: PublishFormat): Promise<{ id: string; format: string; fileSizeBytes: number }> {
+  return request<{ id: string; format: string; fileSizeBytes: number }>(`/api/books/${id}/digitize/publish/${format}`, { method: "POST" });
+}

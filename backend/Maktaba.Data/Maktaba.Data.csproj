@@ -9,6 +9,10 @@
          MaktabaDbContext/IDigitizationJsonStore - Maktaba.Metadata has no MaktabaDbContext access
          (it only depends on Maktaba.Core), so the dependency runs this direction. -->
     <ProjectReference Include="..\Maktaba.Metadata\Maktaba.Metadata.csproj" />
+    <!-- Digitization epic #162, Phase 8: DigitizationPublishingService orchestrates the pure
+         IBookPublisher implementations (Maktaba.Publishing has no MaktabaDbContext/file-writing
+         access, same isolation as Maktaba.Metadata). -->
+    <ProjectReference Include="..\Maktaba.Publishing\Maktaba.Publishing.csproj" />
   </ItemGroup>
 
   <ItemGroup>
