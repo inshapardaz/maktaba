@@ -60,4 +60,10 @@ public interface IBookEditService
     /// (scoped to that book) and writes it over the book's current cover.jpg/jpeg/png, replacing
     /// whatever cover is there now (including one from a different file, or none at all).</summary>
     Task<CoverExtractionOutcome> ExtractCoverAsync(int bookId, int fileId, CancellationToken ct = default);
+
+    /// <summary>Saves a user-supplied image as the book's cover, replacing whatever cover is there
+    /// now (same "delete every existing cover.* first" approach as
+    /// <see cref="IPeriodicalService.SaveCoverAsync"/> - mirrored here for books). Returns null if
+    /// the book doesn't exist.</summary>
+    Task<Book?> SaveCoverAsync(int bookId, Stream content, string contentType, CancellationToken ct = default);
 }

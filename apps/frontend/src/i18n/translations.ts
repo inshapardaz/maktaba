@@ -354,6 +354,8 @@ const en = {
 
   "bookEdit.title": "Edit book",
   "bookEdit.titleField": "Title",
+  "bookEdit.modeBook": "Book",
+  "bookEdit.modeIssue": "Issue",
   "bookEdit.issueOf": "Issue of {periodical}",
   "bookEdit.authors": "Authors",
   "bookEdit.createOption": 'Create "{name}"',
@@ -400,6 +402,7 @@ const en = {
   "language.ko": "Korean",
 
   "bookEdit.publishedDate": "Published date",
+  "bookEdit.publishedYear": "Published year",
   "bookEdit.rating": "Rating",
   "bookEdit.unrated": "Unrated",
   "bookEdit.description": "Description",
@@ -1007,6 +1010,8 @@ const ur: TranslationDict = {
 
   "bookEdit.title": "کتاب میں ترمیم کریں",
   "bookEdit.titleField": "عنوان",
+  "bookEdit.modeBook": "کتاب",
+  "bookEdit.modeIssue": "شمارہ",
   "bookEdit.issueOf": "{periodical} کا شمارہ",
   "bookEdit.authors": "مصنفین",
   "bookEdit.createOption": '"{name}" بنائیں',
@@ -1050,6 +1055,7 @@ const ur: TranslationDict = {
   "language.ko": "کوریائی",
 
   "bookEdit.publishedDate": "تاریخ اشاعت",
+  "bookEdit.publishedYear": "سال اشاعت",
   "bookEdit.rating": "درجہ بندی",
   "bookEdit.unrated": "غیر درجہ بند",
   "bookEdit.description": "تفصیل",
