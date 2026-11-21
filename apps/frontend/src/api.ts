@@ -1453,6 +1453,24 @@ export async function uploadPeriodicalCover(id: string, file: File): Promise<voi
   }
 }
 
+// Same reasoning as uploadPeriodicalCover - overwrites whatever cover the book has now.
+export async function uploadBookCover(id: string, file: File): Promise<void> {
+  const { apiBaseUrl, token } = window.maktaba;
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const res = await fetch(`${apiBaseUrl}/api/books/${id}/cover`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { error?: string } | null;
+    throw new ApiError(body?.error ?? `Request failed: ${res.status}`, res.status);
+  }
+}
+
 // Phase 6 (OCR via Google Vision) - the API key itself lives encrypted in Electron's safeStorage
 // (via the existing maktaba:*-cloud-credential IPC, reused under a fixed ref "google-vision-api-key"
 // rather than new IPC - see OcrSettings.tsx) and is pushed here (plaintext, over the loopback

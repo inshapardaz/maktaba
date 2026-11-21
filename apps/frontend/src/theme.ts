@@ -105,7 +105,16 @@ const semantic = {
   // Secondary/dimmed text - not specified directly in the brief, derived as a warm mid-tone between
   // each scheme's text and bg so it stays legible without reintroducing cool grays.
   dimmed: { light: "#78685a", dark: "#c9bcaa" },
-  divider: { light: "rgba(0, 0, 0, 0.16)", dark: "rgba(255, 255, 255, 0.16)" },
+  // A solid light brown (not a translucent black/brown overlay - that still reads as plain grey at
+  // low opacity against the warm cream/parchment surfaces, clashing with the rest of the design
+  // system). Feeds every input/card/divider border via --mantine-color-default-border below, so
+  // this one change covers all of them at once.
+  divider: { light: "#c9ad87", dark: "rgba(255, 255, 255, 0.16)" },
+  // Disabled controls (inputs, buttons) otherwise fall back to Mantine's own stock gray-2/gray-5/
+  // gray-3 trio for background/text/border - same "reads as plain grey" mismatch as the border
+  // above. Muted, warm-toned equivalents instead, pitched between `bg` and `surface` in lightness.
+  disabled: { light: "#e6d9bf" },
+  disabledBorder: { light: "#ddc9a8" },
 };
 
 // Fully rounded - used directly (not via the radius scale) on every pill-shaped control called out
@@ -244,6 +253,23 @@ export const organicCssVariablesResolver: CSSVariablesResolver = () => ({
     "--mantine-color-dimmed": semantic.dimmed.light,
     "--mantine-color-placeholder": semantic.dimmed.light,
     "--mantine-color-default-border": semantic.divider.light,
+    // Input/TextInput/Select/NumberInput/Autocomplete etc. don't actually key their border off
+    // --mantine-color-default-border - Mantine's own Input.css hardcodes --input-bd to this literal
+    // gray-4 shade instead, so overriding default-border alone (above) left every text box with a
+    // plain grey border while Button's (and Fieldset's, Tabs', every hairline's) went brown. gray-4
+    // also backs ActionIcon/Chip/Checkbox/Radio's own default-variant border, so this brings all of
+    // those in line with the same color too.
+    "--mantine-color-gray-4": semantic.divider.light,
+    // Select/Autocomplete's own dropdown panel is a Combobox/Popover, which hardcodes its border to
+    // gray-2 (Popover.css's --popover-border-color) rather than gray-4 or default-border - a third,
+    // still-grey var the two overrides above don't reach.
+    "--mantine-color-gray-2": semantic.divider.light,
+    // SegmentedControl's divider between its own options (its "control group") is --separator-color,
+    // which defaults to gray-3 - yet another distinct var from the three above.
+    "--mantine-color-gray-3": semantic.divider.light,
+    "--mantine-color-disabled": semantic.disabled.light,
+    "--mantine-color-disabled-color": semantic.dimmed.light,
+    "--mantine-color-disabled-border": semantic.disabledBorder.light,
   },
   // Dark mode intentionally left at Mantine's own stock dark palette (bg/surface/text/border all
   // untouched) - an earlier pass gave it the same custom near-black brown treatment as light mode's

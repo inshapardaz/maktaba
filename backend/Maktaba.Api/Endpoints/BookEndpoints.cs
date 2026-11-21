@@ -719,6 +719,26 @@ public static class BookEndpoints
             };
         });
 
+        // User-supplied cover upload, overwriting whatever cover.jpg/jpeg/png is there now - same
+        // request shape as PeriodicalEndpoints' own "/{id}/cover" POST.
+        group.MapPost("/{id}/cover", async (
+            string id, IFormFile file, IBookEditService editService, CancellationToken ct) =>
+        {
+            if (!IdCodec.TryDecode(id, out var bookId))
+            {
+                return Results.NotFound();
+            }
+
+            if (file.Length == 0 || (file.ContentType != "image/jpeg" && file.ContentType != "image/png"))
+            {
+                return Results.BadRequest(new { error = "Cover must be a JPEG or PNG image." });
+            }
+
+            await using var stream = file.OpenReadStream();
+            var book = await editService.SaveCoverAsync(bookId, stream, file.ContentType, ct);
+            return book is null ? Results.NotFound() : Results.NoContent();
+        }).DisableAntiforgery();
+
         group.MapDelete("/{id}/files/{fileId}", async (
             string id, string fileId, IBookEditService editService,
             ILibraryService libraryService, NawishtaSessionResolver nawishtaResolver, CancellationToken ct) =>

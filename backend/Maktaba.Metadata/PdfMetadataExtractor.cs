@@ -2,6 +2,7 @@ using Maktaba.Core.Services;
 using PDFtoImage;
 using SkiaSharp;
 using UglyToad.PdfPig;
+using UglyToad.PdfPig.Exceptions;
 
 namespace Maktaba.Metadata;
 
@@ -14,30 +15,56 @@ public class PdfMetadataExtractor : IBookMetadataExtractor
 
     public Task<ExtractedBookMetadata> ExtractAsync(string filePath, CancellationToken ct = default)
     {
-        using var document = PdfDocument.Open(filePath);
-        var info = document.Information;
+        // Password-protected PDFs can't be opened without the password - PdfPig throws rather than
+        // prompting for one, so fall back to filename-only metadata instead of failing the import.
+        PdfDocument document;
+        try
+        {
+            document = PdfDocument.Open(filePath);
+        }
+        catch (PdfDocumentEncryptedException)
+        {
+            return Task.FromResult(FilenameOnlyMetadata(filePath));
+        }
 
-        var title = string.IsNullOrWhiteSpace(info.Title)
-            ? Path.GetFileNameWithoutExtension(filePath)
-            : info.Title.Trim();
+        using (document)
+        {
+            var info = document.Information;
 
-        var (coverBytes, coverContentType) = TryRenderFirstPageCover(filePath);
+            var title = string.IsNullOrWhiteSpace(info.Title)
+                ? Path.GetFileNameWithoutExtension(filePath)
+                : info.Title.Trim();
 
-        var metadata = new ExtractedBookMetadata(
-            Title: title,
-            Authors: SplitAuthors(info.Author),
-            // The standard PDF info dictionary has no publisher/language fields, unlike EPUB's OPF metadata.
-            Language: null,
-            Publisher: null,
-            PublishedDate: TryParsePdfDate(info.CreationDate),
-            Description: string.IsNullOrWhiteSpace(info.Subject) ? null : info.Subject.Trim(),
-            Identifiers: [],
-            CoverImageBytes: coverBytes,
-            CoverContentType: coverContentType,
-            PageCount: document.NumberOfPages);
+            var (coverBytes, coverContentType) = TryRenderFirstPageCover(filePath);
 
-        return Task.FromResult(metadata);
+            var metadata = new ExtractedBookMetadata(
+                Title: title,
+                Authors: SplitAuthors(info.Author),
+                // The standard PDF info dictionary has no publisher/language fields, unlike EPUB's OPF metadata.
+                Language: null,
+                Publisher: null,
+                PublishedDate: TryParsePdfDate(info.CreationDate),
+                Description: string.IsNullOrWhiteSpace(info.Subject) ? null : info.Subject.Trim(),
+                Identifiers: [],
+                CoverImageBytes: coverBytes,
+                CoverContentType: coverContentType,
+                PageCount: document.NumberOfPages);
+
+            return Task.FromResult(metadata);
+        }
     }
+
+    private static ExtractedBookMetadata FilenameOnlyMetadata(string filePath) => new(
+        Title: Path.GetFileNameWithoutExtension(filePath),
+        Authors: [],
+        Language: null,
+        Publisher: null,
+        PublishedDate: null,
+        Description: null,
+        Identifiers: [],
+        CoverImageBytes: null,
+        CoverContentType: null,
+        PageCount: null);
 
     private static (byte[]? Bytes, string? ContentType) TryRenderFirstPageCover(string filePath)
     {

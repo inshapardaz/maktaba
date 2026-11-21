@@ -264,4 +264,38 @@ public class BookEditService(
 
         return CoverExtractionOutcome.Extracted;
     }
+
+    public async Task<Book?> SaveCoverAsync(int bookId, Stream content, string contentType, CancellationToken ct = default)
+    {
+        var book = await db.Books.FirstOrDefaultAsync(b => b.Id == bookId, ct);
+        if (book is null)
+        {
+            return null;
+        }
+
+        await Storage.CreateDirectoryAsync(book.FolderPath, ct);
+        var absoluteFolder = await Storage.GetLocalPathAsync(book.FolderPath, ct);
+
+        // Same "delete every existing cover.* first" approach as PeriodicalService.SaveCoverAsync -
+        // otherwise replacing a jpg cover with a png (or vice versa) would leave both sitting next
+        // to each other, and CoverLocator.Find would keep serving whichever one it checks first.
+        foreach (var existing in CoverLocator.CoverFileNames)
+        {
+            var existingRelative = Path.Combine(book.FolderPath, existing);
+            if (await Storage.ExistsAsync(existingRelative, ct))
+            {
+                await Storage.DeleteAsync(existingRelative, recursive: false, ct);
+            }
+        }
+
+        var extension = EbookFileHelpers.CoverExtensionFor(contentType);
+        var coverRelative = Path.Combine(book.FolderPath, $"cover.{extension}");
+        await using (var fileStream = File.Create(Path.Combine(absoluteFolder, $"cover.{extension}")))
+        {
+            await content.CopyToAsync(fileStream, ct);
+        }
+        await Storage.NotifyWrittenAsync(coverRelative, ct);
+
+        return book;
+    }
 }
